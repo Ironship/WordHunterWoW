@@ -22,7 +22,7 @@ test("export includes all words without baseKey filter", () => {
 test("legacy baseKeys have been cleaned up", () => {
   assert.doesNotMatch(source, /cleanLegacyBaseKeys/);
   assert.doesNotMatch(source, /entry\.baseKey/);
-  assert.match(source, /WordHunterWoWDB\.version = 8/);
+  assert.match(source, /WordHunterWoWDB\.version = 9/);
 });
 
 test("windows are resizable and remember position", () => {

@@ -19,3 +19,9 @@ test("editor can reset translation and note to dictionary defaults", () => {
   assert.match(source, /editor\.translation:SetText\(dict\.translation or ""\)/);
   assert.match(source, /editor\.note:SetText\(dict\.note or ""\)/);
 });
+
+test("runtime keys match Python casefold for German sharp s", () => {
+  assert.match(source, /gsub\("ẞ", "SS"\):gsub\("ß", "ss"\)/);
+  assert.match(source, /WordHunterWoWDB\.version or 0\) < 9/);
+  assert.match(source, /WordHunterWoWDB\.version = 9/);
+});
