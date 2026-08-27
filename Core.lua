@@ -217,7 +217,7 @@ function Addon.GetEffectiveWord(key)
   if not dict then return nil, false end
   return {
     word = dict.word or key,
-    status = "new",
+    status = (dict.status == "ignored" or dict.status == "known" or dict.status == "learning" or dict.status == "new") and dict.status or "new",
     translation = dict.translation or "",
     note = dict.note or "",
     dictionaryProvider = providerId,
@@ -234,7 +234,7 @@ function Addon.GetEffectiveWords()
     for key, entry in pairs(providers[providerId] or {}) do
       result[key] = {
         word = entry.word or key,
-        status = "new",
+        status = (entry.status == "ignored" or entry.status == "known" or entry.status == "learning" or entry.status == "new") and entry.status or "new",
         translation = entry.translation or "",
         note = entry.note or "",
         dictionaryProvider = providerId,
