@@ -1,0 +1,16 @@
+## Interface: 120100
+## Title: WordHunterWoW
+## Notes: Mark quest words and import them into Word Hunter. Supports enUS/enGB, deDE, frFR, esES/esMX, itIT, ptBR.
+## Author: Ironship
+## Version: 1.5.0
+## OptionalDeps: WordHunterWoW-ENPanel, WordHunterWoW-Dictionary-DE
+## SavedVariables: WordHunterWoWDB, WordHunterWoWExport, WordHunterWoWLanguage
+
+Core.lua
+UICommon.lua
+Editor.lua
+QuestPanel.lua
+WordList.lua
+Stats.lua
+Settings.lua
+Init.lua

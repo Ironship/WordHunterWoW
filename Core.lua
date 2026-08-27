@@ -1,0 +1,539 @@
+local Addon = WordHunterWoW_Addon or {}
+WordHunterWoW_Addon = Addon
+
+Addon.COLORS = {
+  new = { 0.35, 0.68, 1.00 },
+  learning = { 1.00, 0.66, 0.18 },
+  known = { 0.30, 0.88, 0.48 },
+  ignored = { 0.55, 0.59, 0.66 },
+  neutral = { 0.45, 0.55, 0.70 },
+}
+
+Addon.STATUS_LABELS = {
+  new = "New",
+  learning = "Learning",
+  known = "Known",
+  ignored = "Ignored",
+}
+
+Addon.SUPPORTED_LOCALES = {
+  enUS = "English (US)",
+  enGB = "English (GB)",
+  deDE = "German",
+  frFR = "French",
+  esES = "Spanish (EU)",
+  esMX = "Spanish (MX)",
+  itIT = "Italian",
+  ptBR = "Portuguese (BR)",
+}
+Addon.SUPPORTED_LOCALE_LIST = { "enUS", "enGB", "deDE", "frFR", "esES", "esMX", "itIT", "ptBR" }
+Addon.WH_LANGUAGE_MAP = {
+  enUS = "en",
+  enGB = "en",
+  deDE = "de",
+  frFR = "fr",
+  esES = "es",
+  esMX = "es",
+  itIT = "it",
+  ptBR = "pt",
+}
+
+Addon.LABELS = {
+  meaning = "Meaning / translation",
+  note = "Note",
+  copyWord = "Copy word",
+  copyQuest = "Copy quest",
+  copyHint = "Press Ctrl+C to copy",
+  save = "Save",
+  cancel = "Cancel",
+  status = "Status",
+  empty = "Open a quest to mark words.",
+  german = "For %s quest text, set the WoW text language to %s.",
+  saved = "%d saved",
+  readyForKnown = "Ready for Known",
+  listTitle = "WORD LIST",
+  search = "Search",
+  all = "All",
+  hideIgnored = "Hide Ignored",
+  wordsButton = "Words",
+  statsButton = "Stats",
+  statsTitle = "STATISTICS",
+  statsSummary = "%d words",
+  added7 = "Added (7 days)",
+  added30 = "Added (30 days)",
+  mostEncountered = "Most encountered",
+  settingsTitle = "WordHunterWoW Settings",
+  backgroundLabel = "Background style",
+  opacityLabel = "Opacity",
+  languageLabel = "Target (learned and in game) language",
+  resetDictionary = "Reset to dictionary",
+  integratedLabel = "Integrated quest window",
+  englishHeader = "English",
+}
+
+Addon.BACKGROUNDS = {
+  tooltip = {
+    name = "Tooltip (Classic Dark)",
+    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    edgeSize = 16,
+    tile = true,
+    tileSize = 16,
+    insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    bgColor = { 0.04, 0.06, 0.10, 0.94 },
+  },
+  dialog = {
+    name = "Dialog (Parchment)",
+    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+    edgeSize = 32,
+    tile = true,
+    tileSize = 32,
+    insets = { left = 11, right = 12, top = 12, bottom = 11 },
+    bgColor = { 1, 1, 1, 1 },
+  },
+  solid = {
+    name = "Solid Dark",
+    bgFile = "Interface\\Buttons\\WHITE8X8",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    edgeSize = 12,
+    tile = false,
+    insets = { left = 2, right = 2, top = 2, bottom = 2 },
+    bgColor = { 0.06, 0.07, 0.09, 0.96 },
+  },
+  midnight = {
+    name = "Midnight (Modern)",
+    bgFile = "Interface\\Buttons\\WHITE8X8",
+    edgeFile = "Interface\\Buttons\\WHITE8X8",
+    edgeSize = 1,
+    insets = { left = 1, right = 1, top = 1, bottom = 1 },
+    bgColor = { 0.08, 0.09, 0.13, 0.97 },
+    borderColor = { 0.22, 0.24, 0.34, 0.95 },
+  },
+}
+
+Addon.BACKGROUND_ORDER = { "tooltip", "dialog", "solid", "midnight" }
+
+function Addon.GetBackgroundStyle()
+  local key = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.background
+  if key and Addon.BACKGROUNDS[key] then return key end
+  return "midnight"
+end
+
+function Addon.GetOpacity()
+  local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.opacity
+  if type(v) == "number" and v >= 0 and v <= 1.0 then return v end
+  return 1.0
+end
+
+function Addon.GetIntegratedLayout()
+  local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.integratedLayout
+  if v == nil then return true end
+  return v and true or false
+end
+
+function Addon.SetIntegratedLayout(value)
+  if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
+  if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
+  WordHunterWoWDB.settings.integratedLayout = not not value
+  if Addon.ApplyIntegratedLayout then Addon.ApplyIntegratedLayout() end
+  if Addon.OnIntegratedLayoutChanged then Addon.OnIntegratedLayoutChanged(Addon.GetIntegratedLayout()) end
+end
+
+function Addon.SetOpacity(value)
+  value = tonumber(value)
+  if not value then return end
+  value = math.max(0, math.min(1.0, value))
+  value = math.floor(value * 20 + 0.5) / 20
+  WordHunterWoWDB.settings.opacity = value
+  Addon.RefreshAllBackdrops()
+  if Addon.settingsPanel and Addon.settingsPanel:IsShown() and Addon.settingsPanel.refresh then
+    Addon.settingsPanel.refresh()
+  end
+end
+
+function Addon.GetTargetLocale()
+  local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.targetLocale
+  if v and Addon.SUPPORTED_LOCALES[v] then return v end
+  local client = GetLocale and GetLocale() or "deDE"
+  if Addon.SUPPORTED_LOCALES[client] then return client end
+  return "deDE"
+end
+
+function Addon.SetTargetLocale(locale)
+  if not Addon.SUPPORTED_LOCALES[locale] then return end
+  WordHunterWoWDB.settings.targetLocale = locale
+  Addon.GetWordsTable()
+  Addon.rebuildExport()
+  if Addon.settingsPanel and Addon.settingsPanel.refresh then
+    Addon.settingsPanel.refresh()
+  end
+  if Addon.listFrame and Addon.listFrame:IsShown() then Addon.refreshWordList() end
+  if Addon.statsFrame and Addon.statsFrame:IsShown() then Addon.statsFrame:Hide() end
+  if Addon.panel and Addon.panel:IsShown() and Addon.lastQuest then Addon.refreshPanel() end
+end
+
+function Addon.GetWordsTable()
+  local locale = Addon.GetTargetLocale()
+  if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
+  if type(WordHunterWoWDB.wordsByLocale) ~= "table" then WordHunterWoWDB.wordsByLocale = {} end
+  if type(WordHunterWoWDB.wordsByLocale[locale]) ~= "table" then WordHunterWoWDB.wordsByLocale[locale] = {} end
+  WordHunterWoWDB.words = WordHunterWoWDB.wordsByLocale[locale]
+  return WordHunterWoWDB.wordsByLocale[locale]
+end
+
+Addon.DictionaryProviders = Addon.DictionaryProviders or {}
+Addon.DictionaryProviderOrder = Addon.DictionaryProviderOrder or {}
+
+function Addon.RegisterDictionaryProvider(locale, providerId, entries)
+  if not Addon.SUPPORTED_LOCALES[locale] or type(providerId) ~= "string" or type(entries) ~= "table" then return false end
+  if type(Addon.DictionaryProviders[locale]) ~= "table" then Addon.DictionaryProviders[locale] = {} end
+  if type(Addon.DictionaryProviderOrder[locale]) ~= "table" then Addon.DictionaryProviderOrder[locale] = {} end
+  if not Addon.DictionaryProviders[locale][providerId] then
+    Addon.DictionaryProviderOrder[locale][#Addon.DictionaryProviderOrder[locale] + 1] = providerId
+  end
+  Addon.DictionaryProviders[locale][providerId] = entries
+  if Addon.listFrame and Addon.listFrame:IsShown() and Addon.refreshWordList then Addon.refreshWordList() end
+  if Addon.panel and Addon.panel:IsShown() and Addon.lastQuest and Addon.refreshPanel then Addon.refreshPanel() end
+  return true
+end
+
+function Addon.GetDictionaryEntry(key, locale)
+  locale = locale or Addon.GetTargetLocale()
+  local providers = Addon.DictionaryProviders[locale]
+  local order = Addon.DictionaryProviderOrder[locale]
+  if not providers or not order then return nil end
+  for i = #order, 1, -1 do
+    local providerId = order[i]
+    local entry = providers[providerId] and providers[providerId][key]
+    if entry then return entry, providerId end
+  end
+end
+
+function Addon.GetEffectiveWord(key)
+  local user = Addon.GetWordsTable()[key]
+  if user then return user, false end
+  local dict, providerId = Addon.GetDictionaryEntry(key)
+  if not dict then return nil, false end
+  return {
+    word = dict.word or key,
+    status = "new",
+    translation = dict.translation or "",
+    note = dict.note or "",
+    dictionaryProvider = providerId,
+    builtInDictionary = true,
+  }, true
+end
+
+function Addon.GetEffectiveWords()
+  local result = {}
+  local locale = Addon.GetTargetLocale()
+  local providers = Addon.DictionaryProviders[locale] or {}
+  local order = Addon.DictionaryProviderOrder[locale] or {}
+  for _, providerId in ipairs(order) do
+    for key, entry in pairs(providers[providerId] or {}) do
+      result[key] = {
+        word = entry.word or key,
+        status = "new",
+        translation = entry.translation or "",
+        note = entry.note or "",
+        dictionaryProvider = providerId,
+        builtInDictionary = true,
+      }
+    end
+  end
+  for key, entry in pairs(Addon.GetWordsTable()) do result[key] = entry end
+  return result
+end
+
+function Addon.ApplyBackground(frame, alphaOverride)
+  if not frame or not frame.SetBackdrop then return end
+  local style = Addon.BACKGROUNDS[Addon.GetBackgroundStyle()] or Addon.BACKGROUNDS.midnight
+  frame:SetBackdrop({
+    bgFile = style.bgFile,
+    edgeFile = style.edgeFile,
+    edgeSize = style.edgeSize,
+    tile = style.tile,
+    tileSize = style.tileSize,
+    insets = style.insets,
+  })
+  local c = style.bgColor
+  local alpha = alphaOverride or Addon.GetOpacity()
+  frame:SetBackdropColor(c[1], c[2], c[3], alpha)
+  if style.borderColor then
+    local b = style.borderColor
+    frame:SetBackdropBorderColor(b[1], b[2], b[3], alpha)
+  end
+  frame:SetToplevel(true)
+end
+
+function Addon.SetBackgroundStyle(key)
+  if not Addon.BACKGROUNDS[key] then return end
+  WordHunterWoWDB.settings.background = key
+  Addon.RefreshAllBackdrops()
+end
+
+function Addon.RefreshAllBackdrops()
+  for _, f in ipairs({ Addon.panel, Addon.editor, Addon.listFrame, Addon.statsFrame, Addon.copyDialog, Addon.enPanel, Addon.settingsPanel and Addon.settingsPanel.preview }) do
+    if f and f.SetBackdrop then Addon.ApplyBackground(f) end
+  end
+end
+
+function Addon.trim(value)
+  return strtrim(tostring(value or ""))
+end
+
+local function stripMark(value, mark)
+  while value:sub(1, #mark) == mark do value = value:sub(#mark + 1) end
+  while value:sub(-#mark) == mark do value = value:sub(1, -#mark - 1) end
+  return value
+end
+
+function Addon.cleanWord(token)
+  local word = Addon.trim(token):gsub("^[%p]+", ""):gsub("[%p]+$", "")
+  for _, mark in ipairs({ "„", "“", "”", "‚", "‘", "’", "«", "»", "…", "–", "—" }) do
+    word = stripMark(word, mark)
+  end
+  return Addon.trim(word)
+end
+
+function Addon.wordKey(word)
+  return strlower(Addon.cleanWord(word))
+end
+
+local function encode(value)
+  return tostring(value or ""):gsub("([^A-Za-z0-9_.~%-])", function(byte)
+    return string.format("%%%02X", string.byte(byte))
+  end)
+end
+
+function Addon.ensureHeadwordDefaults(entry, now)
+  if entry.status == nil then entry.status = "learning" end
+  if entry.statusChangedAt == nil then entry.statusChangedAt = entry.updatedAt or now end
+  if entry.translation == nil then entry.translation = "" end
+  if entry.note == nil then entry.note = "" end
+  if entry.noteUpdatedAt == nil then entry.noteUpdatedAt = 0 end
+  if entry.encounteredQuests == nil then entry.encounteredQuests = {} end
+  if entry.encounterCount == nil then entry.encounterCount = 0 end
+  if entry.firstSeenAt == nil then entry.firstSeenAt = entry.updatedAt or now end
+end
+
+function Addon.rebuildExport()
+  local words = Addon.GetWordsTable()
+  local keys = {}
+  for key in pairs(words) do keys[#keys + 1] = key end
+  table.sort(keys)
+  local rows = {}
+  for _, key in ipairs(keys) do
+    local item = words[key]
+    rows[#rows + 1] = table.concat({
+      encode(item.word),
+      item.status or "new",
+      tostring(item.statusChangedAt or item.updatedAt or 0),
+      tostring(item.updatedAt or 0),
+      encode(item.translation),
+      encode(item.note),
+      tostring(item.noteUpdatedAt or item.updatedAt or 0),
+      encode(item.context),
+      encode(item.questId),
+      encode(item.questTitle),
+      tostring(item.firstSeenAt or item.updatedAt or 0),
+      tostring(item.lastSeenAt or item.updatedAt or 0),
+      tostring(item.encounterCount or 0),
+    }, ",")
+  end
+  WordHunterWoWExport = "WHW3|" .. table.concat(rows, ";")
+  local target = Addon.GetTargetLocale()
+  WordHunterWoWLanguage = Addon.WH_LANGUAGE_MAP[target] or target
+end
+
+function Addon.initializeDatabase()
+  if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
+  if type(WordHunterWoWDB.words) ~= "table" then WordHunterWoWDB.words = {} end
+  if type(WordHunterWoWDB.wordsByLocale) ~= "table" then WordHunterWoWDB.wordsByLocale = {} end
+  if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
+  if type(WordHunterWoWDB.settings.frames) ~= "table" then WordHunterWoWDB.settings.frames = {} end
+  if not Addon.BACKGROUNDS[WordHunterWoWDB.settings.background] then
+    WordHunterWoWDB.settings.background = "midnight"
+  end
+  if type(WordHunterWoWDB.settings.opacity) ~= "number" or WordHunterWoWDB.settings.opacity < 0 or WordHunterWoWDB.settings.opacity > 1.0 then
+    WordHunterWoWDB.settings.opacity = 1.0
+  end
+  if WordHunterWoWDB.settings.integratedLayout == nil then
+    WordHunterWoWDB.settings.integratedLayout = true
+  end
+  if not Addon.SUPPORTED_LOCALES[WordHunterWoWDB.settings.targetLocale] then
+    local client = GetLocale and GetLocale() or "deDE"
+    if Addon.SUPPORTED_LOCALES[client] then
+      WordHunterWoWDB.settings.targetLocale = client
+    else
+      WordHunterWoWDB.settings.targetLocale = "deDE"
+    end
+  end
+  if (WordHunterWoWDB.version or 0) < 8 then
+    local hasPartitioned = false
+    for _, tbl in pairs(WordHunterWoWDB.wordsByLocale) do
+      if next(tbl) ~= nil then hasPartitioned = true; break end
+    end
+    if not hasPartitioned and next(WordHunterWoWDB.words) ~= nil then
+      local target = WordHunterWoWDB.settings.targetLocale
+      if not WordHunterWoWDB.wordsByLocale[target] then WordHunterWoWDB.wordsByLocale[target] = {} end
+      for k, v in pairs(WordHunterWoWDB.words) do
+        if type(v) == "table" and v.word then
+          WordHunterWoWDB.wordsByLocale[target][k] = v
+        end
+      end
+    end
+  end
+  Addon.GetWordsTable()
+  WordHunterWoWDB.version = 8
+  Addon.rebuildExport()
+end
+
+Addon.LAYOUT_DEFAULTS = {
+  npc = {
+    panel = { point = "LEFT", relPoint = "LEFT", x = 420, y = 40, w = 720, h = 500 },
+    list = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -16, y = -36, w = 420, h = 520 },
+    stats = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -448, y = -36, w = 340, h = 400 },
+    editor = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -448, y = -448, w = 430, h = 400 },
+  },
+  questlog = {
+    panel = { point = "RIGHT", relPoint = "RIGHT", x = -20, y = 40, w = 680, h = 500 },
+    list = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -16, y = -36, w = 420, h = 500 },
+    stats = { point = "BOTTOMRIGHT", relPoint = "BOTTOMRIGHT", x = -16, y = 90, w = 340, h = 400 },
+    editor = { point = "CENTER", relPoint = "CENTER", x = 180, y = 50, w = 430, h = 400 },
+  },
+}
+
+function Addon.GetLayoutContext()
+  if QuestFrame and QuestFrame:IsShown() then return "npc" end
+  if WorldMapFrame and WorldMapFrame:IsShown() then return "questlog" end
+  return "npc"
+end
+
+function Addon.LayoutKey(base)
+  return tostring(base or "panel") .. ":" .. Addon.GetLayoutContext()
+end
+
+function Addon.PlaceFrame(frame, baseKey)
+  if not frame then return end
+  local def = Addon.LAYOUT_DEFAULTS[Addon.GetLayoutContext()][baseKey]
+  if not def then return end
+  Addon.RestoreFramePosition(frame, Addon.LayoutKey(baseKey), def.point, def.x, def.y, def.w, def.h)
+end
+
+function Addon.SaveFramePosition(frame, key)
+  if not frame or not key then return end
+  if not WordHunterWoWDB or not WordHunterWoWDB.settings then return end
+  if not WordHunterWoWDB.settings.frames then WordHunterWoWDB.settings.frames = {} end
+  local point, _, relPoint, x, y = frame:GetPoint(1)
+  if not point then return end
+  local w, h = frame:GetSize()
+  WordHunterWoWDB.settings.frames[key] = {
+    point = point,
+    relPoint = relPoint,
+    x = x,
+    y = y,
+    w = w,
+    h = h,
+  }
+end
+
+function Addon.RestoreFramePosition(frame, key, defaultPoint, defaultX, defaultY, defaultW, defaultH)
+  local data = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.frames and WordHunterWoWDB.settings.frames[key]
+  if data and data.point and data.w and data.h then
+    frame:ClearAllPoints()
+    frame:SetPoint(data.point, UIParent, data.relPoint or data.point, data.x or 0, data.y or 0)
+    frame:SetSize(data.w, data.h)
+    return true
+  end
+  if defaultPoint then
+    frame:ClearAllPoints()
+    frame:SetPoint(defaultPoint, UIParent, defaultPoint, defaultX or 0, defaultY or 0)
+  end
+  if defaultW and defaultH then
+    frame:SetSize(defaultW, defaultH)
+  end
+  return false
+end
+
+function Addon.MakeResizable(frame, key, minW, minH, maxW, maxH)
+  if not frame then return end
+  frame:SetResizable(true)
+  if frame.SetResizeBounds then
+    frame:SetResizeBounds(minW, minH, maxW, maxH)
+  end
+  if not frame.resizeHandle then
+    local handle = CreateFrame("Button", nil, frame)
+    handle:SetSize(16, 16)
+    handle:SetPoint("BOTTOMRIGHT", -4, 4)
+    handle:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    handle:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    handle:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    handle:SetScript("OnMouseDown", function() frame:StartSizing("BOTTOMRIGHT") end)
+    handle:SetScript("OnMouseUp", function()
+      frame:StopMovingOrSizing()
+      Addon.SaveFramePosition(frame, Addon.LayoutKey(key))
+    end)
+    frame.resizeHandle = handle
+  end
+  frame:HookScript("OnSizeChanged", function(self)
+    if self:IsShown() then
+      Addon.SaveFramePosition(self, Addon.LayoutKey(key))
+    end
+  end)
+end
+
+local function questEncounterKey(questId, questTitle)
+  local id = tostring(questId or "")
+  if id ~= "" and id ~= "0" then return "id:" .. id end
+  local title = strlower(Addon.trim(questTitle))
+  if title ~= "" then return "title:" .. title end
+end
+
+function Addon.recordEncounter(item, questId, questTitle, now)
+  item.firstSeenAt = item.firstSeenAt or item.updatedAt or now
+  item.lastSeenAt = now
+  item.encounterCount = tonumber(item.encounterCount) or 0
+  if type(item.encounteredQuests) ~= "table" then item.encounteredQuests = {} end
+  local questKey = questEncounterKey(questId, questTitle)
+  if questKey and not item.encounteredQuests[questKey] then
+    item.encounteredQuests[questKey] = true
+    item.encounterCount = item.encounterCount + 1
+  end
+end
+
+function Addon.CloseAll()
+  local closed = false
+  for _, key in ipairs({ "panel", "editor", "listFrame", "statsFrame", "copyDialog", "enPanel" }) do
+    local frame = Addon[key]
+    if frame and frame.IsShown and frame:IsShown() then
+      frame:Hide()
+      if frame == Addon.editor and frame.ClearFocus then pcall(function() frame:ClearFocus() end) end
+      closed = true
+    end
+  end
+  if Addon.settingsPanel and Addon.settingsPanel:IsShown() then
+    Addon.settingsPanel:Hide()
+    closed = true
+  end
+  return closed
+end
+
+function Addon.SetupEscapeClose(frame)
+  if not frame or not frame.GetName then return end
+  local name = frame:GetName()
+  if name and not tContains(UISpecialFrames, name) then
+    tinsert(UISpecialFrames, name)
+  end
+  frame:EnableKeyboard(true)
+  frame:SetPropagateKeyboardInput(true)
+  frame:HookScript("OnKeyDown", function(self, key)
+    if key == "ESCAPE" then
+      self:SetPropagateKeyboardInput(false)
+      Addon.CloseAll()
+    else
+      self:SetPropagateKeyboardInput(true)
+    end
+  end)
+end
