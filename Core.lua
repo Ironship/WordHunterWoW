@@ -298,7 +298,8 @@ function Addon.cleanWord(token)
 end
 
 function Addon.wordKey(word)
-  return strlower(Addon.cleanWord(word))
+  local cleaned = Addon.cleanWord(word):gsub("ẞ", "SS"):gsub("ß", "ss")
+  return strlower(cleaned)
 end
 
 local function encode(value)
@@ -385,8 +386,23 @@ function Addon.initializeDatabase()
       end
     end
   end
+  if (WordHunterWoWDB.version or 0) < 9 then
+    local words = WordHunterWoWDB.wordsByLocale.deDE
+    if type(words) == "table" then
+      local migrations = {}
+      for key, entry in pairs(words) do
+        local normalized = strlower(tostring(key)):gsub("ẞ", "SS"):gsub("ß", "ss")
+        if normalized ~= key then migrations[#migrations + 1] = { key, normalized, entry } end
+      end
+      for _, migration in ipairs(migrations) do
+        local oldKey, newKey, entry = migration[1], migration[2], migration[3]
+        if not words[newKey] then words[newKey] = entry end
+        words[oldKey] = nil
+      end
+    end
+  end
   Addon.GetWordsTable()
-  WordHunterWoWDB.version = 8
+  WordHunterWoWDB.version = 9
   Addon.rebuildExport()
 end
 
