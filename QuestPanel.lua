@@ -38,43 +38,66 @@ local function refreshPanel()
     local qid = lastQuest.id
     local entry = WordHunterWoW_QuestEN and qid and WordHunterWoW_QuestEN[tonumber(qid)]
     local enTitle = LABELS.englishHeader
-    local enBody = "English text is not available for this quest."
+    -- Kept as separate blocks rather than one joined string. This pane places one
+    -- token at a time, so a newline inside a joined string is discarded with the
+    -- rest of the whitespace and the caveat runs straight into the quest text.
+    local enBlocks = { { text = "English text is not available for this quest." } }
     if entry then
       enTitle = entry.title or LABELS.englishHeader
-      enBody = entry.description or ""
-      if entry.objectives and entry.objectives ~= "" then
-        enBody = enBody .. (enBody ~= "" and "\n\n" or "") .. entry.objectives
-      end
+      enBlocks = {}
       if lastQuest.passage and lastQuest.passage ~= "offer" then
-        enBody = LABELS.enOfferOnly .. (enBody ~= "" and "\n\n" or "") .. enBody
+        enBlocks[#enBlocks + 1] = { text = LABELS.enOfferOnly, caveat = true }
+      end
+      if entry.description and entry.description ~= "" then
+        enBlocks[#enBlocks + 1] = { text = entry.description }
+      end
+      if entry.objectives and entry.objectives ~= "" then
+        enBlocks[#enBlocks + 1] = { text = entry.objectives }
       end
     end
     panel.enTitle:SetText(enTitle)
     for _, bit in ipairs(enBits) do bit:Hide() end
     local ex, ey, eused = 0, 0, 0
-    for token in tostring(enBody):gmatch("%S+") do
-      eused = eused + 1
-      local bit = enBits[eused]
-      if not bit then
-        bit = CreateFrame("Frame", nil, panel.enContent)
-        bit.text = bit:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        bit.text:SetPoint("CENTER")
-        tokenFont(bit.text)
-        bit.text:SetTextColor(0.92, 0.92, 0.92)
-        bit.text:SetWordWrap(false)
-        enBits[eused] = bit
-      end
-      bit.text:SetText(token)
-      local width = math.min(enWidth, math.ceil(bit.text:GetStringWidth()) + 6)
-      if ex > 0 and ex + width > enWidth then
+    for index, block in ipairs(enBlocks) do
+      local color = block.caveat and COLORS.caveat or nil
+      if index > 1 then
         ex = 0
-        ey = ey - TOKEN_STEP
+        ey = ey - TOKEN_STEP * 1.6
       end
-      bit:ClearAllPoints()
-      bit:SetPoint("TOPLEFT", ex, ey)
-      bit:SetSize(width, TOKEN_H)
-      bit:Show()
-      ex = ex + width + 2
+      for line in (tostring(block.text) .. "\n"):gmatch("([^\n]*)\n") do
+        if ex > 0 then
+          ex = 0
+          ey = ey - TOKEN_STEP
+        end
+        for token in line:gmatch("%S+") do
+          eused = eused + 1
+          local bit = enBits[eused]
+          if not bit then
+            bit = CreateFrame("Frame", nil, panel.enContent)
+            bit.text = bit:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            bit.text:SetPoint("CENTER")
+            tokenFont(bit.text)
+            bit.text:SetWordWrap(false)
+            enBits[eused] = bit
+          end
+          -- Set on every render: these frames are pooled, so a token the caveat
+          -- turned red on an earlier quest would stay red.
+          bit.text:SetTextColor(color and color[1] or 0.92,
+                                color and color[2] or 0.92,
+                                color and color[3] or 0.92)
+          bit.text:SetText(token)
+          local width = math.min(enWidth, math.ceil(bit.text:GetStringWidth()) + 6)
+          if ex > 0 and ex + width > enWidth then
+            ex = 0
+            ey = ey - TOKEN_STEP
+          end
+          bit:ClearAllPoints()
+          bit:SetPoint("TOPLEFT", ex, ey)
+          bit:SetSize(width, TOKEN_H)
+          bit:Show()
+          ex = ex + width + 2
+        end
+      end
     end
     panel.enContent:SetHeight(math.max(28, -ey + 28))
     panel.enScroll:UpdateScrollChildRect()

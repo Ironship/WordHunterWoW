@@ -7,6 +7,9 @@ Addon.COLORS = {
   known = { 0.30, 0.88, 0.48 },
   ignored = { 0.55, 0.59, 0.66 },
   neutral = { 0.45, 0.55, 0.70 },
+  -- The "no English for this passage" notice. Red so it reads as a warning about
+  -- the text below it rather than as part of the quest.
+  caveat = { 1.00, 0.42, 0.42 },
 }
 
 Addon.STATUS_LABELS = {
