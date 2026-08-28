@@ -17,24 +17,24 @@ end
 
 local function refreshWordList()
   if not listFrame then return end
-  local query = strlower(Addon.trim(listFrame.search:GetText()))
+  local query = Addon.utf8Lower(Addon.trim(listFrame.search:GetText()))
+  local hideIgnored = WordHunterWoWDB.settings.hideIgnored == true
   local items = {}
-  for key, entry in pairs(Addon.GetEffectiveWords()) do
-    local status = entry.status or "new"
-    local matchesFilter = listFilter == "all" or listFilter == status
-    local hidden = listFilter == "all"
-      and WordHunterWoWDB.settings.hideIgnored == true
-      and status == "ignored"
-    if matchesFilter and not hidden then
-      local haystack = strlower((entry.word or key) .. " " .. (entry.translation or ""))
-      if query == "" or haystack:find(query, 1, true) then
-        items[#items + 1] = { key = key, entry = entry }
-      end
+  -- Fold the sort key once per surviving row. Doing it inside the comparator
+  -- instead runs it O(n log n) times over a dictionary of ~74k entries.
+  Addon.ForEachEffectiveWord(function(key, entry)
+    local status = Addon.EffectiveStatus(entry)
+    if listFilter ~= "all" and listFilter ~= status then return end
+    if listFilter == "all" and hideIgnored and status == "ignored" then return end
+    local word = entry.word or key
+    local sortKey = Addon.utf8Lower(word)
+    if query ~= "" then
+      local haystack = sortKey .. " " .. Addon.utf8Lower(entry.translation or "")
+      if not haystack:find(query, 1, true) then return end
     end
-  end
-  table.sort(items, function(a, b)
-    return strlower(a.entry.word or a.key) < strlower(b.entry.word or b.key)
+    items[#items + 1] = { key = key, entry = entry, status = status, sortKey = sortKey }
   end)
+  table.sort(items, function(a, b) return a.sortKey < b.sortKey end)
   for _, row in ipairs(listRows) do row:Hide() end
   local y = 0
   for index, item in ipairs(items) do
@@ -62,7 +62,7 @@ local function refreshWordList()
     end
     row.key = item.key
     row.entry = item.entry
-    local color = COLORS[item.entry.status or "new"] or COLORS.new
+    local color = COLORS[item.status] or COLORS.new
     row.name:SetText(item.entry.word or item.key)
     row.name:SetTextColor(color[1], color[2], color[3])
     row.meta:SetText(Addon.trim(item.entry.translation or ""))

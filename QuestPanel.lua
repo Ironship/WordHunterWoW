@@ -16,9 +16,9 @@ local function tokenFont(fs)
 end
 
 local function sentenceForWord(text, word)
-  local needle = strlower(word)
+  local needle = Addon.utf8Lower(word)
   for sentence in tostring(text or ""):gmatch("[^\r\n%.%!%?]+[%.%!%?]?") do
-    if strlower(sentence):find(needle, 1, true) then return Addon.trim(sentence) end
+    if Addon.utf8Lower(sentence):find(needle, 1, true) then return Addon.trim(sentence) end
   end
   return Addon.trim(text)
 end
@@ -44,6 +44,9 @@ local function refreshPanel()
       enBody = entry.description or ""
       if entry.objectives and entry.objectives ~= "" then
         enBody = enBody .. (enBody ~= "" and "\n\n" or "") .. entry.objectives
+      end
+      if lastQuest.passage and lastQuest.passage ~= "offer" then
+        enBody = LABELS.enOfferOnly .. (enBody ~= "" and "\n\n" or "") .. enBody
       end
     end
     panel.enTitle:SetText(enTitle)
@@ -187,10 +190,20 @@ local function readCurrentQuest(questLogId)
   local obj = normalizeQuestText(objectives)
   local text = Addon.trim(desc .. (desc ~= "" and obj ~= "" and "\n\n" or "") .. obj)
   text = text:gsub("\n\n\n+", "\n\n")
-  if text == "" and GetProgressText then text = Addon.trim(normalizeQuestText(GetProgressText())) end
-  if text == "" and GetRewardText then text = Addon.trim(normalizeQuestText(GetRewardText())) end
+  -- Which passage the NPC is actually showing. Blizzard's quest API only publishes
+  -- the offer text and the objectives, so a panel that carries pre-fetched text has
+  -- nothing to show for the progress and hand-in lines and must say so.
+  local passage = "offer"
+  if text == "" and GetProgressText then
+    text = Addon.trim(normalizeQuestText(GetProgressText()))
+    if text ~= "" then passage = "progress" end
+  end
+  if text == "" and GetRewardText then
+    text = Addon.trim(normalizeQuestText(GetRewardText()))
+    if text ~= "" then passage = "reward" end
+  end
   if text == "" then return end
-  Addon.lastQuest = { id = questId or 0, title = Addon.trim(title), text = text }
+  Addon.lastQuest = { id = questId or 0, title = Addon.trim(title), text = text, passage = passage }
   trackQuestEncounters(Addon.lastQuest)
   refreshPanel()
   if Addon.ApplyIntegratedLayout then Addon.ApplyIntegratedLayout() end

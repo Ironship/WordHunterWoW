@@ -10,9 +10,9 @@ local function computeStats(now)
   local byStatus = { new = 0, learning = 0, known = 0, ignored = 0 }
   local readyForKnown, added7, added30 = 0, 0, 0
   local top = {}
-  for _, entry in pairs(Addon.GetEffectiveWords()) do
+  Addon.ForEachEffectiveWord(function(_, entry)
     total = total + 1
-    local status = entry.status or "new"
+    local status = Addon.EffectiveStatus(entry)
     byStatus[status] = (byStatus[status] or 0) + 1
     if status == "learning" then
       local learningSince = entry.statusChangedAt or entry.firstSeenAt or now
@@ -24,7 +24,7 @@ local function computeStats(now)
     if now - first <= 7 * 24 * 60 * 60 then added7 = added7 + 1 end
     if now - first <= 30 * 24 * 60 * 60 then added30 = added30 + 1 end
     top[#top + 1] = entry
-  end
+  end)
   table.sort(top, function(a, b)
     return (a.encounterCount or 0) > (b.encounterCount or 0)
   end)

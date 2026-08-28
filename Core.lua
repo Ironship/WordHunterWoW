@@ -69,6 +69,7 @@ Addon.LABELS = {
   resetDictionary = "Reset to dictionary",
   integratedLabel = "Integrated quest window",
   englishHeader = "English",
+  enOfferOnly = "[Blizzard publishes no English text for this part of a quest. Showing the quest's opening text instead.]",
 }
 
 Addon.BACKGROUNDS = {
@@ -217,7 +218,7 @@ function Addon.GetEffectiveWord(key)
   if not dict then return nil, false end
   return {
     word = dict.word or key,
-    status = "new",
+    status = (dict.status == "ignored" or dict.status == "known" or dict.status == "learning" or dict.status == "new") and dict.status or "new",
     translation = dict.translation or "",
     note = dict.note or "",
     dictionaryProvider = providerId,
@@ -225,24 +226,55 @@ function Addon.GetEffectiveWord(key)
   }, true
 end
 
-function Addon.GetEffectiveWords()
-  local result = {}
+local VALID_STATUS = { new = true, learning = true, known = true, ignored = true }
+
+function Addon.EffectiveStatus(entry)
+  local status = entry and entry.status
+  if VALID_STATUS[status] then return status end
+  return "new"
+end
+
+-- Walks the player's words plus every dictionary entry without building a merged
+-- copy first. A locale pack ships ~74k entries, so materialising the merge — as
+-- GetEffectiveWords has to — allocates a table per entry every call, and the word
+-- list calls it on each keystroke in the search box.
+-- The callback gets the entry as stored; read its status through EffectiveStatus.
+function Addon.ForEachEffectiveWord(fn)
   local locale = Addon.GetTargetLocale()
   local providers = Addon.DictionaryProviders[locale] or {}
   local order = Addon.DictionaryProviderOrder[locale] or {}
-  for _, providerId in ipairs(order) do
+  local user = Addon.GetWordsTable()
+  -- Later providers win, so walk backwards and keep the first hit. With a single
+  -- provider — the normal case — no bookkeeping table is needed at all.
+  local emitted = (#order > 1) and {} or nil
+  for index = #order, 1, -1 do
+    local providerId = order[index]
     for key, entry in pairs(providers[providerId] or {}) do
+      if user[key] == nil and (emitted == nil or emitted[key] == nil) then
+        if emitted then emitted[key] = true end
+        fn(key, entry, true, providerId)
+      end
+    end
+  end
+  for key, entry in pairs(user) do fn(key, entry, false) end
+end
+
+function Addon.GetEffectiveWords()
+  local result = {}
+  Addon.ForEachEffectiveWord(function(key, entry, isDictionary, providerId)
+    if isDictionary then
       result[key] = {
         word = entry.word or key,
-        status = "new",
+        status = Addon.EffectiveStatus(entry),
         translation = entry.translation or "",
         note = entry.note or "",
         dictionaryProvider = providerId,
         builtInDictionary = true,
       }
+    else
+      result[key] = entry
     end
-  end
-  for key, entry in pairs(Addon.GetWordsTable()) do result[key] = entry end
+  end)
   return result
 end
 
@@ -297,9 +329,31 @@ function Addon.cleanWord(token)
   return Addon.trim(word)
 end
 
+-- strlower only knows ASCII, so it leaves À Ä É Ñ Ü and the rest of the accented
+-- capitals untouched. Dictionary keys are folded with full Unicode rules, so an
+-- unfolded capital never matches and the word also gets its own list entry.
+-- Latin-1 Supplement capitals are C3 80..9E and lowercase to the same byte + 0x20;
+-- C3 97 in that range is the multiplication sign, not a letter.
+local LATIN_EXTRA_LOWER = {
+  ["Œ"] = "œ", ["Ÿ"] = "ÿ", ["Š"] = "š", ["Ž"] = "ž", ["Đ"] = "đ",
+}
+
+function Addon.utf8Lower(text)
+  text = tostring(text or "")
+  text = text:gsub("\195([\128-\158])", function(byte)
+    local code = string.byte(byte)
+    if code == 0x97 then return "\195" .. byte end
+    return "\195" .. string.char(code + 0x20)
+  end)
+  for upper, lower in pairs(LATIN_EXTRA_LOWER) do
+    text = text:gsub(upper, lower)
+  end
+  return strlower(text)
+end
+
 function Addon.wordKey(word)
-  local cleaned = Addon.cleanWord(word):gsub("ẞ", "SS"):gsub("ß", "ss")
-  return strlower(cleaned)
+  local cleaned = Addon.cleanWord(word):gsub("ẞ", "ss"):gsub("ß", "ss")
+  return Addon.utf8Lower(cleaned)
 end
 
 local function encode(value)
@@ -401,8 +455,43 @@ function Addon.initializeDatabase()
       end
     end
   end
+  if (WordHunterWoWDB.version or 0) < 10 then
+    -- Keys written before the Unicode fold kept their accented capitals, so
+    -- "Überfall" and "überfall" were two entries and only the second matched the
+    -- dictionary. Re-key every locale and merge the pairs back together.
+    for _, words in pairs(WordHunterWoWDB.wordsByLocale) do
+      if type(words) == "table" then
+        local migrations = {}
+        for key, entry in pairs(words) do
+          local normalized = Addon.wordKey(key)
+          if normalized ~= "" and normalized ~= key then
+            migrations[#migrations + 1] = { key, normalized, entry }
+          end
+        end
+        for _, migration in ipairs(migrations) do
+          local oldKey, newKey, entry = migration[1], migration[2], migration[3]
+          local existing = words[newKey]
+          if not existing then
+            words[newKey] = entry
+          elseif type(existing) == "table" and type(entry) == "table" then
+            -- Keep whichever side the player actually touched.
+            if (existing.status == nil or existing.status == "new") and entry.status then
+              existing.status = entry.status
+            end
+            if (existing.note == nil or existing.note == "") and entry.note then
+              existing.note = entry.note
+            end
+            if (existing.translation == nil or existing.translation == "") and entry.translation then
+              existing.translation = entry.translation
+            end
+          end
+          words[oldKey] = nil
+        end
+      end
+    end
+  end
   Addon.GetWordsTable()
-  WordHunterWoWDB.version = 9
+  WordHunterWoWDB.version = 10
   Addon.rebuildExport()
 end
 
@@ -503,7 +592,7 @@ end
 local function questEncounterKey(questId, questTitle)
   local id = tostring(questId or "")
   if id ~= "" and id ~= "0" then return "id:" .. id end
-  local title = strlower(Addon.trim(questTitle))
+  local title = Addon.utf8Lower(Addon.trim(questTitle))
   if title ~= "" then return "title:" .. title end
 end
 
