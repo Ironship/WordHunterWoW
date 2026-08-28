@@ -1,6 +1,7 @@
 ## Interface: 120100
 ## Title: WordHunterWoW
 ## Notes: Mark quest words and import them into Word Hunter. Supports enUS/enGB, deDE, frFR, esES/esMX, itIT, ptBR.
+## IconTexture: Interface\AddOns\WordHunterWoW\icon
 ## Author: Ironship
 ## Version: 1.5.2
 ## SavedVariables: WordHunterWoWDB, WordHunterWoWExport, WordHunterWoWLanguage
