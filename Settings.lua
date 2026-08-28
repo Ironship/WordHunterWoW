@@ -118,6 +118,26 @@ function Addon.CreateSettingsPanel()
   end)
   panel.integratedCheck = integrated
 
+  local harvest = CreateFrame("CheckButton", "WordHunterWoWHarvestCheck", panel, "UICheckButtonTemplate")
+  harvest:SetPoint("TOPLEFT", 12, -400)
+  local harvestText = _G[harvest:GetName() .. "Text"]
+  if harvestText then
+    harvestText:SetText(Addon.LABELS.harvestLabel)
+  end
+  harvest:SetChecked(Addon.GetHarvestEnabled())
+  harvest:SetScript("OnClick", function(self)
+    Addon.SetHarvestEnabled(self:GetChecked())
+  end)
+  panel.harvestCheck = harvest
+
+  local harvestNote = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+  harvestNote:SetPoint("TOPLEFT", 16, -424)
+  harvestNote:SetPoint("TOPRIGHT", -16, -424)
+  harvestNote:SetJustifyH("LEFT")
+  harvestNote:SetWordWrap(true)
+  harvestNote:SetTextColor(0.8, 0.82, 0.88)
+  panel.harvestNote = harvestNote
+
   local function UpdateDropdownText()
     local key = Addon.GetBackgroundStyle()
     local style = Addon.BACKGROUNDS[key] or Addon.BACKGROUNDS.tooltip
@@ -159,6 +179,10 @@ function Addon.CreateSettingsPanel()
     slider:SetValue(v)
     _G[slider:GetName() .. "Text"]:SetText(Addon.LABELS.opacityLabel .. " (" .. math.floor(v * 100 + 0.5) .. "%)")
     if panel.integratedCheck then panel.integratedCheck:SetChecked(Addon.GetIntegratedLayout()) end
+    if panel.harvestCheck then panel.harvestCheck:SetChecked(Addon.GetHarvestEnabled()) end
+    if panel.harvestNote then
+      panel.harvestNote:SetText(string.format(Addon.LABELS.harvestNote, Addon.HarvestCount and Addon.HarvestCount() or 0))
+    end
   end
 
   if Settings and Settings.RegisterAddOnCategory then

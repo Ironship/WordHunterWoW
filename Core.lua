@@ -68,6 +68,8 @@ Addon.LABELS = {
   languageLabel = "Target (learned and in game) language",
   resetDictionary = "Reset to dictionary",
   integratedLabel = "Integrated quest window",
+  harvestLabel = "Collect quest and NPC text for the dictionary project",
+  harvestNote = "Off by default. Records objectives, progress and hand-in text plus NPC dialogue you actually see — the passages Blizzard's quest API does not publish. Stored locally; %d passages so far. /whw harvest",
   englishHeader = "English",
   enOfferOnly = "[Blizzard publishes no English text for this part of a quest. Showing the quest's opening text instead.]",
 }
@@ -357,9 +359,11 @@ function Addon.wordKey(word)
 end
 
 local function encode(value)
-  return tostring(value or ""):gsub("([^A-Za-z0-9_.~%-])", function(byte)
+  -- Parenthesised: gsub also returns a replacement count, and an unparenthesised
+  -- call in the last slot of a table constructor would append it as a field.
+  return (tostring(value or ""):gsub("([^A-Za-z0-9_.~%-])", function(byte)
     return string.format("%%%02X", string.byte(byte))
-  end)
+  end))
 end
 
 function Addon.ensureHeadwordDefaults(entry, now)

@@ -28,8 +28,9 @@ Buttons stay in English. Quest text stays in the language you set in WoW.
 |---|---|
 | [English Quest Panel](https://github.com/Ironship/WordHunterWoW-ENPanel) | English next to the original quest, so you can check a sentence without alt-tabbing to Wowhead |
 | [German Dictionary](https://github.com/Ironship/WordHunterWoW-Dictionary-DE) | ~74k German quest words already glossed in English. Click a word and a translation is waiting |
+| [French](https://github.com/Ironship/WordHunterWoW-Dictionary-FR) · [Spanish](https://github.com/Ironship/WordHunterWoW-Dictionary-ES) · [Italian](https://github.com/Ironship/WordHunterWoW-Dictionary-IT) · [Portuguese (BR)](https://github.com/Ironship/WordHunterWoW-Dictionary-PTBR) | The same idea in four more languages. Machine-translated, not hand-checked like the German one |
 
-Both require this addon. This one does not require them.
+All of them require this addon. This one does not require them.
 
 ## Start here
 
@@ -41,6 +42,21 @@ Both require this addon. This one does not require them.
 `/whw` shows or hides the panel.
 
 Supported locales: English, German, French, Spanish, Italian, Portuguese (Brazil). Retail 12.1 (`Interface 120100`).
+
+## Helping fill the dictionary gaps
+
+Blizzard's quest API publishes a quest's title and its opening text and nothing more. No objectives, no progress line, no hand-in line, and no NPC chatter. The dictionaries are built from that API, so a word living only in one of those passages never reaches them — German `Besichtigt` is missing from all 30,815 quests even though `besichtigen` and `Besichtigung` are both there.
+
+Your game client has the text the API withholds. **Collect quest and NPC text** in `/whw settings` records passages you actually read, so they can be folded back into the dictionaries.
+
+It is **off by default** and everything stays on your machine — nothing is sent anywhere. Turning it on only writes to your own SavedVariables, and you decide whether to share the file.
+
+```
+/whw harvest            what is collected so far
+/whw harvest on|off     turn collection on or off
+/whw harvest export     write it out, ready to send
+/whw harvest clear      throw it all away
+```
 
 Everything stays on your machine. No uploads.
 

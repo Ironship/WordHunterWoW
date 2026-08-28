@@ -8,6 +8,7 @@ events:RegisterEvent("QUEST_DETAIL")
 events:RegisterEvent("QUEST_PROGRESS")
 events:RegisterEvent("QUEST_COMPLETE")
 events:RegisterEvent("QUEST_FINISHED")
+events:RegisterEvent("GOSSIP_SHOW")
 events:SetScript("OnEvent", function(_, event, loadedAddon)
   if event == "ADDON_LOADED" then
     if loadedAddon == addonName then
@@ -25,6 +26,8 @@ events:SetScript("OnEvent", function(_, event, loadedAddon)
     elseif loadedAddon == "Blizzard_UIPanels_Game" or loadedAddon == "Blizzard_WorldMap" then
       Addon.hookQuestUi()
     end
+  elseif event == "GOSSIP_SHOW" then
+    if Addon.HarvestGossip then Addon.HarvestGossip() end
   elseif event == "QUEST_FINISHED" then
     if Addon.panel then Addon.panel:Hide() end
     if Addon.editor then Addon.editor:Hide() end
@@ -40,6 +43,21 @@ SlashCmdList.WORDHUNTERWOW = function(message)
   if command == "reload" or command == "export" then
     Addon.rebuildExport()
     print("|cff66ccffWordHunterWoW:|r /reload writes the import file to SavedVariables.")
+  elseif command:match("^harvest") then
+    local arg = strtrim(command:match("^%S+%s*(.*)$") or "")
+    if arg == "on" or arg == "off" then
+      Addon.SetHarvestEnabled(arg == "on")
+      print("|cff66ccffWordHunterWoW:|r Text collection " .. arg .. ".")
+    elseif arg == "clear" then
+      Addon.ClearHarvest()
+      print("|cff66ccffWordHunterWoW:|r Collected text cleared.")
+    elseif arg == "export" then
+      local n = Addon.rebuildHarvestExport()
+      print(string.format("|cff66ccffWordHunterWoW:|r %d passages written to SavedVariables. Reload or log out first, then import.", n))
+    else
+      print(string.format("|cff66ccffWordHunterWoW:|r Text collection %s, %d passages for %s.  •  /whw harvest <on|off|export|clear>",
+        Addon.GetHarvestEnabled() and "on" or "off", Addon.HarvestCount(), Addon.GetTargetLocale()))
+    end
   elseif command == "words" then
     Addon.toggleWordList()
   elseif command == "stats" then

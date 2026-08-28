@@ -203,6 +203,17 @@ local function readCurrentQuest(questLogId)
     if text ~= "" then passage = "reward" end
   end
   if text == "" then return end
+  -- Objectives, progress and hand-in text exist only here, never in the quest
+  -- API the dictionaries were built from. Record them when the player opts in.
+  if Addon.HarvestQuest then
+    Addon.HarvestQuest(questId, {
+      title = title,
+      description = desc,
+      objectives = obj,
+      progress = passage == "progress" and text or nil,
+      reward = passage == "reward" and text or nil,
+    })
+  end
   Addon.lastQuest = { id = questId or 0, title = Addon.trim(title), text = text, passage = passage }
   trackQuestEncounters(Addon.lastQuest)
   refreshPanel()
