@@ -22,7 +22,16 @@ test("export includes all words without baseKey filter", () => {
 test("legacy baseKeys have been cleaned up", () => {
   assert.doesNotMatch(source, /cleanLegacyBaseKeys/);
   assert.doesNotMatch(source, /entry\.baseKey/);
-  assert.match(source, /WordHunterWoWDB\.version = 9/);
+  // The schema version moves whenever a migration is added, and hard-coding it
+    // here is what made this test go stale: it still expected 9 after the Unicode
+    // re-key bumped it to 10. Derive it from the migrations instead, so the test
+    // checks the thing that matters -- the database is stamped with the newest
+    // migration, and so will not run it twice.
+const migrations = [...source.matchAll(/WordHunterWoWDB\.version or 0\) < (\d+)/g)]
+    .map((m) => Number(m[1]));
+const newest = Math.max(...migrations);
+  assert.ok(migrations.length > 0, "no migrations found at all");
+  assert.match(source, new RegExp(`WordHunterWoWDB\.version = ${newest}`));
 });
 
 test("windows are resizable and remember position", () => {

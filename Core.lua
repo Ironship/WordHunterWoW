@@ -326,6 +326,25 @@ local function stripMark(value, mark)
   return value
 end
 
+-- Quest text arrives with its paragraphs in it. Both columns of the panel have
+-- to walk it the same way -- line by line, then word by word -- or the German
+-- and the English stop lining up with each other, which is the whole point of
+-- showing them side by side. Returned as a list of lines, each a list of words,
+-- so the walk can be checked on its own rather than only through the layout.
+function Addon.TextLines(text)
+  local body = tostring(text or "")
+  -- A trailing break ends the last line rather than starting an empty one
+  -- after it, which would leave a gap hanging under the text.
+  if body:sub(-1) ~= "\n" then body = body .. "\n" end
+  local lines = {}
+  for line in body:gmatch("([^\n]*)\n") do
+    local tokens = {}
+    for token in line:gmatch("%S+") do tokens[#tokens + 1] = token end
+    lines[#lines + 1] = tokens
+  end
+  return lines
+end
+
 function Addon.cleanWord(token)
   local word = Addon.trim(token):gsub("^[%p]+", ""):gsub("[%p]+$", "")
   for _, mark in ipairs({ "„", "“", "”", "‚", "‘", "’", "«", "»", "…", "–", "—" }) do

@@ -36,3 +36,14 @@ test("keeps every addon control and helper label in English", () => {
   assert.doesNotMatch(source, /Bedeutung|Übersetzung|Notiz|kopieren|Speichern|Abbrechen|gespeichert/);
   assert.doesNotMatch(source, /GetLocale\(\) == "deDE"/);
 });
+
+test("both panel columns keep the quest's line breaks", () => {
+  // Running gmatch("%S+") over a whole quest throws away every break in it, so
+  // the column renders as one block and stops lining up with the one beside it.
+  // The German side did exactly that while the English side did not.
+  assert.doesNotMatch(source, /lastQuest\.text or ""\):gmatch\("%S\+"\)/);
+  assert.doesNotMatch(source, /block\.text\):gmatch\("%S\+"\)/);
+  assert.match(source, /function Addon\.TextLines\(text\)/);
+  assert.match(source, /ipairs\(Addon\.TextLines\(lastQuest\.text\)\)/);
+  assert.match(source, /ipairs\(Addon\.TextLines\(block\.text\)\)/);
+});

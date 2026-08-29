@@ -64,12 +64,15 @@ local function refreshPanel()
         ex = 0
         ey = ey - TOKEN_STEP * 1.6
       end
-      for line in (tostring(block.text) .. "\n"):gmatch("([^\n]*)\n") do
+      for _, tokens in ipairs(Addon.TextLines(block.text)) do
         if ex > 0 then
           ex = 0
           ey = ey - TOKEN_STEP
         end
-        for token in line:gmatch("%S+") do
+        -- A blank line is a paragraph break, and it is the only thing that
+        -- separates a quest's story from what it is asking for.
+        if #tokens == 0 then ey = ey - TOKEN_STEP * 0.6 end
+        for _, token in ipairs(tokens) do
           eused = eused + 1
           local bit = enBits[eused]
           if not bit then
@@ -105,63 +108,73 @@ local function refreshPanel()
   local x, y, used = 0, 0, 0
   local savedCount = 0
   local countedWords = {}
-  for token in tostring(lastQuest.text or ""):gmatch("%S+") do
-    used = used + 1
-    local button = wordButtons[used]
-    if not button then
-      button = CreateFrame("Button", nil, panel.content)
-      button.text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-      button.text:SetPoint("CENTER")
-      tokenFont(button.text)
-      button.text:SetWordWrap(false)
-      button.underline = button:CreateTexture(nil, "ARTWORK")
-      button.underline:SetHeight(2)
-      button.underline:SetPoint("BOTTOMLEFT", 1, 1)
-      button.underline:SetPoint("BOTTOMRIGHT", -1, 1)
-      button:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-      wordButtons[used] = button
-    end
-    button:SetHeight(TOKEN_H)
-
-    button.text:SetText(token)
-    local width = math.min(contentWidth, math.ceil(button.text:GetStringWidth()) + 6)
-    if x > 0 and x + width > contentWidth then
+  -- Running gmatch("%S+") over the whole text threw away every line break
+  -- in it, so the German column ran together as one block while the English
+  -- one beside it kept the paragraphs the quest was written with.
+  for _, tokens in ipairs(Addon.TextLines(lastQuest.text)) do
+    if x > 0 then
       x = 0
       y = y - TOKEN_STEP
     end
-    button:ClearAllPoints()
-    button:SetPoint("TOPLEFT", x, y)
-    button:SetWidth(width)
-    x = x + width + 2
+    if #tokens == 0 then y = y - TOKEN_STEP * 0.6 end
+    for _, token in ipairs(tokens) do
+      used = used + 1
+      local button = wordButtons[used]
+      if not button then
+        button = CreateFrame("Button", nil, panel.content)
+        button.text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        button.text:SetPoint("CENTER")
+        tokenFont(button.text)
+        button.text:SetWordWrap(false)
+        button.underline = button:CreateTexture(nil, "ARTWORK")
+        button.underline:SetHeight(2)
+        button.underline:SetPoint("BOTTOMLEFT", 1, 1)
+        button.underline:SetPoint("BOTTOMRIGHT", -1, 1)
+        button:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+        wordButtons[used] = button
+      end
+      button:SetHeight(TOKEN_H)
 
-    local word = Addon.cleanWord(token)
-    local key = Addon.wordKey(word)
-    local entry = Addon.GetEffectiveWord(key)
-    if entry then
-      if not countedWords[key] then
-        countedWords[key] = true
-        savedCount = savedCount + 1
+      button.text:SetText(token)
+      local width = math.min(contentWidth, math.ceil(button.text:GetStringWidth()) + 6)
+      if x > 0 and x + width > contentWidth then
+        x = 0
+        y = y - TOKEN_STEP
       end
-      local color = COLORS[entry.status] or COLORS.new
-      button.text:SetTextColor(color[1], color[2], color[3])
-      button.underline:SetColorTexture(color[1], color[2], color[3], 0.9)
-      button.underline:Show()
-    else
-      button.text:SetTextColor(0.92, 0.92, 0.92)
-      button.underline:Hide()
-      -- Nothing knows this word: no dictionary entry and the player has not
-      -- saved it. That is the 5% a new patch brings, and the only vocabulary
-      -- the project cannot already gloss, so it is worth collecting.
-      if Addon.HarvestUnknownWord and word ~= "" then
-        Addon.HarvestUnknownWord(word, lastQuest.id)
+      button:ClearAllPoints()
+      button:SetPoint("TOPLEFT", x, y)
+      button:SetWidth(width)
+      x = x + width + 2
+
+      local word = Addon.cleanWord(token)
+      local key = Addon.wordKey(word)
+      local entry = Addon.GetEffectiveWord(key)
+      if entry then
+        if not countedWords[key] then
+          countedWords[key] = true
+          savedCount = savedCount + 1
+        end
+        local color = COLORS[entry.status] or COLORS.new
+        button.text:SetTextColor(color[1], color[2], color[3])
+        button.underline:SetColorTexture(color[1], color[2], color[3], 0.9)
+        button.underline:Show()
+      else
+        button.text:SetTextColor(0.92, 0.92, 0.92)
+        button.underline:Hide()
+        -- Nothing knows this word: no dictionary entry and the player has not
+        -- saved it. That is the 5% a new patch brings, and the only vocabulary
+        -- the project cannot already gloss, so it is worth collecting.
+        if Addon.HarvestUnknownWord and word ~= "" then
+          Addon.HarvestUnknownWord(word, lastQuest.id)
+        end
       end
+      button.word = word
+      button:SetScript("OnClick", function(self)
+        Addon.openEditor(self.word, sentenceForWord(lastQuest.text, self.word), lastQuest.id, lastQuest.title)
+      end)
+      button:SetEnabled(word ~= "")
+      button:Show()
     end
-    button.word = word
-    button:SetScript("OnClick", function(self)
-      Addon.openEditor(self.word, sentenceForWord(lastQuest.text, self.word), lastQuest.id, lastQuest.title)
-    end)
-    button:SetEnabled(word ~= "")
-    button:Show()
   end
   local contentHeight = math.max(28, -y + 28)
   panel.content:SetHeight(contentHeight)
