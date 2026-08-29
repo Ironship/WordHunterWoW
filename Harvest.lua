@@ -15,7 +15,7 @@ local Addon = WordHunterWoW_Addon
 local MAX_ENTRIES = 20000
 local MAX_TEXT = 4000
 local KINDS = { title = true, description = true, objectives = true,
-                progress = true, reward = true, gossip = true }
+                progress = true, reward = true, gossip = true, word = true }
 
 function Addon.GetHarvestEnabled()
   local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.harvestCorpus
@@ -43,13 +43,22 @@ local function corpusTable()
   return WordHunterWoWCorpus.byLocale[locale]
 end
 
+-- Counting by walking the table is fine once per quest, but unknown words are
+-- offered once per word per redraw, so the count is cached per locale and only
+-- recomputed when this session has not seen the bucket before.
+local counts = {}
+
 function Addon.HarvestCount(locale)
+  locale = locale or Addon.GetTargetLocale()
   if type(WordHunterWoWCorpus) ~= "table" or type(WordHunterWoWCorpus.byLocale) ~= "table" then return 0 end
-  local bucket = WordHunterWoWCorpus.byLocale[locale or Addon.GetTargetLocale()]
+  local bucket = WordHunterWoWCorpus.byLocale[locale]
   if type(bucket) ~= "table" then return 0 end
-  local n = 0
-  for _ in pairs(bucket) do n = n + 1 end
-  return n
+  if not counts[locale] then
+    local n = 0
+    for _ in pairs(bucket) do n = n + 1 end
+    counts[locale] = n
+  end
+  return counts[locale]
 end
 
 -- Gossip carries no id to key on, so hash the text. djb2 over bytes, which is
@@ -71,12 +80,44 @@ function Addon.HarvestText(kind, questId, text)
   local bucket = corpusTable()
   questId = tonumber(questId) or 0
   -- A quest passage is uniquely identified by the quest and which passage it is.
-  -- Gossip has neither, so it is keyed by its own content.
-  local key = questId > 0 and (kind .. ":" .. questId) or (kind .. ":#" .. textHash(text))
+  -- Gossip has neither, so it is keyed by its own content. A word is keyed by
+  -- itself: the same unknown word in a second quest is not new information.
+  local key
+  if kind == "word" then
+    key = "word:" .. text
+  elseif questId > 0 then
+    key = kind .. ":" .. questId
+  else
+    key = kind .. ":#" .. textHash(text)
+  end
   if bucket[key] then return false end
   if Addon.HarvestCount() >= MAX_ENTRIES then return false end
   bucket[key] = { kind = kind, id = questId, text = text }
+  counts[Addon.GetTargetLocale()] = Addon.HarvestCount() + 1
   return true
+end
+
+-- A word the dictionary has no entry for and the player has not saved. These are
+-- what a new patch introduces -- measured at about 5% of the words in quests
+-- newer than the corpus -- and they are the only ones nobody can gloss yet.
+-- Collecting them is what lets the next dictionary release cover them.
+function Addon.HarvestUnknownWord(word, questId)
+  if not Addon.GetHarvestEnabled() then return false end
+  word = Addon.trim(tostring(word or ""))
+  if word == "" or #word > 64 then return false end
+  return Addon.HarvestText("word", questId, word)
+end
+
+function Addon.HarvestWordCount(locale)
+  locale = locale or Addon.GetTargetLocale()
+  if type(WordHunterWoWCorpus) ~= "table" or type(WordHunterWoWCorpus.byLocale) ~= "table" then return 0 end
+  local bucket = WordHunterWoWCorpus.byLocale[locale]
+  if type(bucket) ~= "table" then return 0 end
+  local n = 0
+  for _, entry in pairs(bucket) do
+    if entry.kind == "word" then n = n + 1 end
+  end
+  return n
 end
 
 function Addon.HarvestQuest(questId, passages)
@@ -96,6 +137,7 @@ end
 function Addon.ClearHarvest()
   WordHunterWoWCorpus = { version = 1, byLocale = {} }
   WordHunterWoWCorpusExport = ""
+  counts = {}
 end
 
 -- The importer is a Python script, so hand it a flat percent-encoded blob

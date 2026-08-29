@@ -181,7 +181,8 @@ function Addon.CreateSettingsPanel()
     if panel.integratedCheck then panel.integratedCheck:SetChecked(Addon.GetIntegratedLayout()) end
     if panel.harvestCheck then panel.harvestCheck:SetChecked(Addon.GetHarvestEnabled()) end
     if panel.harvestNote then
-      panel.harvestNote:SetText(string.format(Addon.LABELS.harvestNote, Addon.HarvestCount and Addon.HarvestCount() or 0))
+      local passages = Addon.HarvestCount and (Addon.HarvestCount() - Addon.HarvestWordCount()) or 0
+      panel.harvestNote:SetText(string.format(Addon.LABELS.harvestNote, passages, Addon.HarvestWordCount and Addon.HarvestWordCount() or 0))
     end
   end
 

@@ -55,8 +55,9 @@ SlashCmdList.WORDHUNTERWOW = function(message)
       local n = Addon.rebuildHarvestExport()
       print(string.format("|cff66ccffWordHunterWoW:|r %d passages written to SavedVariables. Reload or log out first, then import.", n))
     else
-      print(string.format("|cff66ccffWordHunterWoW:|r Text collection %s, %d passages for %s.  •  /whw harvest <on|off|export|clear>",
-        Addon.GetHarvestEnabled() and "on" or "off", Addon.HarvestCount(), Addon.GetTargetLocale()))
+      print(string.format("|cff66ccffWordHunterWoW:|r Text collection %s, %d passages and %d unglossed words for %s.  •  /whw harvest <on|off|export|clear>",
+        Addon.GetHarvestEnabled() and "on" or "off", Addon.HarvestCount() - Addon.HarvestWordCount(),
+        Addon.HarvestWordCount(), Addon.GetTargetLocale()))
     end
   elseif command == "words" then
     Addon.toggleWordList()

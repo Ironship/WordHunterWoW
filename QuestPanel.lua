@@ -149,6 +149,12 @@ local function refreshPanel()
     else
       button.text:SetTextColor(0.92, 0.92, 0.92)
       button.underline:Hide()
+      -- Nothing knows this word: no dictionary entry and the player has not
+      -- saved it. That is the 5% a new patch brings, and the only vocabulary
+      -- the project cannot already gloss, so it is worth collecting.
+      if Addon.HarvestUnknownWord and word ~= "" then
+        Addon.HarvestUnknownWord(word, lastQuest.id)
+      end
     end
     button.word = word
     button:SetScript("OnClick", function(self)
