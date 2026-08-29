@@ -26,7 +26,7 @@ Buttons stay in English. Quest text stays in the language you set in WoW.
 
 | Addon | Why install it |
 |---|---|
-| [English Quest Panel](https://github.com/Ironship/WordHunterWoW-ENPanel) | English next to the original quest, so you can check a sentence without alt-tabbing to Wowhead |
+| [English Quest Panel](https://github.com/Ironship/WordHunterWoW-ENPanel) | English next to the original quest, so you can check a sentence without alt-tabbing to a browser |
 | [German Dictionary](https://github.com/Ironship/WordHunterWoW-Dictionary-DE) | ~74k German quest words already glossed in English. Click a word and a translation is waiting |
 | [French](https://github.com/Ironship/WordHunterWoW-Dictionary-FR) · [Spanish](https://github.com/Ironship/WordHunterWoW-Dictionary-ES) · [Italian](https://github.com/Ironship/WordHunterWoW-Dictionary-IT) · [Portuguese (BR)](https://github.com/Ironship/WordHunterWoW-Dictionary-PTBR) | The same idea in four more languages. Machine-translated, not hand-checked like the German one |
 
