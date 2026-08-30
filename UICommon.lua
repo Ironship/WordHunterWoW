@@ -72,6 +72,69 @@ end
 
 local copyDialog
 
+local confirmDialog
+
+-- A themed yes/no rather than the game's StaticPopup, so it matches the window
+-- it is asked from. It exists because overwriting what someone typed is not
+-- something to do on a single click: the body says what the new value will be,
+-- and cancelling is the wider of the two buttons.
+function Addon.showConfirm(title, body, actionText, onConfirm)
+  if not confirmDialog then
+    confirmDialog = CreateFrame("Frame", "WordHunterWoWConfirmDialog", UIParent, "BackdropTemplate")
+    Addon.confirmDialog = confirmDialog
+    confirmDialog:SetSize(460, 260)
+    confirmDialog:SetPoint("CENTER")
+    -- Above the editor it is asked from, which already sits high.
+    confirmDialog:SetFrameStrata("TOOLTIP")
+    confirmDialog:SetFrameLevel(400)
+    confirmDialog:SetClampedToScreen(true)
+    confirmDialog:EnableMouse(true)
+    Addon.setBackdrop(confirmDialog, 1)
+
+    confirmDialog.title = confirmDialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    confirmDialog.title:SetPoint("TOPLEFT", 20, -22)
+    confirmDialog.title:SetPoint("TOPRIGHT", -20, -22)
+    confirmDialog.title:SetJustifyH("LEFT")
+
+    confirmDialog.body = confirmDialog:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    confirmDialog.body:SetPoint("TOPLEFT", 20, -56)
+    confirmDialog.body:SetPoint("TOPRIGHT", -20, -56)
+    confirmDialog.body:SetJustifyH("LEFT")
+    confirmDialog.body:SetJustifyV("TOP")
+    confirmDialog.body:SetSpacing(3)
+
+    confirmDialog.cancel = Addon.createActionButton(confirmDialog, LABELS.confirmCancel)
+    confirmDialog.cancel:SetSize(120, 26)
+    confirmDialog.cancel:SetPoint("BOTTOMRIGHT", -20, 20)
+    confirmDialog.cancel:SetScript("OnClick", function() confirmDialog:Hide() end)
+
+    confirmDialog.action = Addon.createActionButton(confirmDialog, LABELS.confirmAction)
+    confirmDialog.action:SetSize(120, 26)
+    confirmDialog.action:SetPoint("RIGHT", confirmDialog.cancel, "LEFT", -8, 0)
+    confirmDialog.action:SetScript("OnClick", function()
+      local run = confirmDialog.onConfirm
+      confirmDialog:Hide()
+      -- Cleared before running, so a handler that reopens this dialog cannot
+      -- inherit the previous one's action.
+      confirmDialog.onConfirm = nil
+      if run then run() end
+    end)
+
+    -- Escape is cancel — the safe way out should be the easy one. Uses the same
+    -- helper as every other window here, which lets every other key through
+    -- rather than swallowing the keyboard while the dialog is up.
+    Addon.SetupEscapeClose(confirmDialog)
+  end
+
+  confirmDialog.title:SetText(title or "")
+  confirmDialog.body:SetText(body or "")
+  confirmDialog.action:SetText(actionText or LABELS.confirmAction)
+  confirmDialog.onConfirm = onConfirm
+  Addon.ApplyBackground(confirmDialog)
+  confirmDialog:Show()
+  confirmDialog:Raise()
+end
+
 function Addon.showCopyText(title, value)
   if not copyDialog then
     copyDialog = CreateFrame("Frame", "WordHunterWoWCopyDialog", UIParent, "BackdropTemplate")

@@ -59,7 +59,7 @@ function Addon.openEditor(word, context, questId, questTitle)
   editor.context:SetText(context)
   editor.translation:SetText(entry and entry.translation or "")
   editor.note:SetText(entry and entry.note or "")
-  editor.resetDictionary:SetShown(dictionaryEntry ~= nil)
+  Addon.updateResetDictionary()
   updateEditorHistory()
   editor.translation:SetFocus()
   editor.translation:HighlightText()
@@ -209,9 +209,50 @@ function Addon.createEditor()
   editor.resetDictionary:SetPoint("BOTTOMLEFT", copyWord, "TOPLEFT", 0, 6)
   editor.resetDictionary:SetScript("OnClick", function()
     local dict = Addon.selected and Addon.selected.dictionaryEntry
-    if not dict then return end
-    editor.translation:SetText(dict.translation or "")
-    editor.note:SetText(dict.note or "")
+    if not dict or not Addon.editorDiffersFromDictionary() then return end
+    local function shown(value)
+      value = Addon.trim(tostring(value or ""))
+      return value ~= "" and value or LABELS.resetNothing
+    end
+    Addon.showConfirm(LABELS.resetDictionary,
+      string.format(LABELS.resetConfirmBody, shown(dict.translation), shown(dict.note)),
+      LABELS.confirmAction,
+      function()
+        editor.translation:SetText(dict.translation or "")
+        editor.note:SetText(dict.note or "")
+        Addon.updateResetDictionary()
+      end)
   end)
   editor.resetDictionary:Hide()
+
+  -- Typing back to what the dictionary says is a way of undoing an edit, so the
+  -- button has to follow the boxes rather than only the moment the word opened.
+  -- Hooked rather than set: the note's scroll frame has its own handler.
+  editor.translation:HookScript("OnTextChanged", Addon.updateResetDictionary)
+  editor.note:HookScript("OnTextChanged", Addon.updateResetDictionary)
+end
+
+-- Whether what is in the boxes is the player's own wording or the dictionary's.
+-- Compared trimmed: a trailing space is not an edit worth offering to undo.
+function Addon.editorDiffersFromDictionary()
+  local dict = Addon.selected and Addon.selected.dictionaryEntry
+  if not dict or not editor then return false end
+  return Addon.trim(editor.translation:GetText() or "") ~= Addon.trim(dict.translation or "")
+      or Addon.trim(editor.note:GetText() or "") ~= Addon.trim(dict.note or "")
+end
+
+-- Hidden when the word is not in a dictionary at all -- there is nothing to
+-- reset to. Present but greyed when the boxes already hold the dictionary's own
+-- wording, so the button itself answers "have I changed this?" without the
+-- player having to press it and find out.
+function Addon.updateResetDictionary()
+  if not editor or not editor.resetDictionary then return end
+  local dict = Addon.selected and Addon.selected.dictionaryEntry
+  editor.resetDictionary:SetShown(dict ~= nil)
+  if not dict then return end
+  if Addon.editorDiffersFromDictionary() then
+    editor.resetDictionary:Enable()
+  else
+    editor.resetDictionary:Disable()
+  end
 end

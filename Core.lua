@@ -70,6 +70,14 @@ Addon.LABELS = {
   opacityLabel = "Opacity",
   languageLabel = "Target (learned and in game) language",
   resetDictionary = "Reset to dictionary",
+  confirmAction = "Reset",
+  confirmCancel = "Cancel",
+  -- Shown before the reset happens. Someone checking whether they still have
+  -- their own edit needs to see what the dictionary would put back, not find
+  -- out afterwards.
+  resetConfirmBody = "This replaces what you have written with the dictionary's own version.\n\n"
+    .. "|cff8ab4f8Meaning|r\n%s\n\n|cff8ab4f8Note|r\n%s",
+  resetNothing = "|cff888888(empty)|r",
   integratedLabel = "Integrated quest window",
   harvestLabel = "Collect quest and NPC text for the dictionary project",
   harvestNote = "Off by default. Records objectives, progress and hand-in text plus NPC dialogue you actually see — the passages Blizzard's quest API does not publish. Stored locally; %d passages and %d words no dictionary covers. /whw harvest",
@@ -620,6 +628,14 @@ function Addon.MakeResizable(frame, key, minW, minH, maxW, maxH)
   frame:SetResizable(true)
   if frame.SetResizeBounds then
     frame:SetResizeBounds(minW, minH, maxW, maxH)
+  else
+    -- Classic has no SetResizeBounds; it is the one call that replaced these
+    -- two. Guarding it without a fallback left the window with no limits at
+    -- all there, so it could be dragged down to nothing or out past the screen
+    -- and there was no way back short of resetting the layout. That is what
+    -- "hard to resize" turns out to mean.
+    if frame.SetMinResize then frame:SetMinResize(minW, minH) end
+    if frame.SetMaxResize then frame:SetMaxResize(maxW, maxH) end
   end
   if not frame.resizeHandle then
     local handle = CreateFrame("Button", nil, frame)
