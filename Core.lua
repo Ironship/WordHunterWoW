@@ -78,6 +78,16 @@ Addon.LABELS = {
   resetConfirmBody = "This replaces what you have written with the dictionary's own version.\n\n"
     .. "|cff8ab4f8Meaning|r\n%s\n\n|cff8ab4f8Note|r\n%s",
   resetNothing = "|cff888888(empty)|r",
+  harvestExport = "Export collected text",
+  -- The file only reaches disk when the game writes its saved variables, which
+  -- it does on reload or logout and at no other time. Someone who exports and
+  -- then goes looking finds yesterday's file and reasonably concludes it broke.
+  harvestExportBody = "%d passages and %d words are ready to send.\n\n"
+    .. "|cffffcc66The file is only written when you reload or log out.|r "
+    .. "Do that first, then find it here:",
+  harvestExportEmpty = "Nothing has been collected yet.\n\n"
+    .. "Switch on the box above and read a few quests, then come back.",
+  harvestExportReload = "Reload now",
   integratedLabel = "Integrated quest window",
   harvestLabel = "Collect quest and NPC text for the dictionary project",
   harvestNote = "Off by default. Records objectives, progress and hand-in text plus NPC dialogue you actually see — the passages Blizzard's quest API does not publish. Stored locally; %d passages and %d words no dictionary covers. /whw harvest",
@@ -692,6 +702,17 @@ function Addon.CloseAll()
     closed = true
   end
   return closed
+end
+
+-- Where the collected text ends up. An addon cannot see its own WoW folder or
+-- the name of the account directory -- neither is exposed to Lua -- so this is
+-- the shape of the path with the one part it does know filled in: which game
+-- it is running on.
+function Addon.HarvestExportPath()
+  local flavour = "_retail_"
+  if Addon.Compat and Addon.Compat.IsClassic() then flavour = "_classic_era_" end
+  return "World of Warcraft\\" .. flavour
+    .. "\\WTF\\Account\\<your account>\\SavedVariables\\WordHunterWoW.lua"
 end
 
 function Addon.SetupEscapeClose(frame)

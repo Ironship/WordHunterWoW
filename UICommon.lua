@@ -78,7 +78,9 @@ local confirmDialog
 -- it is asked from. It exists because overwriting what someone typed is not
 -- something to do on a single click: the body says what the new value will be,
 -- and cancelling is the wider of the two buttons.
-function Addon.showConfirm(title, body, actionText, onConfirm)
+-- `copyText`, when given, appears in a selected box under the body. A file path
+-- is no use to someone who has to retype it from a screenshot.
+function Addon.showConfirm(title, body, actionText, onConfirm, copyText)
   if not confirmDialog then
     confirmDialog = CreateFrame("Frame", "WordHunterWoWConfirmDialog", UIParent, "BackdropTemplate")
     Addon.confirmDialog = confirmDialog
@@ -102,6 +104,14 @@ function Addon.showConfirm(title, body, actionText, onConfirm)
     confirmDialog.body:SetJustifyH("LEFT")
     confirmDialog.body:SetJustifyV("TOP")
     confirmDialog.body:SetSpacing(3)
+
+    -- Selected on show, so Ctrl+C takes it. Read-only in practice: editing it
+    -- changes nothing, and the box exists to be copied out of.
+    confirmDialog.copy = Addon.createEditBox(confirmDialog)
+    confirmDialog.copy:SetPoint("BOTTOMLEFT", 20, 56)
+    confirmDialog.copy:SetPoint("BOTTOMRIGHT", -20, 56)
+    confirmDialog.copy:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    confirmDialog.copy:Hide()
 
     confirmDialog.cancel = Addon.createActionButton(confirmDialog, LABELS.confirmCancel)
     confirmDialog.cancel:SetSize(120, 26)
@@ -130,6 +140,15 @@ function Addon.showConfirm(title, body, actionText, onConfirm)
   confirmDialog.body:SetText(body or "")
   confirmDialog.action:SetText(actionText or LABELS.confirmAction)
   confirmDialog.onConfirm = onConfirm
+  if copyText and copyText ~= "" then
+    confirmDialog.copy:SetText(copyText)
+    confirmDialog.copy:Show()
+    confirmDialog.copy:SetCursorPosition(0)
+    confirmDialog.copy:HighlightText()
+  else
+    confirmDialog.copy:SetText("")
+    confirmDialog.copy:Hide()
+  end
   Addon.ApplyBackground(confirmDialog)
   confirmDialog:Show()
   confirmDialog:Raise()

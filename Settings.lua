@@ -138,6 +138,30 @@ function Addon.CreateSettingsPanel()
   harvestNote:SetTextColor(0.8, 0.82, 0.88)
   panel.harvestNote = harvestNote
 
+  -- The slash command did this already, but only someone who read the addon's
+  -- description knew it existed. Anyone who switches the box on can now find
+  -- the way to get the text back out without being told.
+  local harvestExport = Addon.createActionButton(panel, Addon.LABELS.harvestExport)
+  harvestExport:SetSize(180, 24)
+  -- Anchored under the note rather than at a fixed offset, so it follows however
+  -- many lines the note wraps to.
+  harvestExport:SetPoint("TOPLEFT", harvestNote, "BOTTOMLEFT", 0, -8)
+  harvestExport:SetScript("OnClick", function()
+    local written = Addon.rebuildHarvestExport and Addon.rebuildHarvestExport() or 0
+    if written <= 0 then
+      Addon.showConfirm(Addon.LABELS.harvestExport, Addon.LABELS.harvestExportEmpty,
+        Addon.LABELS.confirmCancel, nil)
+      return
+    end
+    local words = Addon.HarvestWordCount and Addon.HarvestWordCount() or 0
+    Addon.showConfirm(Addon.LABELS.harvestExport,
+      string.format(Addon.LABELS.harvestExportBody, written - words, words),
+      Addon.LABELS.harvestExportReload,
+      function() if ReloadUI then ReloadUI() end end,
+      Addon.HarvestExportPath and Addon.HarvestExportPath() or nil)
+  end)
+  panel.harvestExport = harvestExport
+
   local function UpdateDropdownText()
     local key = Addon.GetBackgroundStyle()
     local style = Addon.BACKGROUNDS[key] or Addon.BACKGROUNDS.tooltip
