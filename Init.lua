@@ -4,6 +4,7 @@ local addonName = ...
 
 local events = CreateFrame("Frame")
 events:RegisterEvent("ADDON_LOADED")
+events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("QUEST_DETAIL")
 events:RegisterEvent("QUEST_PROGRESS")
 events:RegisterEvent("QUEST_COMPLETE")
@@ -23,9 +24,17 @@ events:SetScript("OnEvent", function(_, event, loadedAddon)
         local name = Addon.SUPPORTED_LOCALES[target] or target
         print(string.format("|cff66ccffWordHunterWoW:|r " .. LABELS.german, name, name))
       end
-    elseif loadedAddon == "Blizzard_UIPanels_Game" or loadedAddon == "Blizzard_WorldMap" then
+    elseif loadedAddon == "Blizzard_UIPanels_Game" or loadedAddon == "Blizzard_WorldMap"
+        or loadedAddon == "Blizzard_QuestLog" then
+      -- Classic's quest log is a load-on-demand addon of its own, so the names
+      -- worth hooking may not exist until the player first opens it.
       Addon.hookQuestUi()
     end
+  elseif event == "PLAYER_LOGIN" then
+    -- The season only answers reliably once the player is in the world, and
+    -- Classic's quest log may have loaded since ADDON_LOADED.
+    Addon.Compat.Refresh()
+    Addon.hookQuestUi()
   elseif event == "GOSSIP_SHOW" then
     if Addon.HarvestGossip then Addon.HarvestGossip() end
   elseif event == "QUEST_FINISHED" then

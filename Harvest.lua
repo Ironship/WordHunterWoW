@@ -90,9 +90,15 @@ function Addon.HarvestText(kind, questId, text)
   else
     key = kind .. ":#" .. textHash(text)
   end
+  -- The same quest id means different text on Retail, Classic Era and SoD, so
+  -- the game has to be part of the key or one would silently drop the other.
+  -- Retail keys are left exactly as they were, so an existing corpus is not
+  -- collected all over again the first time this runs.
+  local flavor = Addon.Compat and Addon.Compat.GameFlavor() or "retail"
+  if flavor ~= "retail" then key = flavor .. ":" .. key end
   if bucket[key] then return false end
   if Addon.HarvestCount() >= MAX_ENTRIES then return false end
-  bucket[key] = { kind = kind, id = questId, text = text }
+  bucket[key] = { kind = kind, id = questId, text = text, flavor = flavor }
   counts[Addon.GetTargetLocale()] = Addon.HarvestCount() + 1
   return true
 end
@@ -160,8 +166,12 @@ function Addon.rebuildHarvestExport()
   local rows = {}
   for _, key in ipairs(keys) do
     local entry = bucket[key]
-    rows[#rows + 1] = table.concat({ entry.kind, tostring(entry.id or 0), encode(entry.text) }, "|")
+    rows[#rows + 1] = table.concat({ entry.kind, tostring(entry.id or 0),
+      entry.flavor or "retail", encode(entry.text) }, "|")
   end
-  WordHunterWoWCorpusExport = "WHC1|" .. locale .. "|" .. table.concat(rows, ";")
+  -- WHC2 adds the game each passage came from. Entries collected before this
+  -- existed carry no flavour and are Retail by definition, since that is the
+  -- only game the addon ran on.
+  WordHunterWoWCorpusExport = "WHC2|" .. locale .. "|" .. table.concat(rows, ";")
   return #rows
 end

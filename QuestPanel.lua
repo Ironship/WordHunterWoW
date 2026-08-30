@@ -45,8 +45,13 @@ local function refreshPanel()
     if entry then
       enTitle = entry.title or LABELS.englishHeader
       enBlocks = {}
+      local hasOffer = entry.description and entry.description ~= ""
       if lastQuest.passage and lastQuest.passage ~= "offer" then
         enBlocks[#enBlocks + 1] = { text = LABELS.enOfferOnly, caveat = true }
+      elseif not hasOffer then
+        -- The record itself has no opening text, which is every Classic quest.
+        -- Nothing is being withheld here, so say what is actually on screen.
+        enBlocks[#enBlocks + 1] = { text = LABELS.enNoOffer, caveat = true }
       end
       if entry.description and entry.description ~= "" then
         enBlocks[#enBlocks + 1] = { text = entry.description }
@@ -209,19 +214,18 @@ local function readCurrentQuest(questLogId)
   local title = GetTitleText and GetTitleText() or ""
   local description = GetQuestText and GetQuestText() or ""
   local objectives = GetObjectiveText and GetObjectiveText() or ""
-  if questLogId and questLogId > 0 and GetQuestLogQuestText then
+  local Compat = Addon.Compat
+  if questLogId and questLogId > 0 then
     questId = questLogId
-    local questLogIndex = C_QuestLog.GetLogIndexForQuestID(questId)
-    if questLogIndex then
-      description, objectives = GetQuestLogQuestText(questLogIndex)
-    else
-      description, objectives = GetQuestLogQuestText()
-    end
-    title = C_QuestLog.GetTitleForQuestID(questId) or title
-  elseif QuestInfoFrame and QuestInfoFrame.questLog and GetQuestLogQuestText then
-    questId = C_QuestLog.GetSelectedQuest() or questId
-    description, objectives = GetQuestLogQuestText()
-    title = C_QuestLog.GetTitleForQuestID(questId) or title
+    description, objectives = Compat.QuestLogText(Compat.QuestLogIndexForID(questId))
+    title = Compat.TitleForQuestID(questId) or title
+  -- QuestInfoFrame is Retail's; Classic shows the same thing in its own quest
+  -- log window. The Classic arm is guarded by flavour rather than folded in, so
+  -- that opening the world map on Retail keeps behaving exactly as it did.
+  elseif (QuestInfoFrame and QuestInfoFrame.questLog) or (Compat.IsClassic() and Compat.QuestLogShown()) then
+    questId = Compat.SelectedQuestID() or questId
+    description, objectives = Compat.QuestLogText(Compat.QuestLogIndexForID(questId))
+    title = Compat.TitleForQuestID(questId) or title
   end
   local function normalizeQuestText(t)
     t = tostring(t or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
@@ -264,28 +268,24 @@ local function readCurrentQuest(questLogId)
 end
 Addon.readCurrentQuest = readCurrentQuest
 
-local questInfoHooked
-local questMapHooked
-
+-- Which of Blizzard's functions fired only matters for working out which quest
+-- the player is looking at; the reading itself is the same on every game.
 function Addon.hookQuestUi()
-  if not questInfoHooked and type(QuestInfo_ShowDescriptionText) == "function" then
-    questInfoHooked = true
-    hooksecurefunc("QuestInfo_ShowDescriptionText", function()
-      C_Timer.After(0, readCurrentQuest)
-    end)
-  end
-  if not questMapHooked and type(QuestMapFrame_ShowQuestDetails) == "function" then
-    questMapHooked = true
-    hooksecurefunc("QuestMapFrame_ShowQuestDetails", function()
-      C_Timer.After(0, function()
+  local Compat = Addon.Compat
+  return Compat.HookQuestUi(function(name)
+    C_Timer.After(0, function()
+      if name == "QuestMapFrame_ShowQuestDetails" then
         local questId = QuestMapFrame_GetDetailQuestID and QuestMapFrame_GetDetailQuestID()
-        if not questId or questId == 0 then questId = C_QuestLog.GetSelectedQuest() end
-        if questId and questId > 0 then
-          readCurrentQuest(questId)
-        end
-      end)
+        if not questId or questId == 0 then questId = Compat.SelectedQuestID() end
+        if questId and questId > 0 then readCurrentQuest(questId) end
+      elseif name == "QuestLog_SetSelection" or name == "QuestLog_UpdateQuestDetails" then
+        local questId = Compat.SelectedQuestID()
+        if questId and questId > 0 then readCurrentQuest(questId) else readCurrentQuest() end
+      else
+        readCurrentQuest()
+      end
     end)
-  end
+  end)
 end
 
 function Addon.createPanel()

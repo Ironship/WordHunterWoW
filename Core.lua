@@ -75,6 +75,10 @@ Addon.LABELS = {
   harvestNote = "Off by default. Records objectives, progress and hand-in text plus NPC dialogue you actually see — the passages Blizzard's quest API does not publish. Stored locally; %d passages and %d words no dictionary covers. /whw harvest",
   englishHeader = "English",
   enOfferOnly = "[Blizzard publishes no English text for this part of a quest. Showing the quest's opening text instead.]",
+  -- Classic quest records carry a title and an objective and no opening text at
+  -- all. Without this the objective sits alone under a paragraph of German and
+  -- reads as a translation that was cut short.
+  enNoOffer = "[No English opening text exists for this quest. Showing its objective.]",
 }
 
 Addon.BACKGROUNDS = {
@@ -120,10 +124,23 @@ Addon.BACKGROUNDS = {
 
 Addon.BACKGROUND_ORDER = { "tooltip", "dialog", "solid", "midnight" }
 
+-- What the panel wears before the player has chosen anything. Classic's whole
+-- interface is the old tooltip frame, so a panel in the same skin reads as part
+-- of the game next to a German quest rather than as something bolted on.
+--
+-- This is one function because it is needed in two places -- here, and where
+-- the database seeds its defaults -- and the two must not drift apart. They did
+-- once: the read side learned about Classic while the write side kept stamping
+-- "midnight" into the settings on first run, which made this branch unreachable.
+function Addon.DefaultBackgroundStyle()
+  if Addon.Compat and Addon.Compat.IsClassic() then return "tooltip" end
+  return "midnight"
+end
+
 function Addon.GetBackgroundStyle()
   local key = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.background
   if key and Addon.BACKGROUNDS[key] then return key end
-  return "midnight"
+  return Addon.DefaultBackgroundStyle()
 end
 
 function Addon.GetOpacity()
@@ -435,7 +452,7 @@ function Addon.initializeDatabase()
   if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
   if type(WordHunterWoWDB.settings.frames) ~= "table" then WordHunterWoWDB.settings.frames = {} end
   if not Addon.BACKGROUNDS[WordHunterWoWDB.settings.background] then
-    WordHunterWoWDB.settings.background = "midnight"
+    WordHunterWoWDB.settings.background = Addon.DefaultBackgroundStyle()
   end
   if type(WordHunterWoWDB.settings.opacity) ~= "number" or WordHunterWoWDB.settings.opacity < 0 or WordHunterWoWDB.settings.opacity > 1.0 then
     WordHunterWoWDB.settings.opacity = 1.0
@@ -516,8 +533,18 @@ function Addon.initializeDatabase()
       end
     end
   end
+  if (WordHunterWoWDB.version or 0) < 11 and Addon.Compat and Addon.Compat.IsClassic() then
+    -- Earlier builds stamped "midnight" into the settings the first time they
+    -- ran, before this addon had a Classic default at all. On a Classic client
+    -- that value can only be that stamp and never a choice -- the addon has
+    -- never been released for Classic -- so clearing it is safe, and it lets
+    -- the Classic default actually reach the player it was written for.
+    if WordHunterWoWDB.settings.background == "midnight" then
+      WordHunterWoWDB.settings.background = Addon.DefaultBackgroundStyle()
+    end
+  end
   Addon.GetWordsTable()
-  WordHunterWoWDB.version = 10
+  WordHunterWoWDB.version = 11
   Addon.rebuildExport()
 end
 
