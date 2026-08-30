@@ -111,6 +111,19 @@ function Addon.HarvestUnknownWord(word, questId)
   if not Addon.GetHarvestEnabled() then return false end
   word = Addon.trim(tostring(word or ""))
   if word == "" or #word > 64 then return false end
+  -- "Kill 12 kobolds" offers 12 as a word no dictionary covers, and it is not
+  -- wrong about that -- but a bare number teaches nobody anything and every
+  -- quest is full of them. A token with no letter in it is a quantity, not
+  -- vocabulary.
+  if not word:find("%a") then return false end
+  -- The player's own name appears in gossip and in quest text addressed to
+  -- them, and no dictionary covers it, so it was offered as vocabulary. It is
+  -- not: collecting it would put one player's character name into the next
+  -- dictionary release for everyone. A real session collected exactly this.
+  local player = UnitName and UnitName("player")
+  if player and player ~= "" and Addon.wordKey(word) == Addon.wordKey(player) then
+    return false
+  end
   return Addon.HarvestText("word", questId, word)
 end
 
