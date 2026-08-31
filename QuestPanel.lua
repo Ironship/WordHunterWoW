@@ -113,6 +113,8 @@ local function refreshPanel()
   local x, y, used = 0, 0, 0
   local savedCount = 0
   local countedWords = {}
+  -- Per-quest progress, counted once per distinct word.
+  local progress = { known = 0, learning = 0, new = 0 }
   -- Running gmatch("%S+") over the whole text threw away every line break
   -- in it, so the German column ran together as one block while the English
   -- one beside it kept the paragraphs the quest was written with.
@@ -154,11 +156,16 @@ local function refreshPanel()
       local word = Addon.cleanWord(token)
       local key = Addon.wordKey(word)
       local entry = Addon.GetEffectiveWord(key)
+      -- Scored once per distinct word, whether or not anything knows it yet.
+      -- A word no dictionary covers is still a word in this quest the player
+      -- does not know, so it belongs in the total rather than outside it.
+      if word ~= "" and not countedWords[key] then
+        countedWords[key] = true
+        if entry then savedCount = savedCount + 1 end
+        local status = entry and Addon.EffectiveStatus(entry) or "new"
+        if progress[status] ~= nil then progress[status] = progress[status] + 1 end
+      end
       if entry then
-        if not countedWords[key] then
-          countedWords[key] = true
-          savedCount = savedCount + 1
-        end
         local color = COLORS[entry.status] or COLORS.new
         button.text:SetTextColor(color[1], color[2], color[3])
         button.underline:SetColorTexture(color[1], color[2], color[3], 0.9)
@@ -184,7 +191,7 @@ local function refreshPanel()
   local contentHeight = math.max(28, -y + 28)
   panel.content:SetHeight(contentHeight)
   panel.scroll:UpdateScrollChildRect()
-  panel.meta:SetText(string.format(LABELS.saved, savedCount))
+  panel.meta:SetText(Addon.FormatProgress(progress))
   -- The panel grows to fit the quest unless the player has sized it themselves.
   -- This used to look under the bare key "panel", but sizes are saved per
   -- layout context, so the lookup never found anything and the height was reset

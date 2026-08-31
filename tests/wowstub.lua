@@ -30,6 +30,11 @@ local function node()
   function t:Hide() self.shown = false end
   function t:IsShown() return self.shown end
   -- Size is real: layout code compares it against thresholds and resizes.
+  -- Text is remembered so tests can read back what the UI displays.
+  -- Stored under a private name: `text` is already a field the panel puts
+  -- its font strings in.
+  function t:SetText(v) self._text = v end
+  function t:GetText() return self._text end
   function t:SetSize(w, h) self.w, self.h = w, h end
   function t:SetWidth(w) self.w = w end
   function t:SetHeight(h) self.h = h end

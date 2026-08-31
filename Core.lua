@@ -53,6 +53,13 @@ Addon.LABELS = {
   empty = "Open a quest to mark words.",
   german = "For %s quest text, set the WoW text language to %s.",
   saved = "%d saved",
+  -- The per-quest progress line. Assembled from parts so the three figures
+  -- can each carry the colour its words are drawn in.
+  progressWords = "%d words",
+  progressKnown = "%d%% known",
+  progressLearning = "%d%% learning",
+  progressNew = "%d%% new",
+  progressNothing = "no words to score",
   readyForKnown = "Ready for Known",
   listTitle = "WORD LIST",
   search = "Search",
@@ -267,6 +274,81 @@ function Addon.GetEffectiveWord(key)
 end
 
 local VALID_STATUS = { new = true, learning = true, known = true, ignored = true }
+
+-- Colour escape for a status, taken from the same table the word buttons use so
+-- the figure in the progress line always matches the words it counts.
+function Addon.ColorHex(status)
+  local c = Addon.COLORS[status] or Addon.COLORS.neutral
+  -- %x needs whole numbers, and the colour table holds fractions.
+  return string.format("|cff%02x%02x%02x",
+    math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5))
+end
+
+-- How much of this quest the player has already dealt with, as three shares of
+-- the words in it.
+--
+-- Counts distinct words, not tokens: a quest that says "Zul'Farrak" nine times
+-- is one word to learn, and scoring it nine times would make a repetitive quest
+-- look better known than a varied one.
+--
+-- Ignored words are left out of the total entirely. The player has said that
+-- word is not worth learning, so counting it either as progress or as work
+-- remaining would both be wrong.
+--
+-- Percentages are rounded so they still add to 100. Rounding each independently
+-- gives 33/33/33 on an even split, and a progress line that does not add up
+-- reads as a bug even when every figure in it is right.
+function Addon.ProgressShares(counts)
+  local known = counts and counts.known or 0
+  local learning = counts and counts.learning or 0
+  local new = counts and counts.new or 0
+  local total = known + learning + new
+  if total <= 0 then return nil end
+  local parts = {
+    { key = "known", n = known },
+    { key = "learning", n = learning },
+    { key = "new", n = new },
+  }
+  local out, floored = {}, 0
+  for _, part in ipairs(parts) do
+    local exact = part.n * 100 / total
+    part.whole = math.floor(exact)
+    part.rest = exact - part.whole
+    floored = floored + part.whole
+    out[part.key] = part.whole
+  end
+  -- Hand the points lost to flooring to the largest remainders, biggest first.
+  local order = { parts[1], parts[2], parts[3] }
+  table.sort(order, function(a, b)
+    if a.rest == b.rest then return a.n > b.n end
+    return a.rest > b.rest
+  end)
+  local leftover = 100 - floored
+  local i = 1
+  while leftover > 0 do
+    local part = order[((i - 1) % #order) + 1]
+    out[part.key] = out[part.key] + 1
+    leftover = leftover - 1
+    i = i + 1
+  end
+  out.total = total
+  return out
+end
+
+function Addon.FormatProgress(counts)
+  local shares = Addon.ProgressShares(counts)
+  local L = Addon.LABELS
+  if not shares then return L.progressNothing end
+  local function tint(status, label, value)
+    return Addon.ColorHex(status) .. string.format(label, value) .. "|r"
+  end
+  return table.concat({
+    string.format(L.progressWords, shares.total),
+    tint("known", L.progressKnown, shares.known),
+    tint("learning", L.progressLearning, shares.learning),
+    tint("new", L.progressNew, shares.new),
+  }, "  ")
+end
 
 function Addon.EffectiveStatus(entry)
   local status = entry and entry.status
