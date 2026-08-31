@@ -605,14 +605,16 @@ function Addon.SaveFramePosition(frame, key)
   local point, _, relPoint, x, y = frame:GetPoint(1)
   if not point then return end
   local w, h = frame:GetSize()
-  WordHunterWoWDB.settings.frames[key] = {
-    point = point,
-    relPoint = relPoint,
-    x = x,
-    y = y,
-    w = w,
-    h = h,
-  }
+  -- Updated in place rather than replaced. The entry also carries whether the
+  -- player picked this size by hand, and rebuilding the table dropped that
+  -- every time the window was moved.
+  local entry = WordHunterWoWDB.settings.frames[key]
+  if type(entry) ~= "table" then
+    entry = {}
+    WordHunterWoWDB.settings.frames[key] = entry
+  end
+  entry.point, entry.relPoint, entry.x, entry.y = point, relPoint, x, y
+  entry.w, entry.h = w, h
 end
 
 function Addon.RestoreFramePosition(frame, key, defaultPoint, defaultX, defaultY, defaultW, defaultH)
@@ -654,18 +656,50 @@ function Addon.MakeResizable(frame, key, minW, minH, maxW, maxH)
     handle:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     handle:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
     handle:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
-    handle:SetScript("OnMouseDown", function() frame:StartSizing("BOTTOMRIGHT") end)
-    handle:SetScript("OnMouseUp", function()
+    -- Drag scripts, not OnMouseDown/OnMouseUp.
+    --
+    -- The corner stops when the size hits a bound or the frame reaches the edge
+    -- of the screen, while the cursor carries on -- so on most real drags the
+    -- cursor ends up somewhere off this 16px grip. OnMouseUp is only delivered
+    -- to the button the cursor is actually over, so releasing there never
+    -- reached StopMovingOrSizing and the frame was left in sizing mode: it went
+    -- on following the cursor with the button up, which is the window growing
+    -- and shrinking on its own and dropping clicks. OnDragStop is delivered to
+    -- the frame that started the drag wherever the cursor has got to.
+    handle:RegisterForDrag("LeftButton")
+    local dragging = false
+    local function stopSizing()
       frame:StopMovingOrSizing()
       Addon.SaveFramePosition(frame, Addon.LayoutKey(key))
+      if not dragging then return end
+      dragging = false
+      -- The player has chosen a size, so nothing should size this frame for
+      -- them again. Recorded when it happens rather than worked out later from
+      -- a saved size: every frame has a saved size, including ones only ever
+      -- moved, and including the ones the addon sized itself.
+      local frames = WordHunterWoWDB and WordHunterWoWDB.settings
+        and WordHunterWoWDB.settings.frames
+      local saved = frames and frames[Addon.LayoutKey(key)]
+      if saved then saved.userSized = true end
+    end
+    handle:SetScript("OnDragStart", function()
+      dragging = true
+      frame:StartSizing("BOTTOMRIGHT")
+    end)
+    handle:SetScript("OnDragStop", stopSizing)
+    -- Two backstops, neither redundant. A press with no drag never starts
+    -- sizing, but stopping costs nothing. And a frame hidden mid-drag -- Escape,
+    -- or the quest window closing under it -- would otherwise still be sizing
+    -- when it came back.
+    handle:SetScript("OnMouseUp", stopSizing)
+    frame:HookScript("OnHide", function() stopSizing() end)
+    frame:HookScript("OnSizeChanged", function(self)
+      if self:IsShown() then
+        Addon.SaveFramePosition(self, Addon.LayoutKey(key))
+      end
     end)
     frame.resizeHandle = handle
   end
-  frame:HookScript("OnSizeChanged", function(self)
-    if self:IsShown() then
-      Addon.SaveFramePosition(self, Addon.LayoutKey(key))
-    end
-  end)
 end
 
 local function questEncounterKey(questId, questTitle)

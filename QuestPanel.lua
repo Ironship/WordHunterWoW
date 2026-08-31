@@ -185,8 +185,14 @@ local function refreshPanel()
   panel.content:SetHeight(contentHeight)
   panel.scroll:UpdateScrollChildRect()
   panel.meta:SetText(string.format(LABELS.saved, savedCount))
-  local hasSavedSize = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.frames and WordHunterWoWDB.settings.frames["panel"]
-  if not hasSavedSize or not hasSavedSize.h then
+  -- The panel grows to fit the quest unless the player has sized it themselves.
+  -- This used to look under the bare key "panel", but sizes are saved per
+  -- layout context, so the lookup never found anything and the height was reset
+  -- on every refresh -- including the one that lands a moment after a drag
+  -- ends, which is the window jumping just after you let go of the corner.
+  local frames = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.frames
+  local saved = frames and frames[Addon.LayoutKey("panel")]
+  if not (saved and saved.userSized) then
     panel:SetHeight(math.min(560, math.max(230, contentHeight + 136)))
   end
   if contentHeight < 410 then panel.scroll:SetVerticalScroll(0) end
@@ -264,7 +270,18 @@ local function readCurrentQuest(questLogId)
   trackQuestEncounters(Addon.lastQuest)
   refreshPanel()
   if Addon.ApplyIntegratedLayout then Addon.ApplyIntegratedLayout() end
-  panel:Show()
+  -- Only put the panel on screen while a quest window is actually open.
+  -- Blizzard redraws the quest pane while it is tearing it down, and the hook
+  -- that redraw fires reaches us through a timer -- after QUEST_FINISHED has
+  -- already closed us. Showing then reopened the panel on the quest the player
+  -- had just handed in, a moment after they had closed it.
+  --
+  -- This only ever declines to open the panel; it never closes one. A panel the
+  -- player opened by hand stays where it is and keeps being refreshed above.
+  local Compat = Addon.Compat
+  if not Compat or Compat.NpcQuestFrameShown() or Compat.QuestLogShown() then
+    panel:Show()
+  end
 end
 Addon.readCurrentQuest = readCurrentQuest
 
@@ -309,9 +326,20 @@ function Addon.createPanel()
   panel:SetSize(panelDef.w, panelDef.h)
   panel:SetPoint("CENTER", UIParent, "CENTER", -200, 0)
   Addon.MakeResizable(panel, "panel", 400, 230, 1200, 800)
-  panel:HookScript("OnSizeChanged", function()
-    if panel:IsShown() then refreshPanel() end
-  end)
+  -- Debounced, the way the word list already does it. Relaying the text out
+  -- means measuring and repositioning every word on screen, and undebounced that
+  -- ran on every frame of a drag -- which is part of what made the corner feel
+  -- like it was losing the mouse. The word list settled this a while ago; the
+  -- panel had been left behind.
+  do
+    local debounce
+    panel:HookScript("OnSizeChanged", function()
+      if debounce then debounce:Cancel() end
+      debounce = C_Timer.NewTimer(0.15, function()
+        if panel:IsShown() then refreshPanel() end
+      end)
+    end)
+  end
   panel:Hide()
 
   panel.title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -419,6 +447,10 @@ function Addon.createPanel()
     if not panel then return end
     local hasEN = type(WordHunterWoW_QuestEN) == "table"
     local integrated = Addon.GetIntegratedLayout() and hasEN
+    -- nil on the very first call, which counts as a change: a width saved from
+    -- a two-column session has to be brought back down once.
+    local wasIntegrated = panel.integratedLayout
+    panel.integratedLayout = integrated
     if integrated then
       panel.enScroll:Show()
       panel.enTitle:Show()
@@ -449,7 +481,12 @@ function Addon.createPanel()
       panel.scroll:ClearAllPoints()
       panel.scroll:SetPoint("TOPLEFT", 18, -58)
       panel.scroll:SetPoint("BOTTOMRIGHT", -32, 72)
-      if panel:GetWidth() > 700 then
+      -- Only when the second column has just gone away. A window sized for two
+      -- columns is far too wide for one, so it is worth bringing back down. But
+      -- this used to run on every quest read, so a single-column window the
+      -- player had dragged out wide was snapped to the default the next time
+      -- they talked to anyone.
+      if wasIntegrated ~= false and panel:GetWidth() > 700 then
         panel:SetSize(430, 240)
       end
     end
