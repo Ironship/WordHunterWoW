@@ -71,11 +71,31 @@ local function textHash(text)
   return string.format("%x", hash)
 end
 
+-- Gossip and quest text address the player by name, so a passage carries that
+-- name verbatim. Collecting single words already skips it -- see
+-- HarvestUnknownWord -- but the passage did not, so the name reached the corpus
+-- anyway, one level up from where the guard was. A real export contained four
+-- character names this way, and they read as ordinary German vocabulary to
+-- everything downstream.
+--
+-- It is also a file the player may well send to someone else, and a character
+-- name is not theirs to pass on by accident.
+--
+-- Substituted before the text is stored and before the hash that keys it, so the
+-- same gossip met on two characters is one entry rather than two.
+local function withoutPlayerName(text)
+  local player = UnitName and UnitName("player")
+  if not player or player == "" then return text end
+  -- The name goes into a pattern, so anything magic in it has to be escaped.
+  return (text:gsub((player:gsub("%W", "%%%0")), "<name>"))
+end
+
 function Addon.HarvestText(kind, questId, text)
   if not Addon.GetHarvestEnabled() then return false end
   if not KINDS[kind] then return false end
   text = Addon.trim(tostring(text or ""))
   if text == "" or #text > MAX_TEXT then return false end
+  if kind ~= "word" then text = withoutPlayerName(text) end
 
   local bucket = corpusTable()
   questId = tonumber(questId) or 0

@@ -3,7 +3,7 @@
 ## Notes: Mark quest words and import them into Word Hunter. Supports enUS/enGB, deDE, frFR, esES/esMX, itIT, ptBR.
 ## IconTexture: Interface\AddOns\WordHunterWoW\icon
 ## Author: Ironship
-## Version: 1.12.0
+## Version: 1.12.1
 ## SavedVariables: WordHunterWoWDB, WordHunterWoWExport, WordHunterWoWLanguage, WordHunterWoWCorpus, WordHunterWoWCorpusExport
 
 Core.lua

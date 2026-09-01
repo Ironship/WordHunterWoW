@@ -40,4 +40,34 @@ assert(not Addon.HarvestUnknownWord("Ironship"), "the player's own name is not v
 assert(not Addon.HarvestUnknownWord("ironship"), "whatever case the text uses")
 assert(Addon.HarvestUnknownWord("Ironshipper"), "a different word that merely starts the same is fine")
 
+-- The guard above covers single words. A passage carries the name too -- gossip
+-- says "Ah, da seid Ihr ja, Ironship!" -- and that went in verbatim, so the name
+-- reached the corpus one level up from where the guard was. A real export
+-- contained four character names collected exactly this way.
+Addon.SetHarvestEnabled(true)
+assert(Addon.HarvestText("description", 101, "Ah, da seid Ihr ja, Ironship! Wir haben Euch erwartet."),
+  "a passage is still collected")
+local function corpusEntries()
+  local byLocale = WordHunterWoWCorpus and WordHunterWoWCorpus.byLocale or {}
+  return byLocale[Addon.GetTargetLocale()] or {}
+end
+local stored
+for _, entry in pairs(corpusEntries()) do
+  if entry.kind == "description" and entry.id == 101 then stored = entry.text end
+end
+assert(stored, "the passage should be in the corpus")
+assert(not stored:find("Ironship", 1, true),
+  "the player's name must not reach the corpus in a passage either: " .. stored)
+assert(stored:find("<name>", 1, true), "it is replaced rather than dropped: " .. stored)
+assert(stored:find("erwartet", 1, true), "and the rest of the passage is untouched")
+
+-- A word that merely contains the name is left alone; only the name itself goes.
+assert(Addon.HarvestText("description", 102, "Der Ironshipper wartet."))
+for _, entry in pairs(corpusEntries()) do
+  if entry.kind == "description" and entry.id == 102 then
+    assert(entry.text:find("Ironshipper", 1, true) or entry.text:find("<name>per", 1, true),
+      "substitution inside a longer word is acceptable but the text must survive: " .. entry.text)
+  end
+end
+
 print("harvest-words: ok")
