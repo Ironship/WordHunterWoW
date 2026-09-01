@@ -67,6 +67,10 @@ assert(panel:GetWidth() == 620, "a narrow panel should be left as it is, got " .
 local key = Addon.LayoutKey("panel")
 WordHunterWoWDB.settings.frames = {}
 Addon.readCurrentQuest()
+-- The panel has to be on screen for a refresh to do anything: a hidden one is
+-- deliberately skipped, so that saving a word does not relay out a window
+-- nobody is looking at.
+panel:Show()
 panel:SetSize(900, 700)
 Addon.refreshPanel()
 assert(panel:GetHeight() ~= 700,

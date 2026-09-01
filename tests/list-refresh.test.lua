@@ -39,10 +39,18 @@ walks = 0
 Addon.refreshWordList()
 assert(walks == 0, "with no list at all there is nothing to walk, got " .. walks)
 
--- Open it. A visible list has to be rebuilt, so this one is expected.
+-- Opening it must fill it. The guard above declines to work on a hidden window,
+-- so opening has to Show first and refresh after -- the other order left the
+-- list empty every time it was opened, which is worse than the stutter it was
+-- meant to cure.
+walks = 0
 Addon.toggleWordList()
 assert(Addon.listFrame, "the list frame should exist once opened")
 assert(Addon.listFrame:IsShown(), "and be on screen")
+assert(walks >= 1,
+  "opening the list has to fill it: the window was shown without a rebuild")
+
+-- And a refresh asked for while it is open does the work.
 walks = 0
 Addon.refreshWordList()
 assert(walks == 1, "a visible list is rebuilt on request, got " .. walks)

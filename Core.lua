@@ -340,7 +340,11 @@ function Addon.GetWordsTable()
   if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
   if type(WordHunterWoWDB.wordsByLocale) ~= "table" then WordHunterWoWDB.wordsByLocale = {} end
   if type(WordHunterWoWDB.wordsByLocale[locale]) ~= "table" then WordHunterWoWDB.wordsByLocale[locale] = {} end
-  WordHunterWoWDB.words = WordHunterWoWDB.wordsByLocale[locale]
+  -- Deliberately not aliased onto WordHunterWoWDB.words any more. In memory that
+  -- was one table under two names; on disk the saved-variables writer does not
+  -- preserve identity, so every word -- and its whole encounter set -- was
+  -- written out twice. Nothing has read that key since the pre-v8 migration,
+  -- which cannot run again.
   return WordHunterWoWDB.wordsByLocale[locale]
 end
 
@@ -516,6 +520,15 @@ end
 
 function Addon.ApplyBackground(frame, alphaOverride)
   if not frame or not frame.SetBackdrop then return end
+  -- Windows you type into are deliberately opaque, whatever the opacity slider
+  -- says: reading your own note through the quest text behind it is not a
+  -- feature. Remembered on the frame, because the repaint that runs when the
+  -- slider moves has no idea who asked for what and used to discard it.
+  if alphaOverride then
+    frame.whwOpaque = alphaOverride
+  else
+    alphaOverride = frame.whwOpaque
+  end
   local style = Addon.BACKGROUNDS[Addon.GetBackgroundStyle()] or Addon.BACKGROUNDS.midnight
   frame:SetBackdrop({
     bgFile = style.bgFile,
@@ -542,7 +555,10 @@ function Addon.SetBackgroundStyle(key)
 end
 
 function Addon.RefreshAllBackdrops()
-  for _, f in ipairs({ Addon.panel, Addon.editor, Addon.listFrame, Addon.statsFrame, Addon.copyDialog, Addon.enPanel, Addon.settingsPanel and Addon.settingsPanel.preview }) do
+  -- pairs, not ipairs: most of these are created the first time they are opened,
+  -- so the list has holes. ipairs stops at the first one, and the English panel
+  -- sits behind three lazily-created windows -- it never got its backdrop.
+  for _, f in pairs({ Addon.panel, Addon.editor, Addon.listFrame, Addon.statsFrame, Addon.copyDialog, Addon.enPanel, Addon.settingsPanel and Addon.settingsPanel.preview }) do
     if f and f.SetBackdrop then Addon.ApplyBackground(f) end
   end
 end
@@ -661,7 +677,9 @@ end
 
 function Addon.initializeDatabase()
   if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
-  if type(WordHunterWoWDB.words) ~= "table" then WordHunterWoWDB.words = {} end
+  -- Only for the migration below to read; a fresh install does not get one, and
+  -- it is dropped once the migration has had its look.
+  local legacyWords = type(WordHunterWoWDB.words) == "table" and WordHunterWoWDB.words or nil
   if type(WordHunterWoWDB.wordsByLocale) ~= "table" then WordHunterWoWDB.wordsByLocale = {} end
   if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
   if type(WordHunterWoWDB.settings.frames) ~= "table" then WordHunterWoWDB.settings.frames = {} end
@@ -693,10 +711,10 @@ function Addon.initializeDatabase()
     for _, tbl in pairs(WordHunterWoWDB.wordsByLocale) do
       if next(tbl) ~= nil then hasPartitioned = true; break end
     end
-    if not hasPartitioned and next(WordHunterWoWDB.words) ~= nil then
+    if not hasPartitioned and legacyWords and next(legacyWords) ~= nil then
       local target = WordHunterWoWDB.settings.targetLocale
       if not WordHunterWoWDB.wordsByLocale[target] then WordHunterWoWDB.wordsByLocale[target] = {} end
-      for k, v in pairs(WordHunterWoWDB.words) do
+      for k, v in pairs(legacyWords) do
         if type(v) == "table" and v.word then
           WordHunterWoWDB.wordsByLocale[target][k] = v
         end
@@ -765,6 +783,9 @@ function Addon.initializeDatabase()
   end
   Addon.GetWordsTable()
   WordHunterWoWDB.version = 11
+  -- The legacy copy has served its purpose; carrying it costs a second full
+  -- write of every word at every logout.
+  WordHunterWoWDB.words = nil
   Addon.rebuildExport()
 end
 
@@ -819,11 +840,56 @@ function Addon.SaveFramePosition(frame, key)
   entry.w, entry.h = w, h
 end
 
+local ANCHORS = {
+  TOPLEFT = true, TOP = true, TOPRIGHT = true, LEFT = true, CENTER = true,
+  RIGHT = true, BOTTOMLEFT = true, BOTTOM = true, BOTTOMRIGHT = true,
+}
+
+-- Sizes a window can actually be dragged back from. A saved 1x1 is as
+-- unrecoverable as a saved 6000x6000.
+local MIN_SAVED_SIZE, MAX_SAVED_SIZE = 80, 4000
+
+local function usableFrameData(data)
+  if type(data) ~= "table" then return false end
+  if not ANCHORS[data.point] then return false end
+  if data.relPoint ~= nil and not ANCHORS[data.relPoint] then return false end
+  if type(data.x) ~= "number" or type(data.y) ~= "number" then return false end
+  if type(data.w) ~= "number" or type(data.h) ~= "number" then return false end
+  if data.w < MIN_SAVED_SIZE or data.h < MIN_SAVED_SIZE then return false end
+  if data.w > MAX_SAVED_SIZE or data.h > MAX_SAVED_SIZE then return false end
+  return true
+end
+
+-- Puts every window back where it started. Reachable as /whw reset, because a
+-- window dragged off the edge of the screen cannot be dragged back, and neither
+-- can one saved at its minimum size on a client with no resize bounds.
+function Addon.ResetLayout()
+  if WordHunterWoWDB and WordHunterWoWDB.settings then
+    WordHunterWoWDB.settings.frames = {}
+  end
+  for _, entry in pairs({
+    { frame = Addon.panel, key = "panel" },
+    { frame = Addon.editor, key = "editor" },
+    { frame = Addon.listFrame, key = "list" },
+    { frame = Addon.statsFrame, key = "stats" },
+    { frame = Addon.enPanel, key = "enPanel" },
+  }) do
+    if entry.frame then Addon.PlaceFrame(entry.frame, entry.key) end
+  end
+  if print then print("|cff59aefaWordHunterWoW:|r window positions and sizes reset") end
+end
+
 function Addon.RestoreFramePosition(frame, key, defaultPoint, defaultX, defaultY, defaultW, defaultH)
   local data = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.frames and WordHunterWoWDB.settings.frames[key]
-  if data and data.point and data.w and data.h then
+  -- Checked for shape, not just presence. These values are restored while the
+  -- addon is loading, so a bad one does not merely misplace a window: SetPoint
+  -- throws, ADDON_LOADED dies with it, and the editor, the quest hooks and the
+  -- settings panel are never built. The addon is gone for the session, and the
+  -- only recovery would be deleting the saved file -- which takes the player's
+  -- whole word list with it.
+  if usableFrameData(data) then
     frame:ClearAllPoints()
-    frame:SetPoint(data.point, UIParent, data.relPoint or data.point, data.x or 0, data.y or 0)
+    frame:SetPoint(data.point, UIParent, data.relPoint or data.point, data.x, data.y)
     frame:SetSize(data.w, data.h)
     return true
   end
@@ -904,6 +970,10 @@ function Addon.MakeResizable(frame, key, minW, minH, maxW, maxH)
   end
 end
 
+-- Enough to cover the quests a word realistically appears in within one zone,
+-- and small enough that a full word list stays a few hundred kilobytes.
+local MAX_ENCOUNTERED_QUESTS = 200
+
 local function questEncounterKey(questId, questTitle)
   local id = tostring(questId or "")
   if id ~= "" and id ~= "0" then return "id:" .. id end
@@ -920,7 +990,21 @@ function Addon.recordEncounter(item, questId, questTitle, now)
   if questKey and not item.encounteredQuests[questKey] then
     item.encounteredQuests[questKey] = true
     item.encounterCount = item.encounterCount + 1
+    -- The set exists only to stop the count double-counting a quest read twice.
+    -- It is never exported and never shown. Kept without a bound it grows one
+    -- key per quest for every common word, forever, and is re-parsed at every
+    -- login -- megabytes of ["id:12345"]=true for a number the player sees as
+    -- "seen 40 times". Past the cap the count keeps rising and only the memory
+    -- of exactly which quests stops; re-reading an old quest may then add one,
+    -- which is a far smaller error than the file it saves.
+    local seen = 0
+    for _ in pairs(item.encounteredQuests) do seen = seen + 1 end
+    if seen > MAX_ENCOUNTERED_QUESTS then
+      item.encounteredQuests = { [questKey] = true }
+    end
+    return true
   end
+  return false
 end
 
 function Addon.CloseAll()
@@ -951,6 +1035,15 @@ function Addon.HarvestExportPath()
     .. "\\WTF\\Account\\<your account>\\SavedVariables\\WordHunterWoW.lua"
 end
 
+-- SetPropagateKeyboardInput is protected: calling it from an addon while the
+-- player is in combat raises ADDON_ACTION_BLOCKED and swallows the keystroke.
+-- Taking a quest from an NPC that turns hostile is enough to be in combat with
+-- the panel still open.
+local function SafePropagate(frame, propagate)
+  if InCombatLockdown and InCombatLockdown() then return end
+  if frame.SetPropagateKeyboardInput then frame:SetPropagateKeyboardInput(propagate) end
+end
+
 function Addon.SetupEscapeClose(frame)
   if not frame or not frame.GetName then return end
   local name = frame:GetName()
@@ -958,13 +1051,13 @@ function Addon.SetupEscapeClose(frame)
     tinsert(UISpecialFrames, name)
   end
   frame:EnableKeyboard(true)
-  frame:SetPropagateKeyboardInput(true)
+  SafePropagate(frame, true)
   frame:HookScript("OnKeyDown", function(self, key)
     if key == "ESCAPE" then
-      self:SetPropagateKeyboardInput(false)
+      SafePropagate(self, false)
       Addon.CloseAll()
     else
-      self:SetPropagateKeyboardInput(true)
+      SafePropagate(self, true)
     end
   end)
 end

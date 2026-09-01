@@ -43,7 +43,16 @@ local function refreshPanel()
   -- player's chosen size.
   local TOKEN_H, TOKEN_STEP = tokenMetrics()
   if not panel or not Addon.lastQuest then return end
+  -- And not into a window nobody can see. Saving a word calls this, and a full
+  -- relayout measures every token in both columns and looks each one up in the
+  -- dictionary. Editing words from the list with the panel closed paid that on
+  -- every Save. Reading the quest again re-renders, so nothing goes stale.
+  if not panel:IsShown() then return end
   local lastQuest = Addon.lastQuest
+  -- Whether this render is a different quest from the last one drawn, which is
+  -- what decides if the panes go back to the top.
+  local newQuest = panel.renderedQuestKey ~= tostring(lastQuest.id or lastQuest.title or "")
+  panel.renderedQuestKey = tostring(lastQuest.id or lastQuest.title or "")
   panel.title:SetText(lastQuest.title or "Quest")
   for _, button in ipairs(wordButtons) do button:Hide() end
 
@@ -114,10 +123,12 @@ local function refreshPanel()
             bit = CreateFrame("Frame", nil, panel.enContent)
             bit.text = bit:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
             bit.text:SetPoint("CENTER")
-            tokenFont(bit.text, enScale)
             bit.text:SetWordWrap(false)
             enBits[eused] = bit
           end
+          -- The font too, for the same pooling reason: a bit built at one size would
+          -- keep it forever while the row around it grew.
+          tokenFont(bit.text, enScale)
           -- Set on every render: these frames are pooled, so a token the caveat
           -- turned red on an earlier quest would stay red.
           bit.text:SetTextColor(color and color[1] or 0.92,
@@ -233,7 +244,14 @@ local function refreshPanel()
   if not (saved and saved.userSized) then
     panel:SetHeight(math.min(560, math.max(230, contentHeight + 136)))
   end
-  if contentHeight < 410 then panel.scroll:SetVerticalScroll(0) end
+  -- Both panes start at the top on a new quest. Leaving the scroll where it was
+  -- opened the next quest part-way down its text. The old rule only reset the
+  -- German pane, and only below a raw 410px, which stopped applying once the
+  -- text size could be raised.
+  if newQuest then
+    panel.scroll:SetVerticalScroll(0)
+    if panel.enScroll then panel.enScroll:SetVerticalScroll(0) end
+  end
 end
 Addon.refreshPanel = refreshPanel
 
@@ -246,8 +264,14 @@ local function trackQuestEncounters(quest)
     local item = Addon.GetWordsTable()[key]
     if item and not seen[key] then
       seen[key] = true
-      Addon.recordEncounter(item, quest.id, quest.title, now)
-      changed = true
+      -- Only when the encounter was actually new. Before, any saved word merely
+      -- appearing in the quest rebuilt the whole export -- and that means every
+      -- click in the quest log sorted the entire word table and ran five gsubs
+      -- per word. With a few thousand words saved, that is what quest browsing
+      -- costs.
+      if Addon.recordEncounter(item, quest.id, quest.title, now) then
+        changed = true
+      end
     end
   end
   if changed then Addon.rebuildExport() end
@@ -306,7 +330,6 @@ local function readCurrentQuest(questLogId)
   end
   Addon.lastQuest = { id = questId or 0, title = Addon.trim(title), text = text, passage = passage }
   trackQuestEncounters(Addon.lastQuest)
-  refreshPanel()
   if Addon.ApplyIntegratedLayout then Addon.ApplyIntegratedLayout() end
   -- Only put the panel on screen while a quest window is actually open.
   -- Blizzard redraws the quest pane while it is tearing it down, and the hook
@@ -320,6 +343,11 @@ local function readCurrentQuest(questLogId)
   if not Compat or Compat.NpcQuestFrameShown() or Compat.QuestLogShown() then
     panel:Show()
   end
+  -- Laid out after the decision to show, never before it. refreshPanel declines
+  -- to work on a hidden window -- that is what keeps a closed panel from being
+  -- rebuilt on every save -- so rendering first would have drawn this quest into
+  -- a window that was still hidden, and left the old one on screen.
+  refreshPanel()
 end
 Addon.readCurrentQuest = readCurrentQuest
 

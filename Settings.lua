@@ -257,6 +257,11 @@ function Addon.CreateSettingsPanel()
   UpdateDropdownText()
 
   panel.refresh = function()
+    if panel.textScaleSlider then panel.textScaleSlider:SetValue(Addon.GetTextScale()) end
+    for key, slider in pairs(panel.windowSliders or {}) do
+      local get = Addon["Get" .. key:sub(1, 1):upper() .. key:sub(2)]
+      if get then slider:SetValue(get()) end
+    end
     UpdateDropdownText()
     UIDropDownMenu_Initialize(dropdown, Initialize)
     UpdateLangDropdownText()
@@ -272,6 +277,13 @@ function Addon.CreateSettingsPanel()
       panel.harvestNote:SetText(string.format(Addon.LABELS.harvestNote, passages, Addon.HarvestWordCount and Addon.HarvestWordCount() or 0))
     end
   end
+
+  -- Blizzard's own route into this panel -- Esc, Options, AddOns -- never calls
+  -- OpenSettings, so nothing refreshed the controls and they showed whatever
+  -- was true the last time the addon opened it itself.
+  panel:HookScript("OnShow", function(self)
+    if self.refresh then self.refresh() end
+  end)
 
   if Settings and Settings.RegisterAddOnCategory then
     if Settings.RegisterCanvasLayoutCategory then

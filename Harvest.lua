@@ -31,9 +31,15 @@ end
 
 local function corpusTable()
   if type(WordHunterWoWCorpus) ~= "table" then WordHunterWoWCorpus = {} end
-  if WordHunterWoWCorpus.version ~= 1 then
+  -- Older versions are migrated, not discarded. There is only version 1 today,
+  -- so nothing here runs -- but writing it as "anything unexpected, wipe it"
+  -- meant the first release that bumped the number would silently destroy every
+  -- contributor's uncollected passages on login.
+  if type(WordHunterWoWCorpus.version) ~= "number" then
     WordHunterWoWCorpus.version = 1
-    WordHunterWoWCorpus.byLocale = {}
+    if type(WordHunterWoWCorpus.byLocale) ~= "table" then
+      WordHunterWoWCorpus.byLocale = {}
+    end
   end
   if type(WordHunterWoWCorpus.byLocale) ~= "table" then WordHunterWoWCorpus.byLocale = {} end
   local locale = Addon.GetTargetLocale()
@@ -117,7 +123,19 @@ function Addon.HarvestText(kind, questId, text)
   local flavor = Addon.Compat and Addon.Compat.GameFlavor() or "retail"
   if flavor ~= "retail" then key = flavor .. ":" .. key end
   if bucket[key] then return false end
-  if Addon.HarvestCount() >= MAX_ENTRIES then return false end
+  if Addon.HarvestCount() >= MAX_ENTRIES then
+    -- Said once, not on every passage. Before, collection simply stopped and a
+    -- contributor who had left it on for months went on playing with nothing
+    -- being recorded and no way to know.
+    if not Addon.harvestFullAnnounced then
+      Addon.harvestFullAnnounced = true
+      if print then
+        print("|cff59aefaWordHunterWoW:|r collected text is full ("
+          .. MAX_ENTRIES .. " passages). Export it and it will start again.")
+      end
+    end
+    return false
+  end
   bucket[key] = { kind = kind, id = questId, text = text, flavor = flavor }
   counts[Addon.GetTargetLocale()] = Addon.HarvestCount() + 1
   return true
@@ -177,6 +195,9 @@ function Addon.ClearHarvest()
   WordHunterWoWCorpus = { version = 1, byLocale = {} }
   WordHunterWoWCorpusExport = ""
   counts = {}
+  -- There is room again, so the "full" message is worth saying again if it ever
+  -- fills a second time.
+  Addon.harvestFullAnnounced = nil
 end
 
 -- The importer is a Python script, so hand it a flat percent-encoded blob

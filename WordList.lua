@@ -189,8 +189,11 @@ function Addon.toggleWordList()
     updateListFilters()
     listFrame.hideIgnored:SetChecked(WordHunterWoWDB.settings.hideIgnored == true)
     Addon.PlaceFrame(listFrame, "list")
-    refreshWordList()
+    -- Show first, then fill. The refresh declines to work on a hidden window --
+    -- that is what stops a closed list from walking the dictionary on every
+    -- save -- so refreshing before Show left the list empty on opening.
     listFrame:Show()
+    refreshWordList()
     listFrame.scroll:UpdateScrollChildRect()
     C_Timer.After(0, function() listFrame.scroll:UpdateScrollChildRect() end)
   end

@@ -23,13 +23,21 @@ local function computeStats(now)
     local first = entry.firstSeenAt or entry.updatedAt or 0
     if now - first <= 7 * 24 * 60 * 60 then added7 = added7 + 1 end
     if now - first <= 30 * 24 * 60 * 60 then added30 = added30 + 1 end
-    top[#top + 1] = entry
+    -- Keep only the five best seen so far, rather than every entry. The old
+    -- version appended all of them -- the whole shipped dictionary, ~74,000 --
+    -- and sorted the lot to take five, which is a visible hitch every time the
+    -- window is opened. An insertion into a five-slot list costs nothing.
+    local count = entry.encounterCount or 0
+    if #top < 5 or count > (top[#top].encounterCount or 0) then
+      local at = #top + 1
+      for i = 1, #top do
+        if count > (top[i].encounterCount or 0) then at = i break end
+      end
+      table.insert(top, at, entry)
+      if #top > 5 then table.remove(top) end
+    end
   end)
-  table.sort(top, function(a, b)
-    return (a.encounterCount or 0) > (b.encounterCount or 0)
-  end)
-  local best = {}
-  for i = 1, math.min(5, #top) do best[i] = top[i] end
+  local best = top
   return {
     total = total,
     byStatus = byStatus,

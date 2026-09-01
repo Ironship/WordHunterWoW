@@ -68,6 +68,11 @@ SlashCmdList.WORDHUNTERWOW = function(message)
         Addon.GetHarvestEnabled() and "on" or "off", Addon.HarvestCount() - Addon.HarvestWordCount(),
         Addon.HarvestWordCount(), Addon.GetTargetLocale()))
     end
+  elseif command == "reset" or command == "resetlayout" then
+    -- A way back from a window dragged off the screen or shrunk to nothing.
+    -- Without one the only remedy is deleting the saved file, which takes the
+    -- player's whole word list with it.
+    Addon.ResetLayout()
   elseif command == "words" then
     Addon.toggleWordList()
   elseif command == "stats" then
