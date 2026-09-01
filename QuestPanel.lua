@@ -5,12 +5,27 @@ local LABELS = Addon.LABELS
 local panel
 local wordButtons = {}
 local enBits = {}
-local TOKEN_H = 18
-local TOKEN_STEP = 18
+-- The row height the layout is built on, before the player's text size is
+-- applied. Both the font and the row have to scale together: scaling the letters
+-- alone makes them collide with the line below.
+local BASE_TOKEN_H = 18
+local BASE_TOKEN_STEP = 18
 
-local function tokenFont(fs)
+local function tokenMetrics(scale)
+  scale = scale or (Addon.GetTextScale and Addon.GetTextScale() or 1)
+  return BASE_TOKEN_H * scale, BASE_TOKEN_STEP * scale
+end
+
+-- Each column has its own size. The left one is the language being learned and
+-- follows "Quest text size"; the right one is the English and follows "English
+-- panel size", the same setting as the separate English window -- because with
+-- the integrated layout on, which is the default, that column *is* the English
+-- panel as far as the reader is concerned. Tying it to the other slider left
+-- the English one apparently doing nothing at all.
+local function tokenFont(fs, scale)
   local path, size, flags = GameFontHighlight:GetFont()
-  if path then fs:SetFont(path, size or 12, flags) end
+  scale = scale or (Addon.GetTextScale and Addon.GetTextScale() or 1)
+  if path then fs:SetFont(path, (size or 12) * scale, flags) end
   fs:SetShadowColor(0, 0, 0, 0.9)
   fs:SetShadowOffset(1, -1)
 end
@@ -24,6 +39,9 @@ local function sentenceForWord(text, word)
 end
 
 local function refreshPanel()
+  -- Shadowed for this render, so every measurement below is already in the
+  -- player's chosen size.
+  local TOKEN_H, TOKEN_STEP = tokenMetrics()
   if not panel or not Addon.lastQuest then return end
   local lastQuest = Addon.lastQuest
   panel.title:SetText(lastQuest.title or "Quest")
@@ -46,22 +64,34 @@ local function refreshPanel()
       enTitle = entry.title or LABELS.englishHeader
       enBlocks = {}
       local hasOffer = entry.description and entry.description ~= ""
-      if lastQuest.passage and lastQuest.passage ~= "offer" then
-        enBlocks[#enBlocks + 1] = { text = LABELS.enOfferOnly, caveat = true }
-      elseif not hasOffer then
-        -- The record itself has no opening text, which is every Classic quest.
-        -- Nothing is being withheld here, so say what is actually on screen.
-        enBlocks[#enBlocks + 1] = { text = LABELS.enNoOffer, caveat = true }
-      end
       if entry.description and entry.description ~= "" then
         enBlocks[#enBlocks + 1] = { text = entry.description }
       end
       if entry.objectives and entry.objectives ~= "" then
         enBlocks[#enBlocks + 1] = { text = entry.objectives }
       end
+      -- The caveat goes last, under the text it is about. Above it, it was the
+      -- first thing read on every quest that has one -- a red paragraph standing
+      -- between the reader and what they opened the panel for. It explains an
+      -- absence, and an explanation of what is missing is only worth reading
+      -- after seeing what is there.
+      local caveat
+      if lastQuest.passage and lastQuest.passage ~= "offer" then
+        caveat = LABELS.enOfferOnly
+      elseif not hasOffer then
+        -- The record itself has no opening text, which is every Classic quest.
+        -- Nothing is being withheld here, so say what is actually on screen.
+        caveat = LABELS.enNoOffer
+      end
+      if caveat then
+        enBlocks[#enBlocks + 1] = { text = caveat, caveat = true }
+      end
     end
     panel.enTitle:SetText(enTitle)
     for _, bit in ipairs(enBits) do bit:Hide() end
+    -- The English column follows the English panel's own size.
+    local enScale = Addon.GetEnPanelTextScale and Addon.GetEnPanelTextScale() or 1
+    local TOKEN_H, TOKEN_STEP = tokenMetrics(enScale)
     local ex, ey, eused = 0, 0, 0
     for index, block in ipairs(enBlocks) do
       local color = block.caveat and COLORS.caveat or nil
@@ -84,7 +114,7 @@ local function refreshPanel()
             bit = CreateFrame("Frame", nil, panel.enContent)
             bit.text = bit:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
             bit.text:SetPoint("CENTER")
-            tokenFont(bit.text)
+            tokenFont(bit.text, enScale)
             bit.text:SetWordWrap(false)
             enBits[eused] = bit
           end
@@ -131,7 +161,6 @@ local function refreshPanel()
         button = CreateFrame("Button", nil, panel.content)
         button.text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         button.text:SetPoint("CENTER")
-        tokenFont(button.text)
         button.text:SetWordWrap(false)
         button.underline = button:CreateTexture(nil, "ARTWORK")
         button.underline:SetHeight(2)
@@ -141,6 +170,8 @@ local function refreshPanel()
         wordButtons[used] = button
       end
       button:SetHeight(TOKEN_H)
+      -- Same reason as the English column: pooled frames need the font each time.
+      tokenFont(button.text)
 
       button.text:SetText(token)
       local width = math.min(contentWidth, math.ceil(button.text:GetStringWidth()) + 6)

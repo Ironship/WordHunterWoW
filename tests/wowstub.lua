@@ -41,8 +41,14 @@ local function node()
   function t:GetWidth() return self.w or 430 end
   function t:GetHeight() return self.h or 240 end
   function t:GetSize() return self:GetWidth(), self:GetHeight() end
-  -- Measurements have to be numbers; the values do not matter.
-  function t:GetStringWidth() return 40 end
+  -- Measurements have to be numbers, and text has to get wider as the font
+  -- grows -- otherwise a test cannot tell whether a size change reached the
+  -- layout at all.
+  -- LAST_FONT_SIZE lets a test see the size the addon actually asked for,
+  -- without having to reach into pooled frames it does not own.
+  function t:SetFont(_, size) self._fontSize = size LAST_FONT_SIZE = size end
+  function t:GetFontSize() return self._fontSize end
+  function t:GetStringWidth() return 40 * ((self._fontSize or 12) / 12) end
   function t:GetStringHeight() return 10 end
   function t:GetNumPoints() return 0 end
   return setmetatable(t, {
@@ -55,7 +61,31 @@ local function node()
   })
 end
 
-CreateFrame = function() return node() end
+-- Frames the addon names, and looks up again through _G. The real client
+-- creates a global for a named frame and for its template's children, so a
+-- stub that does not answer those lookups fails on code that is perfectly fine.
+local created = 0
+CreateFrame = function(_, name)
+  local f = node()
+  created = created + 1
+  local given = name or ("Stub" .. created)
+  function f:GetName() return given end
+  if name then _G[name] = f end
+  return f
+end
+
+setmetatable(_G, {
+  __index = function(_, key)
+    -- Only for this addon's own names, so a genuine typo in a Blizzard global
+    -- still shows up as nil rather than quietly becoming a frame.
+    if type(key) == "string" and key:find("^WordHunterWoW") then
+      local made = node()
+      function made:GetName() return key end
+      rawset(_G, key, made)
+      return made
+    end
+  end,
+})
 GameFontHighlight = { GetFont = function() return "FRIZQT__.TTF", 12, "" end }
 GameFontNormal, GameFontNormalSmall, GameFontDisableSmall = GameFontHighlight, GameFontHighlight, GameFontHighlight
 

@@ -75,6 +75,11 @@ Addon.LABELS = {
   settingsTitle = "WordHunterWoW Settings",
   backgroundLabel = "Background style",
   opacityLabel = "Opacity",
+  textScaleLabel = "Quest text size",
+  enPanelScaleLabel = "English panel size",
+  editorScaleLabel = "Word editor size",
+  listScaleLabel = "Word list size",
+  statsScaleLabel = "Statistics window size",
   languageLabel = "Target (learned and in game) language",
   resetDictionary = "Reset to dictionary",
   confirmAction = "Reset",
@@ -172,6 +177,115 @@ function Addon.GetOpacity()
   local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.opacity
   if type(v) == "number" and v >= 0 and v <= 1.0 then return v end
   return 1.0
+end
+
+-- Text size, as a multiple of the game's own font.
+--
+-- The addon draws its own text rather than using Blizzard font objects
+-- directly, so the game's UI scale never reaches it and there was nothing the
+-- player could do about text that was simply too small.
+--
+-- Three separate sizes rather than one, because the surfaces cannot take the
+-- same treatment. The quest panel lays its words out itself and can grow its
+-- rows to match. The editor and the word list are built on frames with fixed
+-- heights, so their text has less room before it collides. And the English
+-- panel is a separate addon with its own window. One slider would have to be
+-- set for the tightest of the three.
+--
+-- Bounded at both ends: below the floor the words stop being clickable targets,
+-- and above the ceiling a long quest no longer fits a window that can be
+-- dragged onto the screen.
+local TEXT_SCALE_MIN, TEXT_SCALE_MAX = 0.8, 2.0
+Addon.TEXT_SCALE_MIN, Addon.TEXT_SCALE_MAX = TEXT_SCALE_MIN, TEXT_SCALE_MAX
+
+local function scaleGetter(key)
+  return function()
+    local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings[key]
+    if type(v) == "number" and v >= TEXT_SCALE_MIN and v <= TEXT_SCALE_MAX then return v end
+    return 1.0
+  end
+end
+
+local function scaleSetter(key, after)
+  return function(value)
+    value = tonumber(value) or 1.0
+    if value < TEXT_SCALE_MIN then value = TEXT_SCALE_MIN end
+    if value > TEXT_SCALE_MAX then value = TEXT_SCALE_MAX end
+    if WordHunterWoWDB and WordHunterWoWDB.settings then
+      WordHunterWoWDB.settings[key] = value
+    end
+    if after then after() end
+    return value
+  end
+end
+
+Addon.TEXT_SCALE_KEYS = {
+  "textScale", "enPanelTextScale", "editorScale", "listScale", "statsScale",
+}
+
+-- Every window this addon owns, and the key that sizes it. Named here once so
+-- the settings panel and the code that applies them cannot drift apart.
+Addon.SCALED_WINDOWS = {
+  { key = "enPanelTextScale", label = "enPanelScaleLabel", frame = function() return Addon.enPanel end },
+  { key = "editorScale",      label = "editorScaleLabel",  frame = function() return Addon.editor end },
+  { key = "listScale",        label = "listScaleLabel",    frame = function() return Addon.listFrame end },
+  { key = "statsScale",       label = "statsScaleLabel",   frame = function() return Addon.statsFrame end },
+}
+
+-- The clickable quest words, in both columns of the panel. This one is a font
+-- size rather than a window scale: the panel lays its words out itself, so it
+-- can give them more room without the window growing, and the point of that
+-- window is how much text fits in it.
+Addon.GetTextScale = scaleGetter("textScale")
+Addon.SetTextScale = scaleSetter("textScale", function()
+  -- Redraw at once: a size you cannot see until the next quest is a size you
+  -- cannot choose.
+  if Addon.refreshPanel and Addon.panel and Addon.panel:IsShown() then
+    Addon.refreshPanel()
+  end
+end)
+
+-- The other windows are scaled whole, with SetScale. It takes everything inside
+-- with it -- the labels, the buttons, the meaning and note boxes, the list rows
+-- and the space between them -- which is both simpler and safer than resizing
+-- font strings one at a time and then fixing every layout that assumed the old
+-- height. An earlier attempt did it the other way and missed the meaning field
+-- outright.
+function Addon.ApplyWindowScale(which)
+  for _, w in ipairs(Addon.SCALED_WINDOWS) do
+    if not which or which == w.key then
+      local frame = w.frame()
+      -- The English panel belongs to the other addon and scales itself, so ask
+      -- it rather than reaching into its frame.
+      if w.key == "enPanelTextScale" and frame and frame.ApplyTextScale then
+        frame.ApplyTextScale()
+      elseif frame and frame.SetScale then
+        local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings[w.key]
+        if type(v) ~= "number" or v < TEXT_SCALE_MIN or v > TEXT_SCALE_MAX then v = 1.0 end
+        frame:SetScale(v)
+      end
+    end
+  end
+end
+
+for _, w in ipairs(Addon.SCALED_WINDOWS) do
+  local key = w.key
+  Addon["Get" .. key:sub(1, 1):upper() .. key:sub(2)] = scaleGetter(key)
+  Addon["Set" .. key:sub(1, 1):upper() .. key:sub(2)] = scaleSetter(key, function()
+    Addon.ApplyWindowScale(key)
+  end)
+end
+
+-- Applies a scale to one font string, taking the base size from the Blizzard
+-- font object it would otherwise have used. Reading the base each time means a
+-- font the player changes in the game's own settings still comes through.
+function Addon.ScaleFontString(fs, fontObjectName, scale)
+  if not fs or not fs.SetFont then return end
+  local object = _G[fontObjectName or "GameFontHighlight"]
+  if type(object) ~= "table" or not object.GetFont then return end
+  local path, size, flags = object:GetFont()
+  if not path then return end
+  fs:SetFont(path, (size or 12) * (scale or 1), flags)
 end
 
 function Addon.GetIntegratedLayout()
@@ -556,6 +670,12 @@ function Addon.initializeDatabase()
   end
   if type(WordHunterWoWDB.settings.opacity) ~= "number" or WordHunterWoWDB.settings.opacity < 0 or WordHunterWoWDB.settings.opacity > 1.0 then
     WordHunterWoWDB.settings.opacity = 1.0
+  end
+  for _, key in ipairs(Addon.TEXT_SCALE_KEYS) do
+    local v = WordHunterWoWDB.settings[key]
+    if type(v) ~= "number" or v < TEXT_SCALE_MIN or v > TEXT_SCALE_MAX then
+      WordHunterWoWDB.settings[key] = 1.0
+    end
   end
   if WordHunterWoWDB.settings.integratedLayout == nil then
     WordHunterWoWDB.settings.integratedLayout = true

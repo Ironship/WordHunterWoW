@@ -59,12 +59,75 @@ function Addon.CreateSettingsPanel()
     _G[self:GetName() .. "Text"]:SetText(Addon.LABELS.opacityLabel .. " (" .. math.floor(value * 100 + 0.5) .. "%)")
   end)
 
+  local scaleLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  scaleLabel:SetPoint("TOPLEFT", 16, -285)
+  scaleLabel:SetText(Addon.LABELS.textScaleLabel)
+
+  local scale = CreateFrame("Slider", "WordHunterWoWTextScaleSlider", panel, "OptionsSliderTemplate")
+  scale:SetPoint("TOPLEFT", 16, -305)
+  scale:SetSize(460, 16)
+  scale:SetMinMaxValues(Addon.TEXT_SCALE_MIN, Addon.TEXT_SCALE_MAX)
+  scale:SetValueStep(0.05)
+  scale:SetObeyStepOnDrag(true)
+  scale:SetValue(Addon.GetTextScale())
+  _G[scale:GetName() .. "Low"]:SetText(string.format("%d%%", Addon.TEXT_SCALE_MIN * 100))
+  _G[scale:GetName() .. "High"]:SetText(string.format("%d%%", Addon.TEXT_SCALE_MAX * 100))
+  local function scaleText(v)
+    return Addon.LABELS.textScaleLabel .. string.format(" (%d%%)", v * 100 + 0.5)
+  end
+  _G[scale:GetName() .. "Text"]:SetText(scaleText(Addon.GetTextScale()))
+  scale:SetScript("OnValueChanged", function(self, value)
+    value = math.floor(value * 20 + 0.5) / 20
+    Addon.SetTextScale(value)
+    _G[self:GetName() .. "Text"]:SetText(scaleText(value))
+  end)
+  panel.textScaleSlider = scale
+
+  -- One slider per surface rather than one for everything: the quest panel can
+  -- grow its rows to match, while the editor and the list sit on frames with
+  -- fixed heights and have less room before the text collides. A single slider
+  -- would have to be set for the tightest of them.
+  local function sizeSlider(name, y, label, get, set)
+    local caption = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    caption:SetPoint("TOPLEFT", 16, y)
+    caption:SetText(label)
+    local s = CreateFrame("Slider", name, panel, "OptionsSliderTemplate")
+    s:SetPoint("TOPLEFT", 16, y - 20)
+    s:SetSize(460, 16)
+    s:SetMinMaxValues(Addon.TEXT_SCALE_MIN, Addon.TEXT_SCALE_MAX)
+    s:SetValueStep(0.05)
+    s:SetObeyStepOnDrag(true)
+    s:SetValue(get())
+    _G[s:GetName() .. "Low"]:SetText(string.format("%d%%", Addon.TEXT_SCALE_MIN * 100))
+    _G[s:GetName() .. "High"]:SetText(string.format("%d%%", Addon.TEXT_SCALE_MAX * 100))
+    local function caption_for(v) return label .. string.format(" (%d%%)", v * 100 + 0.5) end
+    _G[s:GetName() .. "Text"]:SetText(caption_for(get()))
+    s:SetScript("OnValueChanged", function(self, value)
+      value = math.floor(value * 20 + 0.5) / 20
+      set(value)
+      _G[self:GetName() .. "Text"]:SetText(caption_for(value))
+    end)
+    return s
+  end
+
+  -- One slider per window, generated from the same table the scaling reads, so
+  -- adding a window in one place cannot leave it without a control here.
+  panel.windowSliders = {}
+  local y = -338
+  for _, w in ipairs(Addon.SCALED_WINDOWS) do
+    local name = "WordHunterWoW" .. w.key:sub(1, 1):upper() .. w.key:sub(2) .. "Slider"
+    local getter = Addon["Get" .. w.key:sub(1, 1):upper() .. w.key:sub(2)]
+    local setter = Addon["Set" .. w.key:sub(1, 1):upper() .. w.key:sub(2)]
+    panel.windowSliders[w.key] = sizeSlider(name, y, Addon.LABELS[w.label], getter, setter)
+    y = y - 53
+  end
+
   local langLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  langLabel:SetPoint("TOPLEFT", 16, -285)
+  langLabel:SetPoint("TOPLEFT", 16, -550)
   langLabel:SetText(Addon.LABELS.languageLabel)
 
   local langDropdown = CreateFrame("Frame", "WordHunterWoWLanguageDropdown", panel, "UIDropDownMenuTemplate")
-  langDropdown:SetPoint("TOPLEFT", 12, -305)
+  langDropdown:SetPoint("TOPLEFT", 12, -570)
   UIDropDownMenu_SetWidth(langDropdown, 220)
 
   local function UpdateLangDropdownText()
@@ -99,15 +162,15 @@ function Addon.CreateSettingsPanel()
   UpdateLangDropdownText()
 
   local langNote = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-  langNote:SetPoint("TOPLEFT", 16, -342)
-  langNote:SetPoint("TOPRIGHT", -16, -342)
+  langNote:SetPoint("TOPLEFT", 16, -607)
+  langNote:SetPoint("TOPRIGHT", -16, -607)
   langNote:SetJustifyH("LEFT")
   langNote:SetWordWrap(true)
   langNote:SetText("Required — words are stored separately per language. English US/GB both export as 'en'.")
   langNote:SetTextColor(0.8, 0.82, 0.88)
 
   local integrated = CreateFrame("CheckButton", "WordHunterWoWIntegratedCheck", panel, "UICheckButtonTemplate")
-  integrated:SetPoint("TOPLEFT", 12, -372)
+  integrated:SetPoint("TOPLEFT", 12, -637)
   local integratedText = _G[integrated:GetName() .. "Text"]
   if integratedText then
     integratedText:SetText(Addon.LABELS.integratedLabel)
@@ -119,7 +182,7 @@ function Addon.CreateSettingsPanel()
   panel.integratedCheck = integrated
 
   local harvest = CreateFrame("CheckButton", "WordHunterWoWHarvestCheck", panel, "UICheckButtonTemplate")
-  harvest:SetPoint("TOPLEFT", 12, -400)
+  harvest:SetPoint("TOPLEFT", 12, -665)
   local harvestText = _G[harvest:GetName() .. "Text"]
   if harvestText then
     harvestText:SetText(Addon.LABELS.harvestLabel)
@@ -131,8 +194,8 @@ function Addon.CreateSettingsPanel()
   panel.harvestCheck = harvest
 
   local harvestNote = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-  harvestNote:SetPoint("TOPLEFT", 16, -424)
-  harvestNote:SetPoint("TOPRIGHT", -16, -424)
+  harvestNote:SetPoint("TOPLEFT", 16, -689)
+  harvestNote:SetPoint("TOPRIGHT", -16, -689)
   harvestNote:SetJustifyH("LEFT")
   harvestNote:SetWordWrap(true)
   harvestNote:SetTextColor(0.8, 0.82, 0.88)

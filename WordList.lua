@@ -17,6 +17,13 @@ end
 
 local function refreshWordList()
   if not listFrame then return end
+  -- And not while it is closed. Rebuilding walks every entry in the dictionary,
+  -- around 74,000 of them, sorts the survivors and lays out the rows. Saving a
+  -- word calls this, so once the list had been opened even once, every save
+  -- paid that cost for a window nobody was looking at -- which is the game
+  -- stuttering on Save, for the rest of the session, because you glanced at the
+  -- word list an hour earlier.
+  if not listFrame:IsShown() then return end
   local query = Addon.utf8Lower(Addon.trim(listFrame.search:GetText()))
   local hideIgnored = WordHunterWoWDB.settings.hideIgnored == true
   local items = {}

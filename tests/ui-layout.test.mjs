@@ -56,8 +56,19 @@ test("says so when a quest record has no English opening text", () => {
   // its own branch and its own label.
   assert.match(source, /enNoOffer = "\[No English opening text/);
   assert.match(source, /elseif not hasOffer then/);
-  assert.match(source, /text = LABELS\.enNoOffer, caveat = true/);
-  // and it must stay an either/or with the passage caveat: two red lines above
-  // one objective would be worse than none.
-  assert.doesNotMatch(source, /enBlocks\[#enBlocks \+ 1\] = \{ text = LABELS\.enOfferOnly, caveat = true \}\s*\n\s*end\s*\n\s*if not hasOffer/);
+  assert.match(source, /caveat = LABELS\.enNoOffer/);
+  // It must stay an either/or with the passage caveat: two red lines above one
+  // objective would be worse than none. One variable, assigned in one branch or
+  // the other, makes that structural rather than a matter of care.
+  assert.match(source, /local caveat\s+if lastQuest\.passage/);
+
+  // And it goes under the English text, not over it. Above, it was the first
+  // thing read on every quest that has one -- a red paragraph standing between
+  // the reader and what they opened the panel for.
+  const enBlock = source.slice(source.indexOf("local enBlocks"), source.indexOf("panel.enTitle:SetText"));
+  const descriptionAt = enBlock.indexOf("text = entry.description");
+  const caveatAt = enBlock.indexOf("text = caveat, caveat = true");
+  assert.ok(descriptionAt > -1 && caveatAt > -1, "both the text and the caveat should be placed");
+  assert.ok(caveatAt > descriptionAt,
+    "the caveat belongs after the English text it explains, not before it");
 });
