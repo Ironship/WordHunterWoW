@@ -73,11 +73,25 @@ local function refreshPanel()
       enTitle = entry.title or LABELS.englishHeader
       enBlocks = {}
       local hasOffer = entry.description and entry.description ~= ""
-      if entry.description and entry.description ~= "" then
-        enBlocks[#enBlocks + 1] = { text = entry.description }
+      -- The English for the passage the player is actually reading, where the
+      -- record has it. Blizzard's quest API publishes neither the progress nor
+      -- the hand-in line, so for a long time this pane could only show the
+      -- opening text and admit it was the wrong passage.
+      local passageText
+      if lastQuest.passage == "progress" then
+        passageText = entry.progress
+      elseif lastQuest.passage == "reward" then
+        passageText = entry.completion
       end
-      if entry.objectives and entry.objectives ~= "" then
-        enBlocks[#enBlocks + 1] = { text = entry.objectives }
+      if passageText and passageText ~= "" then
+        enBlocks[#enBlocks + 1] = { text = passageText }
+      else
+        if entry.description and entry.description ~= "" then
+          enBlocks[#enBlocks + 1] = { text = entry.description }
+        end
+        if entry.objectives and entry.objectives ~= "" then
+          enBlocks[#enBlocks + 1] = { text = entry.objectives }
+        end
       end
       -- The caveat goes last, under the text it is about. Above it, it was the
       -- first thing read on every quest that has one -- a red paragraph standing
@@ -85,7 +99,7 @@ local function refreshPanel()
       -- absence, and an explanation of what is missing is only worth reading
       -- after seeing what is there.
       local caveat
-      if lastQuest.passage and lastQuest.passage ~= "offer" then
+      if lastQuest.passage and lastQuest.passage ~= "offer" and not (passageText and passageText ~= "") then
         caveat = LABELS.enOfferOnly
       elseif not hasOffer then
         -- The record itself has no opening text, which is every Classic quest.

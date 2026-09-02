@@ -33,7 +33,14 @@ local function node()
   -- Text is remembered so tests can read back what the UI displays.
   -- Stored under a private name: `text` is already a field the panel puts
   -- its font strings in.
-  function t:SetText(v) self._text = v end
+  -- A test that wants to read a whole pane cannot walk the pane's children:
+  -- indexing a stub node manufactures another node for any key, so ipairs over
+  -- one never ends. Setting CAPTURE_TEXT to a table records every string the
+  -- addon writes, in order, until the test clears it again.
+  function t:SetText(v)
+    self._text = v
+    if CAPTURE_TEXT then CAPTURE_TEXT[#CAPTURE_TEXT + 1] = tostring(v or "") end
+  end
   function t:GetText() return self._text end
   function t:SetSize(w, h) self.w, self.h = w, h end
   function t:SetWidth(w) self.w = w end
