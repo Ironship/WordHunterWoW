@@ -405,6 +405,7 @@ function Addon.createPanel()
   local panelDef = Addon.LAYOUT_DEFAULTS.npc.panel
   panel:SetSize(panelDef.w, panelDef.h)
   panel:SetPoint("CENTER", UIParent, "CENTER", -200, 0)
+  Addon.PlaceFrame(panel, "panel")
   Addon.MakeResizable(panel, "panel", 400, 230, 1200, 800)
   -- Debounced, the way the word list already does it. Relaying the text out
   -- means measuring and repositioning every word on screen, and undebounced that
@@ -565,8 +566,12 @@ function Addon.createPanel()
       -- columns is far too wide for one, so it is worth bringing back down. But
       -- this used to run on every quest read, so a single-column window the
       -- player had dragged out wide was snapped to the default the next time
-      -- they talked to anyone.
-      if wasIntegrated ~= false and panel:GetWidth() > 700 then
+      -- they talked to anyone. The first call (wasIntegrated == nil) must
+      -- restore the saved position instead: without the English pack the
+      -- panel never took the integrated branch, so PlaceFrame never ran.
+      if wasIntegrated == nil then
+        Addon.PlaceFrame(panel, "panel")
+      elseif wasIntegrated ~= false and panel:GetWidth() > 700 then
         panel:SetSize(430, 240)
       end
     end

@@ -29,6 +29,7 @@ assert(not Addon.HarvestUnknownWord("6"), "however short")
 assert(not Addon.HarvestUnknownWord("100"), "or long")
 assert(not Addon.HarvestUnknownWord("--"), "punctuation is not vocabulary either")
 assert(not Addon.HarvestUnknownWord(""), "nor is nothing")
+assert(Addon.HarvestUnknownWord("à"), "an accented letter is still a word")
 
 -- a number attached to a word is still a word
 assert(Addon.HarvestUnknownWord("12er"), "12er is a word, not a quantity")
@@ -69,5 +70,15 @@ for _, entry in pairs(corpusEntries()) do
       "substitution inside a longer word is acceptable but the text must survive: " .. entry.text)
   end
 end
+
+-- Export must free the live table so collection can start again, without
+-- wiping a previous blob when there is nothing new to write.
+Addon.rebuildHarvestExport()
+assert(Addon.HarvestCount() == 0, "export should clear the live corpus")
+assert(type(WordHunterWoWCorpusExport) == "string" and WordHunterWoWCorpusExport:find("WHC2", 1, true),
+       "the blob must survive in the export variable")
+local blob = WordHunterWoWCorpusExport
+assert(Addon.rebuildHarvestExport() == 0, "a second empty export writes nothing")
+assert(WordHunterWoWCorpusExport == blob, "an empty export must not wipe the blob waiting for reload")
 
 print("harvest-words: ok")

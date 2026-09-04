@@ -102,7 +102,7 @@ Addon.LABELS = {
   harvestExportReload = "Reload now",
   integratedLabel = "Integrated quest window",
   harvestLabel = "Collect quest and NPC text for the dictionary project",
-  harvestNote = "Off by default. Records objectives, progress and hand-in text plus NPC dialogue you actually see — the passages Blizzard's quest API does not publish. Stored locally; %d passages and %d words no dictionary covers. /whw harvest",
+  harvestNote = "Off by default. Records objectives, progress and hand-in text plus NPC dialogue you actually see — the passages Blizzard's quest API does not publish. Stored locally; %d passages and %d words no dictionary covers. Turning it off keeps what was collected until you export or /whw harvest clear.",
   englishHeader = "English",
   enOfferOnly = "[Blizzard publishes no English text for this part of a quest. Showing the quest's opening text instead.]",
   -- Classic quest records carry a title and an objective and no opening text at
@@ -317,9 +317,11 @@ end
 function Addon.GetTargetLocale()
   local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.targetLocale
   if v and Addon.SUPPORTED_LOCALES[v] then return v end
-  local client = GetLocale and GetLocale() or "deDE"
+  local client = GetLocale and GetLocale() or "enUS"
   if Addon.SUPPORTED_LOCALES[client] then return client end
-  return "deDE"
+  -- An unsupported client locale must not pretend the player is learning German,
+  -- or the German dictionary overlays quest text it was never written for.
+  return client
 end
 
 function Addon.SetTargetLocale(locale)
@@ -594,7 +596,7 @@ end
 
 function Addon.cleanWord(token)
   local word = Addon.trim(token):gsub("^[%p]+", ""):gsub("[%p]+$", "")
-  for _, mark in ipairs({ "„", "“", "”", "‚", "‘", "’", "«", "»", "…", "–", "—" }) do
+  for _, mark in ipairs({ "„", "“", "”", "‚", "‘", "’", "«", "»", "…", "–", "—", "¿", "¡" }) do
     word = stripMark(word, mark)
   end
   return Addon.trim(word)
@@ -611,6 +613,9 @@ local LATIN_EXTRA_LOWER = {
 
 function Addon.utf8Lower(text)
   text = tostring(text or "")
+  -- wordKey folds these to ss before lowercasing; search/sort go through here
+  -- alone, so without this "strasse" never finds Straße.
+  text = text:gsub("ẞ", "ss"):gsub("ß", "ss")
   text = text:gsub("\195([\128-\158])", function(byte)
     local code = string.byte(byte)
     if code == 0x97 then return "\195" .. byte end
@@ -805,6 +810,9 @@ Addon.LAYOUT_DEFAULTS = {
 }
 
 function Addon.GetLayoutContext()
+  local Compat = Addon.Compat
+  if Compat and Compat.NpcQuestFrameShown and Compat.NpcQuestFrameShown() then return "npc" end
+  if Compat and Compat.QuestLogShown and Compat.QuestLogShown() then return "questlog" end
   if QuestFrame and QuestFrame:IsShown() then return "npc" end
   if WorldMapFrame and WorldMapFrame:IsShown() then return "questlog" end
   return "npc"
@@ -1009,7 +1017,7 @@ end
 
 function Addon.CloseAll()
   local closed = false
-  for _, key in ipairs({ "panel", "editor", "listFrame", "statsFrame", "copyDialog", "enPanel" }) do
+  for _, key in ipairs({ "panel", "editor", "listFrame", "statsFrame", "copyDialog", "enPanel", "confirmDialog" }) do
     local frame = Addon[key]
     if frame and frame.IsShown and frame:IsShown() then
       frame:Hide()

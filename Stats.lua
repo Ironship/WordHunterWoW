@@ -10,7 +10,8 @@ local function computeStats(now)
   local byStatus = { new = 0, learning = 0, known = 0, ignored = 0 }
   local readyForKnown, added7, added30 = 0, 0, 0
   local top = {}
-  Addon.ForEachEffectiveWord(function(_, entry)
+  Addon.ForEachEffectiveWord(function(_, entry, isDictionary)
+    if isDictionary then return end
     total = total + 1
     local status = Addon.EffectiveStatus(entry)
     byStatus[status] = (byStatus[status] or 0) + 1
@@ -66,6 +67,7 @@ function Addon.toggleStats()
     Addon.setBackdrop(statsFrame)
     Addon.SetupEscapeClose(statsFrame)
     Addon.PlaceFrame(statsFrame, "stats")
+    Addon.ApplyWindowScale("statsScale")
     Addon.MakeResizable(statsFrame, "stats", 340, 380, 650, 700)
     statsFrame:Hide()
 

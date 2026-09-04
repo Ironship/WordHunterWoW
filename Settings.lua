@@ -297,7 +297,19 @@ function Addon.CreateSettingsPanel()
       Addon.settingsCategory = category
     end
   elseif InterfaceOptions_AddCategory then
-    InterfaceOptions_AddCategory(panel)
+    -- Classic's options canvas does not scroll. Harvest sits below y=-650 and
+    -- is unreachable without a scroll child.
+    local host = CreateFrame("Frame", "WordHunterWoWSettingsHost")
+    host.name = panel.name
+    local scroll = CreateFrame("ScrollFrame", "WordHunterWoWSettingsScroll", host, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", 6, -8)
+    scroll:SetPoint("BOTTOMRIGHT", -28, 8)
+    panel:SetParent(scroll)
+    panel:ClearAllPoints()
+    panel:SetSize(615, 780)
+    scroll:SetScrollChild(panel)
+    InterfaceOptions_AddCategory(host)
+    Addon.settingsHost = host
   end
 
   return panel

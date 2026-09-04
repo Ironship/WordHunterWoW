@@ -93,7 +93,8 @@ local function withoutPlayerName(text)
   local player = UnitName and UnitName("player")
   if not player or player == "" then return text end
   -- The name goes into a pattern, so anything magic in it has to be escaped.
-  return (text:gsub((player:gsub("%W", "%%%0")), "<name>"))
+  -- %1, not %0: WoW is Lua 5.1 and %0 is not a valid replacement.
+  return (text:gsub((player:gsub("(%W)", "%%%1")), "<name>"))
 end
 
 function Addon.HarvestText(kind, questId, text)
@@ -131,13 +132,18 @@ function Addon.HarvestText(kind, questId, text)
       Addon.harvestFullAnnounced = true
       if print then
         print("|cff59aefaWordHunterWoW:|r collected text is full ("
-          .. MAX_ENTRIES .. " passages). Export it and it will start again.")
+          .. MAX_ENTRIES .. " passages). Export it — collection starts again after the export.")
       end
     end
     return false
   end
   bucket[key] = { kind = kind, id = questId, text = text, flavor = flavor }
-  counts[Addon.GetTargetLocale()] = Addon.HarvestCount() + 1
+  local locale = Addon.GetTargetLocale()
+  -- HarvestCount() walks the table when the cache is empty, so it already
+  -- includes this row. Only increment when a cached count is already in hand.
+  if counts[locale] then
+    counts[locale] = counts[locale] + 1
+  end
   return true
 end
 
@@ -153,7 +159,8 @@ function Addon.HarvestUnknownWord(word, questId)
   -- wrong about that -- but a bare number teaches nobody anything and every
   -- quest is full of them. A token with no letter in it is a quantity, not
   -- vocabulary.
-  if not word:find("%a") then return false end
+  -- %a is ASCII. A token made only of accented letters (à, è, é) is still a word.
+  if not word:find("%a") and not word:find("[\192-\255]") then return false end
   -- The player's own name appears in gossip and in quest text addressed to
   -- them, and no dictionary covers it, so it was offered as vocabulary. It is
   -- not: collecting it would put one player's character name into the next
@@ -187,6 +194,7 @@ end
 function Addon.HarvestGossip()
   if not Addon.GetHarvestEnabled() then return end
   local text = C_GossipInfo and C_GossipInfo.GetText and C_GossipInfo.GetText()
+  if (not text or text == "") and GetGossipText then text = GetGossipText() end
   if not text or text == "" then return end
   Addon.HarvestText("gossip", 0, text)
 end
@@ -226,6 +234,14 @@ function Addon.rebuildHarvestExport()
   -- WHC2 adds the game each passage came from. Entries collected before this
   -- existed carry no flavour and are Retail by definition, since that is the
   -- only game the addon ran on.
+  if #rows == 0 then return 0 end
   WordHunterWoWCorpusExport = "WHC2|" .. locale .. "|" .. table.concat(rows, ";")
+  -- The blob is already in WordHunterWoWCorpusExport and lands on disk with the
+  -- next reload. Free the live table so collection can start again, matching
+  -- what the full-cap message tells the player. An empty export must not wipe
+  -- a blob that has not reached disk yet.
+  WordHunterWoWCorpus = { version = 1, byLocale = {} }
+  counts = {}
+  Addon.harvestFullAnnounced = nil
   return #rows
 end

@@ -74,6 +74,22 @@ local function saveSelected()
   local now = time()
   local selected = Addon.selected
   local key = selected.key
+  local translation = Addon.trim(editor.translation:GetText())
+  local note = Addon.trim(editor.note:GetText())
+  local dict = selected.dictionaryEntry or Addon.GetDictionaryEntry(key)
+  local dictStatus = dict and ((dict.status == "ignored" or dict.status == "known" or dict.status == "learning" or dict.status == "new") and dict.status or "new") or nil
+  -- Matching the dictionary exactly means there is nothing of the player's to
+  -- keep. Writing an overlay would freeze this wording against later pack updates.
+  if dict and translation == Addon.trim(dict.translation or "")
+      and note == Addon.trim(dict.note or "")
+      and selected.status == dictStatus then
+    Addon.GetWordsTable()[key] = nil
+    Addon.rebuildExport()
+    editor:Hide()
+    Addon.refreshPanel()
+    Addon.refreshWordList()
+    return
+  end
   local entry = Addon.GetWordsTable()[key]
   if not entry then
     entry = { word = selected.word }
@@ -81,12 +97,11 @@ local function saveSelected()
   end
   local statusChangedAt = entry.statusChangedAt or now
   if entry.status ~= selected.status then statusChangedAt = now end
-  local note = Addon.trim(editor.note:GetText())
   local noteUpdatedAt = entry.noteUpdatedAt or 0
   if note ~= (entry.note or "") then noteUpdatedAt = now end
   entry.status = selected.status
   entry.statusChangedAt = statusChangedAt
-  entry.translation = Addon.trim(editor.translation:GetText())
+  entry.translation = translation
   entry.note = note
   entry.noteUpdatedAt = noteUpdatedAt
   entry.context = selected.context
@@ -120,6 +135,7 @@ function Addon.createEditor()
   Addon.SetupEscapeClose(editor)
   Addon.MakeResizable(editor, "editor", 420, 380, 650, 750)
   Addon.PlaceFrame(editor, "editor")
+  Addon.ApplyWindowScale("editorScale")
   editor:Hide()
 
   editor.word = editor:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")

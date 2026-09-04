@@ -113,9 +113,12 @@ SlashCmdList.WORDHUNTERWOW = function(message)
         if strlower(loc) == norm then found = loc; break end
       end
       if not found then
+        local matches = {}
         for _, loc in ipairs(Addon.SUPPORTED_LOCALE_LIST) do
-          if strlower(loc):sub(1,2) == norm:sub(1,2) then found = loc; break end
+          if strlower(loc):sub(1, #norm) == norm then matches[#matches + 1] = loc end
         end
+        -- "es" matches esES and esMX; only a unique prefix is safe to guess.
+        if #matches == 1 then found = matches[1] end
       end
       if found and Addon.SUPPORTED_LOCALES[found] then
         Addon.SetTargetLocale(found)

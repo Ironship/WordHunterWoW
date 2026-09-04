@@ -82,6 +82,15 @@ local function refreshWordList()
   listFrame.content:SetHeight(math.max(1, -y + 16))
   listFrame.content:SetWidth(math.max(300, listFrame:GetWidth() - 60))
   listFrame.scroll:UpdateScrollChildRect()
+  if listFrame.truncated then
+    if #items > 200 then
+      listFrame.truncated:SetText(string.format("showing 200 of %d — search to narrow", #items))
+      listFrame.truncated:Show()
+    else
+      listFrame.truncated:SetText("")
+      listFrame.truncated:Hide()
+    end
+  end
 end
 Addon.refreshWordList = refreshWordList
 
@@ -104,6 +113,7 @@ function Addon.toggleWordList()
     Addon.setBackdrop(listFrame)
     Addon.SetupEscapeClose(listFrame)
     Addon.PlaceFrame(listFrame, "list")
+    Addon.ApplyWindowScale("listScale")
     Addon.MakeResizable(listFrame, "list", 420, 350, 700, 650)
     do
       local debounce
@@ -173,8 +183,14 @@ function Addon.toggleWordList()
     end)
 
     listFrame.scroll = CreateFrame("ScrollFrame", nil, listFrame, "UIPanelScrollFrameTemplate")
+    listFrame.truncated = listFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    listFrame.truncated:SetPoint("BOTTOMLEFT", 18, 8)
+    listFrame.truncated:SetPoint("BOTTOMRIGHT", -34, 8)
+    listFrame.truncated:SetJustifyH("LEFT")
+    listFrame.truncated:Hide()
+
     listFrame.scroll:SetPoint("TOPLEFT", 18, -158)
-    listFrame.scroll:SetPoint("BOTTOMRIGHT", -34, 18)
+    listFrame.scroll:SetPoint("BOTTOMRIGHT", -34, 22)
     if listFrame.scroll.SetClipsChildren then listFrame.scroll:SetClipsChildren(true) end
     listFrame.content = CreateFrame("Frame", nil, listFrame.scroll)
     listFrame.content:SetWidth(400)
