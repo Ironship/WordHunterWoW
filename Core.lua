@@ -94,9 +94,7 @@ Addon.LABELS = {
   -- The file only reaches disk when the game writes its saved variables, which
   -- it does on reload or logout and at no other time. Someone who exports and
   -- then goes looking finds yesterday's file and reasonably concludes it broke.
-  harvestExportBody = "%d passages and %d words are ready to send.\n\n"
-    .. "|cffffcc66The file is only written when you reload or log out.|r "
-    .. "Do that first, then find it here:",
+  harvestExportBody = "%d passages and %d words. Ctrl+C copies the block — paste it in a CurseForge comment or a Discord message.",
   harvestExportEmpty = "Nothing has been collected yet.\n\n"
     .. "Switch on the box above and read a few quests, then come back.",
   harvestExportReload = "Reload now",

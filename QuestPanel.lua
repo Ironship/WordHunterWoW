@@ -316,19 +316,31 @@ local function readCurrentQuest(questLogId)
   end
   local desc = normalizeQuestText(description)
   local obj = normalizeQuestText(objectives)
-  local text = Addon.trim(desc .. (desc ~= "" and obj ~= "" and "\n\n" or "") .. obj)
-  text = text:gsub("\n\n\n+", "\n\n")
-  -- Which passage the NPC is actually showing. Blizzard's quest API only publishes
-  -- the offer text and the objectives, so a panel that carries pre-fetched text has
-  -- nothing to show for the progress and hand-in lines and must say so.
-  local passage = "offer"
-  if text == "" and GetProgressText then
-    text = Addon.trim(normalizeQuestText(GetProgressText()))
-    if text ~= "" then passage = "progress" end
+  local offer = Addon.trim(desc .. (desc ~= "" and obj ~= "" and "\n\n" or "") .. obj)
+  offer = offer:gsub("\n\n\n+", "\n\n")
+  local progressText = Addon.trim(normalizeQuestText(GetProgressText and GetProgressText() or ""))
+  local rewardText = Addon.trim(normalizeQuestText(GetRewardText and GetRewardText() or ""))
+  -- Events set lastPassage. Tests and anything that skipped them still infer
+  -- from which Blizzard function answered, the way this used to work.
+  local passage = Addon.lastPassage
+  if passage ~= "progress" and passage ~= "reward" and passage ~= "gossip" then
+    if offer == "" and progressText ~= "" then
+      passage = "progress"
+    elseif offer == "" and rewardText ~= "" then
+      passage = "reward"
+    else
+      passage = "offer"
+    end
   end
-  if text == "" and GetRewardText then
-    text = Addon.trim(normalizeQuestText(GetRewardText()))
-    if text ~= "" then passage = "reward" end
+  -- The live client still returns the offer during progress and hand-in, so
+  -- using "whichever function is non-empty" kept showing the opening paragraph
+  -- while the NPC was saying something else. Trust the passage, fall back to
+  -- the offer only when that line is missing.
+  local text = offer
+  if passage == "progress" and progressText ~= "" then
+    text = progressText
+  elseif passage == "reward" and rewardText ~= "" then
+    text = rewardText
   end
   if text == "" then return end
   -- Objectives, progress and hand-in text exist only here, never in the quest
@@ -338,8 +350,8 @@ local function readCurrentQuest(questLogId)
       title = title,
       description = desc,
       objectives = obj,
-      progress = passage == "progress" and text or nil,
-      reward = passage == "reward" and text or nil,
+      progress = progressText ~= "" and progressText or nil,
+      reward = rewardText ~= "" and rewardText or nil,
     })
   end
   Addon.lastQuest = { id = questId or 0, title = Addon.trim(title), text = text, passage = passage }
@@ -364,6 +376,20 @@ local function readCurrentQuest(questLogId)
   refreshPanel()
 end
 Addon.readCurrentQuest = readCurrentQuest
+
+function Addon.readGossip()
+  local text = C_GossipInfo and C_GossipInfo.GetText and C_GossipInfo.GetText()
+  if (not text or text == "") and GetGossipText then text = GetGossipText() end
+  text = Addon.trim(tostring(text or ""))
+  if text == "" then return end
+  local title = (UnitName and (UnitName("npc") or UnitName("questnpc"))) or "Gossip"
+  Addon.lastPassage = "gossip"
+  Addon.lastQuest = { id = 0, title = Addon.trim(title), text = text, passage = "gossip" }
+  if Addon.ApplyIntegratedLayout then Addon.ApplyIntegratedLayout() end
+  if not panel then return end
+  panel:Show()
+  refreshPanel()
+end
 
 -- Which of Blizzard's functions fired only matters for working out which quest
 -- the player is looking at; the reading itself is the same on every game.

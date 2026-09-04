@@ -3,29 +3,38 @@ local Addon = WordHunterWoW_Addon
 function Addon.CreateSettingsPanel()
   if Addon.settingsPanel then return Addon.settingsPanel end
 
-  local panel = CreateFrame("Frame", "WordHunterWoWSettingsPanel", UIParent, "BackdropTemplate")
+  -- The frame Blizzard parents into the Options canvas. It must be this one —
+  -- wrapping it in another host left the canvas blank on Retail.
+  local panel = CreateFrame("Frame", "WordHunterWoWSettingsPanel")
   panel.name = "WordHunterWoW"
   Addon.settingsPanel = panel
-  Addon.setBackdrop(panel, 1)
 
-  local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+  local scroll = CreateFrame("ScrollFrame", "WordHunterWoWSettingsScroll", panel, "UIPanelScrollFrameTemplate")
+  scroll:SetPoint("TOPLEFT", 4, -4)
+  scroll:SetPoint("BOTTOMRIGHT", -26, 4)
+
+  local box = CreateFrame("Frame", "WordHunterWoWSettingsContent", scroll)
+  box:SetSize(600, 920)
+  scroll:SetScrollChild(box)
+
+  local title = box:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
   title:SetPoint("TOPLEFT", 16, -16)
   title:SetText(Addon.LABELS.settingsTitle)
 
-  local subtitle = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+  local subtitle = box:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
   subtitle:SetPoint("TOPLEFT", 16, -36)
   subtitle:SetText("Midnight-ready backgrounds use the new War Within / Midnight dark style.")
   subtitle:SetTextColor(0.7, 0.74, 0.8)
 
-  local label = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  local label = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
   label:SetPoint("TOPLEFT", 16, -64)
   label:SetText(Addon.LABELS.backgroundLabel)
 
-  local dropdown = CreateFrame("Frame", "WordHunterWoWBackgroundDropdown", panel, "UIDropDownMenuTemplate")
+  local dropdown = CreateFrame("Frame", "WordHunterWoWBackgroundDropdown", box, "UIDropDownMenuTemplate")
   dropdown:SetPoint("TOPLEFT", 12, -84)
   UIDropDownMenu_SetWidth(dropdown, 220)
 
-  local preview = CreateFrame("Frame", nil, panel, "BackdropTemplate")
+  local preview = CreateFrame("Frame", nil, box, "BackdropTemplate")
   preview:SetSize(460, 86)
   preview:SetPoint("TOPLEFT", 16, -132)
   panel.preview = preview
@@ -38,11 +47,11 @@ function Addon.CreateSettingsPanel()
   previewText:SetText("WordHunterWoW  •  Quest text preview  •  Gnom / Gnomen")
   Addon.ApplyBackground(preview)
 
-  local opacityLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  local opacityLabel = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
   opacityLabel:SetPoint("TOPLEFT", 16, -232)
   opacityLabel:SetText(Addon.LABELS.opacityLabel)
 
-  local slider = CreateFrame("Slider", "WordHunterWoWOpacitySlider", panel, "OptionsSliderTemplate")
+  local slider = CreateFrame("Slider", "WordHunterWoWOpacitySlider", box, "OptionsSliderTemplate")
   slider:SetPoint("TOPLEFT", 16, -252)
   slider:SetSize(460, 16)
   slider:SetMinMaxValues(0, 1.0)
@@ -59,11 +68,11 @@ function Addon.CreateSettingsPanel()
     _G[self:GetName() .. "Text"]:SetText(Addon.LABELS.opacityLabel .. " (" .. math.floor(value * 100 + 0.5) .. "%)")
   end)
 
-  local scaleLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  local scaleLabel = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
   scaleLabel:SetPoint("TOPLEFT", 16, -285)
   scaleLabel:SetText(Addon.LABELS.textScaleLabel)
 
-  local scale = CreateFrame("Slider", "WordHunterWoWTextScaleSlider", panel, "OptionsSliderTemplate")
+  local scale = CreateFrame("Slider", "WordHunterWoWTextScaleSlider", box, "OptionsSliderTemplate")
   scale:SetPoint("TOPLEFT", 16, -305)
   scale:SetSize(460, 16)
   scale:SetMinMaxValues(Addon.TEXT_SCALE_MIN, Addon.TEXT_SCALE_MAX)
@@ -88,10 +97,10 @@ function Addon.CreateSettingsPanel()
   -- fixed heights and have less room before the text collides. A single slider
   -- would have to be set for the tightest of them.
   local function sizeSlider(name, y, label, get, set)
-    local caption = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    local caption = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     caption:SetPoint("TOPLEFT", 16, y)
     caption:SetText(label)
-    local s = CreateFrame("Slider", name, panel, "OptionsSliderTemplate")
+    local s = CreateFrame("Slider", name, box, "OptionsSliderTemplate")
     s:SetPoint("TOPLEFT", 16, y - 20)
     s:SetSize(460, 16)
     s:SetMinMaxValues(Addon.TEXT_SCALE_MIN, Addon.TEXT_SCALE_MAX)
@@ -122,11 +131,11 @@ function Addon.CreateSettingsPanel()
     y = y - 53
   end
 
-  local langLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  local langLabel = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
   langLabel:SetPoint("TOPLEFT", 16, -550)
   langLabel:SetText(Addon.LABELS.languageLabel)
 
-  local langDropdown = CreateFrame("Frame", "WordHunterWoWLanguageDropdown", panel, "UIDropDownMenuTemplate")
+  local langDropdown = CreateFrame("Frame", "WordHunterWoWLanguageDropdown", box, "UIDropDownMenuTemplate")
   langDropdown:SetPoint("TOPLEFT", 12, -570)
   UIDropDownMenu_SetWidth(langDropdown, 220)
 
@@ -161,7 +170,7 @@ function Addon.CreateSettingsPanel()
   UIDropDownMenu_Initialize(langDropdown, InitializeLang)
   UpdateLangDropdownText()
 
-  local langNote = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+  local langNote = box:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
   langNote:SetPoint("TOPLEFT", 16, -607)
   langNote:SetPoint("TOPRIGHT", -16, -607)
   langNote:SetJustifyH("LEFT")
@@ -169,7 +178,7 @@ function Addon.CreateSettingsPanel()
   langNote:SetText("Required — words are stored separately per language. English US/GB both export as 'en'.")
   langNote:SetTextColor(0.8, 0.82, 0.88)
 
-  local integrated = CreateFrame("CheckButton", "WordHunterWoWIntegratedCheck", panel, "UICheckButtonTemplate")
+  local integrated = CreateFrame("CheckButton", "WordHunterWoWIntegratedCheck", box, "UICheckButtonTemplate")
   integrated:SetPoint("TOPLEFT", 12, -637)
   local integratedText = _G[integrated:GetName() .. "Text"]
   if integratedText then
@@ -181,7 +190,7 @@ function Addon.CreateSettingsPanel()
   end)
   panel.integratedCheck = integrated
 
-  local harvest = CreateFrame("CheckButton", "WordHunterWoWHarvestCheck", panel, "UICheckButtonTemplate")
+  local harvest = CreateFrame("CheckButton", "WordHunterWoWHarvestCheck", box, "UICheckButtonTemplate")
   harvest:SetPoint("TOPLEFT", 12, -665)
   local harvestText = _G[harvest:GetName() .. "Text"]
   if harvestText then
@@ -193,7 +202,7 @@ function Addon.CreateSettingsPanel()
   end)
   panel.harvestCheck = harvest
 
-  local harvestNote = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+  local harvestNote = box:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
   harvestNote:SetPoint("TOPLEFT", 16, -689)
   harvestNote:SetPoint("TOPRIGHT", -16, -689)
   harvestNote:SetJustifyH("LEFT")
@@ -204,24 +213,23 @@ function Addon.CreateSettingsPanel()
   -- The slash command did this already, but only someone who read the addon's
   -- description knew it existed. Anyone who switches the box on can now find
   -- the way to get the text back out without being told.
-  local harvestExport = Addon.createActionButton(panel, Addon.LABELS.harvestExport)
+  local harvestExport = Addon.createActionButton(box, Addon.LABELS.harvestExport)
   harvestExport:SetSize(180, 24)
   -- Anchored under the note rather than at a fixed offset, so it follows however
   -- many lines the note wraps to.
   harvestExport:SetPoint("TOPLEFT", harvestNote, "BOTTOMLEFT", 0, -8)
   harvestExport:SetScript("OnClick", function()
     local written = Addon.rebuildHarvestExport and Addon.rebuildHarvestExport() or 0
-    if written <= 0 then
+    local blob = WordHunterWoWCorpusExport
+    -- A previous export this session already moved the live table into the blob.
+    -- Showing "nothing collected" would lie; offer the blob again.
+    if type(blob) ~= "string" or blob == "" then
       Addon.showConfirm(Addon.LABELS.harvestExport, Addon.LABELS.harvestExportEmpty,
         Addon.LABELS.confirmCancel, nil)
       return
     end
-    local words = Addon.HarvestWordCount and Addon.HarvestWordCount() or 0
-    Addon.showConfirm(Addon.LABELS.harvestExport,
-      string.format(Addon.LABELS.harvestExportBody, written - words, words),
-      Addon.LABELS.harvestExportReload,
-      function() if ReloadUI then ReloadUI() end end,
-      Addon.HarvestExportPath and Addon.HarvestExportPath() or nil)
+    Addon.showCopyText(Addon.LABELS.harvestExport, blob)
+    if panel.refresh then panel.refresh() end
   end)
   panel.harvestExport = harvestExport
 
@@ -283,6 +291,7 @@ function Addon.CreateSettingsPanel()
   -- was true the last time the addon opened it itself.
   panel:HookScript("OnShow", function(self)
     if self.refresh then self.refresh() end
+    if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
   end)
 
   if Settings and Settings.RegisterAddOnCategory then
@@ -297,19 +306,7 @@ function Addon.CreateSettingsPanel()
       Addon.settingsCategory = category
     end
   elseif InterfaceOptions_AddCategory then
-    -- Classic's options canvas does not scroll. Harvest sits below y=-650 and
-    -- is unreachable without a scroll child.
-    local host = CreateFrame("Frame", "WordHunterWoWSettingsHost")
-    host.name = panel.name
-    local scroll = CreateFrame("ScrollFrame", "WordHunterWoWSettingsScroll", host, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", 6, -8)
-    scroll:SetPoint("BOTTOMRIGHT", -28, 8)
-    panel:SetParent(scroll)
-    panel:ClearAllPoints()
-    panel:SetSize(615, 780)
-    scroll:SetScrollChild(panel)
-    InterfaceOptions_AddCategory(host)
-    Addon.settingsHost = host
+    InterfaceOptions_AddCategory(panel)
   end
 
   return panel

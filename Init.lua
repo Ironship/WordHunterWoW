@@ -10,6 +10,7 @@ events:RegisterEvent("QUEST_PROGRESS")
 events:RegisterEvent("QUEST_COMPLETE")
 events:RegisterEvent("QUEST_FINISHED")
 events:RegisterEvent("GOSSIP_SHOW")
+events:RegisterEvent("GOSSIP_CLOSED")
 events:SetScript("OnEvent", function(_, event, loadedAddon)
   if event == "ADDON_LOADED" then
     if loadedAddon == addonName then
@@ -36,11 +37,26 @@ events:SetScript("OnEvent", function(_, event, loadedAddon)
     Addon.Compat.Refresh()
     Addon.hookQuestUi()
   elseif event == "GOSSIP_SHOW" then
+    Addon.lastPassage = "gossip"
     if Addon.HarvestGossip then Addon.HarvestGossip() end
+    if Addon.readGossip then Addon.readGossip() end
+  elseif event == "GOSSIP_CLOSED" then
+    if Addon.lastQuest and Addon.lastQuest.passage == "gossip" then
+      if Addon.panel then Addon.panel:Hide() end
+      if Addon.editor then Addon.editor:Hide() end
+    end
   elseif event == "QUEST_FINISHED" then
+    Addon.lastPassage = "offer"
     if Addon.panel then Addon.panel:Hide() end
     if Addon.editor then Addon.editor:Hide() end
   else
+    if event == "QUEST_PROGRESS" then
+      Addon.lastPassage = "progress"
+    elseif event == "QUEST_COMPLETE" then
+      Addon.lastPassage = "reward"
+    else
+      Addon.lastPassage = "offer"
+    end
     C_Timer.After(0, Addon.readCurrentQuest)
   end
 end)
@@ -61,8 +77,13 @@ SlashCmdList.WORDHUNTERWOW = function(message)
       Addon.ClearHarvest()
       print("|cff66ccffWordHunterWoW:|r Collected text cleared.")
     elseif arg == "export" then
-      local n = Addon.rebuildHarvestExport()
-      print(string.format("|cff66ccffWordHunterWoW:|r %d passages written to SavedVariables. Reload or log out first, then import.", n))
+      Addon.rebuildHarvestExport()
+      local blob = WordHunterWoWCorpusExport
+      if Addon.showCopyText and type(blob) == "string" and blob ~= "" then
+        Addon.showCopyText(Addon.LABELS.harvestExport, blob)
+      else
+        print("|cff66ccffWordHunterWoW:|r Nothing to copy.")
+      end
     else
       print(string.format("|cff66ccffWordHunterWoW:|r Text collection %s, %d passages and %d unglossed words for %s.  •  /whw harvest <on|off|export|clear>",
         Addon.GetHarvestEnabled() and "on" or "off", Addon.HarvestCount() - Addon.HarvestWordCount(),

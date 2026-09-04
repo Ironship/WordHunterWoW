@@ -188,6 +188,9 @@ function Addon.showCopyText(title, value)
     copyDialog.text:SetFontObject("ChatFontNormal")
     copyDialog.text:SetMultiLine(true)
     copyDialog.text:SetAutoFocus(false)
+    -- 0 means "no letters" on some clients, not "unlimited". A harvest blob is
+    -- tens of kilobytes; the default cap is 255 and the box looks empty.
+    if copyDialog.text.SetMaxLetters then copyDialog.text:SetMaxLetters(1024 * 1024) end
     copyDialog.text:SetScript("OnEscapePressed", function()
       Addon.CloseAll()
     end)
@@ -201,7 +204,10 @@ function Addon.showCopyText(title, value)
   end
 
   copyDialog.title:SetText(title)
-  copyDialog.text:SetText(value or "")
+  -- A lone "|" is a UI escape (colours, links). The harvest blob is full of
+  -- them, so SetText ate the string and the box came up empty. Doubling is
+  -- how every export box in the game shows a pipe; GetText/Ctrl+C give one.
+  copyDialog.text:SetText((value or ""):gsub("|", "||"))
   copyDialog:Show()
   copyDialog:Raise()
   copyDialog.text:SetFocus()

@@ -43,9 +43,10 @@ end
 -- The wording has to carry the one fact that makes this work.
 local labels = Addon.LABELS
 assert(labels.harvestExport and labels.harvestExport ~= "", "the button needs a name")
-assert(labels.harvestExportBody:find("reload or log out", 1, true),
-  "the dialog must say when the file is actually written")
-assert(labels.harvestExportBody:find("%d") , "and how much is in it")
+assert(labels.harvestExportBody:find("Ctrl+C", 1, true),
+  "the dialog must say how to copy the block")
+assert(labels.harvestExportBody:find("passages", 1, true)
+    and labels.harvestExportBody:find("words", 1, true), "and how much is in it")
 assert(labels.harvestExportEmpty:find("Nothing has been collected", 1, true),
   "an empty export should say so rather than pointing at a file with nothing in it")
 assert(labels.harvestExportReload and labels.harvestExportReload ~= "")
@@ -54,11 +55,13 @@ assert(labels.harvestExportReload and labels.harvestExportReload ~= "")
 local settings = io.open("Settings.lua"):read("a")
 assert(settings:find("LABELS.harvestExport", 1, true), "the button belongs in the settings")
 assert(settings:find("Addon.rebuildHarvestExport", 1, true), "pressing it must write the export")
-assert(settings:find("ReloadUI", 1, true), "and offer the reload that saves it")
-assert(settings:find("Addon.HarvestExportPath", 1, true), "and show where to find it")
+assert(settings:find("showCopyText", 1, true), "and put the blob in a box that can be copied")
+assert(settings:find("WordHunterWoWCorpusExport", 1, true), "the box holds the export, not a file path")
 assert(settings:find("harvestExportEmpty", 1, true), "with nothing collected it must not pretend otherwise")
 
 local ui = io.open("UICommon.lua"):read("a")
 assert(ui:find("HighlightText", 1, true), "the path must be selected so it can be copied")
+assert(ui:find('gsub("|", "||")', 1, true) or ui:find('gsub("|", "||")', 1, true),
+  "pipes in the blob must be escaped or the edit box swallows the text")
 
 print("harvest-export: ok")
