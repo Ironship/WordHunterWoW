@@ -2,6 +2,7 @@ local Addon = WordHunterWoW_Addon
 local COLORS = Addon.COLORS
 local STATUS_LABELS = Addon.STATUS_LABELS
 local LABELS = Addon.LABELS
+local unpack = unpack or table.unpack
 
 local listFrame
 local listRows = {}
@@ -50,14 +51,21 @@ local function refreshWordList()
     if not row then
       row = CreateFrame("Button", nil, listFrame.content)
       row:SetHeight(22)
-      row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+      row:SetHighlightTexture("Interface\\Buttons\\WHITE8X8", "BLEND")
+      row:GetHighlightTexture():SetVertexColor(0.30, 0.42, 0.55, 0.20)
+      row.statusDot = row:CreateTexture(nil, "ARTWORK")
+      row.statusDot:SetSize(4, 4)
+      row.statusDot:SetPoint("LEFT", 2, 0)
       row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-      row.name:SetPoint("TOPLEFT", 2, 0)
+      row.name:SetPoint("TOPLEFT", 12, 0)
+      row.name:SetPoint("RIGHT", row, "CENTER", -8, 0)
       row.name:SetJustifyH("LEFT")
       row.name:SetMaxLines(1)
       row.name:SetWordWrap(false)
       row.meta = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
       row.meta:SetPoint("RIGHT", -2, 0)
+      row.meta:SetPoint("LEFT", row, "CENTER", 8, 0)
+      row.meta:SetTextColor(unpack(COLORS.muted))
       row.meta:SetJustifyH("RIGHT")
       row.meta:SetMaxLines(1)
       row.meta:SetWordWrap(false)
@@ -71,7 +79,8 @@ local function refreshWordList()
     row.entry = item.entry
     local color = COLORS[item.status] or COLORS.new
     row.name:SetText(item.entry.word or item.key)
-    row.name:SetTextColor(color[1], color[2], color[3])
+    row.name:SetTextColor(unpack(COLORS.text))
+    row.statusDot:SetColorTexture(color[1], color[2], color[3], 1)
     row.meta:SetText(Addon.trim(item.entry.translation or ""))
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", 0, y)

@@ -45,7 +45,27 @@ test("both panel columns keep the quest's line breaks", () => {
   assert.doesNotMatch(source, /block\.text\):gmatch\("%S\+"\)/);
   assert.match(source, /function Addon\.TextLines\(text\)/);
   assert.match(source, /ipairs\(Addon\.TextLines\(lastQuest\.text\)\)/);
-  assert.match(source, /ipairs\(Addon\.TextLines\(block\.text\)\)/);
+  assert.match(source, /ipairs\(Addon\.TextLines\(block.text\)\)/);
+});
+
+test("clicking a German word highlights the matching English sentence", () => {
+  assert.match(source, /function Addon\.MatchEnglishSentence\(/);
+  assert.match(source, /function Addon\.HighlightEnglishForWord\(/);
+  assert.match(source, /Addon\.HighlightEnglishForWord\(self\.word/);
+  assert.match(source, /OnHighlightEnglishForWord/);
+  assert.match(source, /function Addon\.MatchEnglishTokenIndexes\(/);
+  assert.match(source, /enWordHighlight/);
+});
+
+test("how a met word is marked is the player's choice, and the mark scales", () => {
+  assert.match(source, /function Addon\.GetWordMarking\(/);
+  assert.match(source, /function Addon\.SetWordMarking\(/);
+  assert.match(source, /function Addon\.UnderlineThickness\(/);
+  assert.match(source, /Addon\.LABELS\.wordMarkingLabel/);
+  assert.match(source, /WORD_MARKING_ORDER/);
+  // A fixed height set once at frame creation cannot follow the text size.
+  assert.doesNotMatch(source, /underline:SetHeight\(\d+\)/);
+  assert.match(source, /underline:SetHeight\(underlineHeight\)/);
 });
 
 test("says so when a quest record has no English opening text", () => {

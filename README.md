@@ -11,7 +11,7 @@ QuestWordHunter keeps the quest on screen as clickable text. See a word you don'
 ## What you get
 
 - Quest text you can click instead of retyping into a notes app
-- Colours for **New**, **Learning**, **Known** and **Ignored**, so you see progress in the paragraph itself
+- Colours and underlines for **New**, **Learning**, **Known** and **Ignored**, so you see progress in the paragraph itself — keep both or pick one
 - A meaning, a personal note, and the sentence the word came from
 - A word list and simple stats — `/whw words`, `/whw stats`
 - A quiet **Ready for Known** hint after five different quests and two weeks. It never promotes anything by itself
@@ -39,7 +39,7 @@ You don't have to define every word yourself. A dictionary pack fills them in fo
 | [German](https://github.com/Ironship/WordHunterWoW-Dictionary-DE) | 73,863 words, every one checked by hand |
 | [French](https://github.com/Ironship/WordHunterWoW-Dictionary-FR) · [Spanish](https://github.com/Ironship/WordHunterWoW-Dictionary-ES) · [Italian](https://github.com/Ironship/WordHunterWoW-Dictionary-IT) · [Portuguese](https://github.com/Ironship/WordHunterWoW-Dictionary-PTBR) | machine-translated, not hand-checked |
 
-Want the English quest text side by side? That is [English Quest Panel](https://github.com/Ironship/WordHunterWoW-ENPanel).
+Want the English quest text side by side? That is [English Quest Panel](https://github.com/Ironship/WordHunterWoW-ENPanel). With it installed, pointing at a German word lights up the English sentence that says the same thing, and picks out the English word itself.
 
 ## Helping fill the gaps
 

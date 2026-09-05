@@ -1,6 +1,7 @@
 local Addon = WordHunterWoW_Addon
 local COLORS = Addon.COLORS
 local LABELS = Addon.LABELS
+local unpack = unpack or table.unpack
 
 local panel
 local wordButtons = {}
@@ -30,12 +31,76 @@ local function tokenFont(fs, scale)
   fs:SetShadowOffset(1, -1)
 end
 
+local lastHighlightWord
+local lastHighlightIndex
+local lastHighlightOccurrence
+local lastHighlightSentenceOnly
+local selectedHighlight
+
 local function sentenceForWord(text, word)
-  local needle = Addon.utf8Lower(word)
-  for sentence in tostring(text or ""):gmatch("[^\r\n%.%!%?]+[%.%!%?]?") do
-    if Addon.utf8Lower(sentence):find(needle, 1, true) then return Addon.trim(sentence) end
+  local _, sentence = Addon.SentenceContaining(text, word)
+  return sentence or Addon.trim(text)
+end
+
+local function paintEnglishHighlight(sentenceIndex, wordTokens)
+  local hl = COLORS.enHighlight
+  local wordHl = COLORS.enWordHighlight
+  local bg = COLORS.enHighlightBackground
+  local first
+  for _, bit in ipairs(enBits) do
+    if bit:IsShown() then
+      if bit.caveat then
+        local color = COLORS.caveat
+        bit.text:SetTextColor(color[1], color[2], color[3])
+        if bit.glow then bit.glow:Hide() end
+      elseif sentenceIndex and bit.sentenceIndex == sentenceIndex then
+        local isWord = wordTokens and bit.sentenceToken and wordTokens[bit.sentenceToken]
+        local color = isWord and wordHl or hl
+        bit.text:SetTextColor(color[1], color[2], color[3])
+        if not bit.glow then
+          bit.glow = bit:CreateTexture(nil, "BACKGROUND")
+          bit.glow:SetAllPoints()
+        end
+        bit.glow:SetColorTexture(bg[1], bg[2], bg[3], bg[4])
+        bit.glow:Show()
+        if not first then first = bit end
+      else
+        bit.text:SetTextColor(unpack(COLORS.text))
+        if bit.glow then bit.glow:Hide() end
+      end
+    end
   end
-  return Addon.trim(text)
+  if first and panel.enScroll and panel.enScroll:IsShown() and type(first.topY) == "number" then
+    local view = panel.enScroll:GetHeight() or 0
+    local contentH = panel.enContent:GetHeight() or 0
+    local maxScroll = math.max(0, contentH - view)
+    local current = panel.enScroll:GetVerticalScroll()
+    local top = -first.topY
+    if top < current or top + first:GetHeight() > current + view then
+      panel.enScroll:SetVerticalScroll(math.max(0, math.min(maxScroll, top - 8)))
+    end
+  end
+end
+
+function Addon.HighlightEnglishForWord(word, deSentenceIndex, wordOccurrence, sentenceOnly)
+  if not panel or not Addon.lastQuest then return end
+  lastHighlightWord = word
+  lastHighlightIndex = deSentenceIndex
+  lastHighlightOccurrence = wordOccurrence
+  lastHighlightSentenceOnly = sentenceOnly
+  local enText = panel.enPlain or ""
+  local index, sentence
+  if word and panel.enCanHighlight and enText ~= "" and Addon.MatchEnglishSentence then
+    index, sentence = Addon.MatchEnglishSentence(Addon.lastQuest.text, enText, word, deSentenceIndex)
+  end
+  local wordTokens
+  if sentence and not sentenceOnly and Addon.MatchEnglishTokenIndexes then
+    wordTokens = Addon.MatchEnglishTokenIndexes(sentence, word, wordOccurrence)
+  end
+  paintEnglishHighlight(index, wordTokens)
+  if Addon.OnHighlightEnglishForWord then
+    Addon.OnHighlightEnglishForWord(word, Addon.lastQuest, deSentenceIndex, wordOccurrence, sentenceOnly)
+  end
 end
 
 local function refreshPanel()
@@ -52,7 +117,13 @@ local function refreshPanel()
   -- Whether this render is a different quest from the last one drawn, which is
   -- what decides if the panes go back to the top.
   local newQuest = panel.renderedQuestKey ~= tostring(lastQuest.id or lastQuest.title or "")
+    or panel.renderedText ~= lastQuest.text or panel.renderedPassage ~= lastQuest.passage
   panel.renderedQuestKey = tostring(lastQuest.id or lastQuest.title or "")
+  panel.renderedText, panel.renderedPassage = lastQuest.text, lastQuest.passage
+  if newQuest then
+    lastHighlightWord, lastHighlightIndex, lastHighlightOccurrence = nil, nil, nil
+    lastHighlightSentenceOnly, selectedHighlight = nil, nil
+  end
   panel.title:SetText(lastQuest.title or "Quest")
   for _, button in ipairs(wordButtons) do button:Hide() end
 
@@ -69,6 +140,7 @@ local function refreshPanel()
     -- token at a time, so a newline inside a joined string is discarded with the
     -- rest of the whitespace and the caveat runs straight into the quest text.
     local enBlocks = { { text = "English text is not available for this quest." } }
+    panel.enCanHighlight = entry ~= nil
     if entry then
       enTitle = entry.title or LABELS.englishHeader
       enBlocks = {}
@@ -108,16 +180,35 @@ local function refreshPanel()
       end
       if caveat then
         enBlocks[#enBlocks + 1] = { text = caveat, caveat = true }
+        panel.enCanHighlight = false
       end
     end
     panel.enTitle:SetText(enTitle)
+    local enPlainParts = {}
+    for _, block in ipairs(enBlocks) do
+      if not block.caveat then
+        local piece = tostring(block.text or "")
+        if piece ~= "" then enPlainParts[#enPlainParts + 1] = piece end
+      end
+    end
+    panel.enPlain = table.concat(enPlainParts, "\n\n")
     for _, bit in ipairs(enBits) do bit:Hide() end
     -- The English column follows the English panel's own size.
     local enScale = Addon.GetEnPanelTextScale and Addon.GetEnPanelTextScale() or 1
     local TOKEN_H, TOKEN_STEP = tokenMetrics(enScale)
     local ex, ey, eused = 0, 0, 0
+    local sentenceOffset = 0
     for index, block in ipairs(enBlocks) do
-      local color = block.caveat and COLORS.caveat or nil
+      local color = block.caveat and COLORS.caveat or COLORS.text
+      local sentenceOfToken = {}
+      if not block.caveat then
+        for _, si in ipairs(Addon.TokenSentenceIndexes(block.text)) do
+          sentenceOfToken[#sentenceOfToken + 1] = sentenceOffset + si
+        end
+        sentenceOffset = sentenceOffset + #Addon.SplitSentences(block.text)
+      end
+      local tokenNum = 0
+      local sentenceTokenCounts = {}
       if index > 1 then
         ex = 0
         ey = ey - TOKEN_STEP * 1.6
@@ -132,6 +223,7 @@ local function refreshPanel()
         if #tokens == 0 then ey = ey - TOKEN_STEP * 0.6 end
         for _, token in ipairs(tokens) do
           eused = eused + 1
+          tokenNum = tokenNum + 1
           local bit = enBits[eused]
           if not bit then
             bit = CreateFrame("Frame", nil, panel.enContent)
@@ -145,14 +237,24 @@ local function refreshPanel()
           tokenFont(bit.text, enScale)
           -- Set on every render: these frames are pooled, so a token the caveat
           -- turned red on an earlier quest would stay red.
-          bit.text:SetTextColor(color and color[1] or 0.92,
-                                color and color[2] or 0.92,
-                                color and color[3] or 0.92)
+          bit.text:SetTextColor(color[1], color[2], color[3])
           bit.text:SetText(token)
+          bit.caveat = not not block.caveat
+          if bit.glow then bit.glow:Hide() end
+          bit.sentenceIndex = sentenceOfToken[tokenNum]
+          local si = bit.sentenceIndex
+          if si then
+            sentenceTokenCounts[si] = (sentenceTokenCounts[si] or 0) + 1
+            bit.sentenceToken = sentenceTokenCounts[si]
+          else
+            bit.sentenceToken = nil
+          end
+          bit.topY = ey
           local width = math.min(enWidth, math.ceil(bit.text:GetStringWidth()) + 6)
           if ex > 0 and ex + width > enWidth then
             ex = 0
             ey = ey - TOKEN_STEP
+            bit.topY = ey
           end
           bit:ClearAllPoints()
           bit:SetPoint("TOPLEFT", ex, ey)
@@ -164,6 +266,7 @@ local function refreshPanel()
     end
     panel.enContent:SetHeight(math.max(28, -ey + 28))
     panel.enScroll:UpdateScrollChildRect()
+    Addon.HighlightEnglishForWord(lastHighlightWord, lastHighlightIndex, lastHighlightOccurrence, lastHighlightSentenceOnly)
   end
   local x, y, used = 0, 0, 0
   local savedCount = 0
@@ -173,6 +276,12 @@ local function refreshPanel()
   -- Running gmatch("%S+") over the whole text threw away every line break
   -- in it, so the German column ran together as one block while the English
   -- one beside it kept the paragraphs the quest was written with.
+  local deSentenceOfToken = Addon.TokenSentenceIndexes(lastQuest.text)
+  local deTokenNum = 0
+  local wordOccurrenceInSentence = {}
+  local marking = Addon.GetWordMarking and Addon.GetWordMarking() or "both"
+  local underlineHeight = Addon.UnderlineThickness
+    and Addon.UnderlineThickness(Addon.GetTextScale and Addon.GetTextScale() or 1) or 2
   for _, tokens in ipairs(Addon.TextLines(lastQuest.text)) do
     if x > 0 then
       x = 0
@@ -181,6 +290,7 @@ local function refreshPanel()
     if #tokens == 0 then y = y - TOKEN_STEP * 0.6 end
     for _, token in ipairs(tokens) do
       used = used + 1
+      deTokenNum = deTokenNum + 1
       local button = wordButtons[used]
       if not button then
         button = CreateFrame("Button", nil, panel.content)
@@ -188,10 +298,10 @@ local function refreshPanel()
         button.text:SetPoint("CENTER")
         button.text:SetWordWrap(false)
         button.underline = button:CreateTexture(nil, "ARTWORK")
-        button.underline:SetHeight(2)
         button.underline:SetPoint("BOTTOMLEFT", 1, 1)
         button.underline:SetPoint("BOTTOMRIGHT", -1, 1)
-        button:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+        button:SetHighlightTexture("Interface\\Buttons\\WHITE8X8", "BLEND")
+        button:GetHighlightTexture():SetVertexColor(0.30, 0.42, 0.55, 0.20)
         wordButtons[used] = button
       end
       button:SetHeight(TOKEN_H)
@@ -221,13 +331,23 @@ local function refreshPanel()
         local status = entry and Addon.EffectiveStatus(entry) or "new"
         if progress[status] ~= nil then progress[status] = progress[status] + 1 end
       end
+      button.text:SetTextColor(unpack(COLORS.text))
       if entry then
         local color = COLORS[entry.status] or COLORS.new
-        button.text:SetTextColor(color[1], color[2], color[3])
-        button.underline:SetColorTexture(color[1], color[2], color[3], 0.9)
-        button.underline:Show()
+        if marking ~= "underline" then
+          button.text:SetTextColor(color[1], color[2], color[3])
+        end
+        if marking ~= "color" then
+          -- Opaque, and thick enough to survive the player's text size. Drawn
+          -- faint and one pixel high, the mark was there without being legible,
+          -- which is the worst of both.
+          button.underline:SetHeight(underlineHeight)
+          button.underline:SetColorTexture(color[1], color[2], color[3], 1)
+          button.underline:Show()
+        else
+          button.underline:Hide()
+        end
       else
-        button.text:SetTextColor(0.92, 0.92, 0.92)
         button.underline:Hide()
         -- Nothing knows this word: no dictionary entry and the player has not
         -- saved it. That is the 5% a new patch brings, and the only vocabulary
@@ -237,8 +357,26 @@ local function refreshPanel()
         end
       end
       button.word = word
+      button.sentenceIndex = deSentenceOfToken[deTokenNum]
+      local occKey = tostring(button.sentenceIndex or 0) .. "\0" .. key
+      wordOccurrenceInSentence[occKey] = (wordOccurrenceInSentence[occKey] or 0) + 1
+      button.wordOccurrence = wordOccurrenceInSentence[occKey]
+      button:SetScript("OnEnter", function(self)
+        if self.word and self.word ~= "" then
+          Addon.HighlightEnglishForWord(self.word, self.sentenceIndex, self.wordOccurrence)
+        end
+      end)
+      button:SetScript("OnLeave", function()
+        local selected = selectedHighlight or {}
+        Addon.HighlightEnglishForWord(selected[1], selected[2], selected[3], true)
+      end)
       button:SetScript("OnClick", function(self)
-        Addon.openEditor(self.word, sentenceForWord(lastQuest.text, self.word), lastQuest.id, lastQuest.title)
+        selectedHighlight = { self.word, self.sentenceIndex, self.wordOccurrence }
+        Addon.HighlightEnglishForWord(self.word, self.sentenceIndex, self.wordOccurrence)
+        local deSentences = Addon.SplitSentences(lastQuest.text)
+        local context = (self.sentenceIndex and deSentences[self.sentenceIndex])
+          or sentenceForWord(lastQuest.text, self.word)
+        Addon.openEditor(self.word, context, lastQuest.id, lastQuest.title)
       end)
       button:SetEnabled(word ~= "")
       button:Show()

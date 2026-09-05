@@ -2,14 +2,21 @@ local Addon = WordHunterWoW_Addon or {}
 WordHunterWoW_Addon = Addon
 
 Addon.COLORS = {
+  text = { 0.93, 0.94, 0.96 },
+  muted = { 0.76, 0.80, 0.86 },
   new = { 0.35, 0.68, 1.00 },
   learning = { 1.00, 0.66, 0.18 },
   known = { 0.30, 0.88, 0.48 },
-  ignored = { 0.55, 0.59, 0.66 },
+  -- The dullest of the four, and deliberately so, but it landed on exactly
+  -- 4.50:1 once the status colours became a text colour the player can pick.
+  -- Sitting on the floor means the next palette tweak breaks it.
+  ignored = { 0.62, 0.66, 0.73 },
   neutral = { 0.45, 0.55, 0.70 },
-  -- The "no English for this passage" notice. Red so it reads as a warning about
-  -- the text below it rather than as part of the quest.
-  caveat = { 1.00, 0.42, 0.42 },
+  -- A missing translation is a note, not a red vocabulary highlight.
+  caveat = { 0.76, 0.80, 0.86 },
+  enHighlight = { 0.80, 0.91, 1.00 },
+  enWordHighlight = { 1.00, 0.66, 0.61 },
+  enHighlightBackground = { 0.18, 0.27, 0.36, 0.55 },
 }
 
 Addon.STATUS_LABELS = {
@@ -74,7 +81,8 @@ Addon.LABELS = {
   mostEncountered = "Most encountered",
   settingsTitle = "WordHunterWoW Settings",
   backgroundLabel = "Background style",
-  opacityLabel = "Opacity",
+  wordMarkingLabel = "Marking for words you have met",
+  opacityLabel = "Frame opacity",
   textScaleLabel = "Quest text size",
   enPanelScaleLabel = "English panel size",
   editorScaleLabel = "Word editor size",
@@ -119,6 +127,7 @@ Addon.BACKGROUNDS = {
     tileSize = 16,
     insets = { left = 3, right = 3, top = 3, bottom = 3 },
     bgColor = { 0.04, 0.06, 0.10, 0.94 },
+    readingColor = { 0.04, 0.06, 0.10 },
   },
   dialog = {
     name = "Dialog (Parchment)",
@@ -129,6 +138,7 @@ Addon.BACKGROUNDS = {
     tileSize = 32,
     insets = { left = 11, right = 12, top = 12, bottom = 11 },
     bgColor = { 1, 1, 1, 1 },
+    readingColor = { 0.10, 0.08, 0.06 },
   },
   solid = {
     name = "Solid Dark",
@@ -138,6 +148,7 @@ Addon.BACKGROUNDS = {
     tile = false,
     insets = { left = 2, right = 2, top = 2, bottom = 2 },
     bgColor = { 0.06, 0.07, 0.09, 0.96 },
+    readingColor = { 0.06, 0.07, 0.09 },
   },
   midnight = {
     name = "Midnight (Modern)",
@@ -146,6 +157,7 @@ Addon.BACKGROUNDS = {
     edgeSize = 1,
     insets = { left = 1, right = 1, top = 1, bottom = 1 },
     bgColor = { 0.08, 0.09, 0.13, 0.97 },
+    readingColor = { 0.08, 0.09, 0.13 },
     borderColor = { 0.22, 0.24, 0.34, 0.95 },
   },
 }
@@ -284,6 +296,44 @@ function Addon.ScaleFontString(fs, fontObjectName, scale)
   local path, size, flags = object:GetFont()
   if not path then return end
   fs:SetFont(path, (size or 12) * (scale or 1), flags)
+end
+
+-- How a word the player has already met is marked in the quest text. Both ways
+-- are defensible and neither is right for everyone: the underline alone keeps
+-- every letter the same colour, which reads like ordinary prose but is easy to
+-- miss at a glance, while the status colour is unmissable and turns the
+-- paragraph into four colours. So it is a choice rather than a decision.
+--
+-- Every status colour clears 4.5:1 on all four backgrounds -- the themes all
+-- put text on an opaque dark surface now -- which is what makes the coloured
+-- option offerable at all. tests/readability.test.lua holds that.
+Addon.WORD_MARKING_ORDER = { "both", "underline", "color" }
+Addon.WORD_MARKINGS = {
+  both      = { name = "Underline and text colour" },
+  underline = { name = "Underline only" },
+  color     = { name = "Text colour only" },
+}
+
+function Addon.GetWordMarking()
+  local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.wordMarking
+  if Addon.WORD_MARKINGS[v] then return v end
+  return "both"
+end
+
+function Addon.SetWordMarking(value)
+  if not Addon.WORD_MARKINGS[value] then return end
+  if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
+  if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
+  WordHunterWoWDB.settings.wordMarking = value
+  if Addon.refreshPanel and Addon.panel and Addon.panel:IsShown() then Addon.refreshPanel() end
+end
+
+-- A one-pixel rule under twenty-four point letters is a smudge, and the quest
+-- text size goes to 200%. The mark has to grow with the text it belongs to, or
+-- turning the text up makes the words harder to read rather than easier.
+function Addon.UnderlineThickness(scale)
+  scale = tonumber(scale) or 1
+  return math.max(2, math.floor(scale * 2 + 0.5))
 end
 
 function Addon.GetIntegratedLayout()
@@ -545,6 +595,19 @@ function Addon.ApplyBackground(frame, alphaOverride)
     local b = style.borderColor
     frame:SetBackdropBorderColor(b[1], b[2], b[3], alpha)
   end
+  -- Keep the skin and its opacity on the frame, but never let scenery or a
+  -- bright texture compete with letters. BACKGROUND sublevel 1 is above the
+  -- backdrop center and below text on both Retail and Classic.
+  if not frame.whwReadingBackground then
+    frame.whwReadingBackground = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
+  end
+  local surface = frame.whwReadingBackground
+  local inset = style.insets or {}
+  surface:ClearAllPoints()
+  surface:SetPoint("TOPLEFT", frame, "TOPLEFT", inset.left or 0, -(inset.top or 0))
+  surface:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(inset.right or 0), inset.bottom or 0)
+  local reading = style.readingColor or Addon.BACKGROUNDS.midnight.readingColor
+  surface:SetColorTexture(reading[1], reading[2], reading[3], 1)
   frame:SetToplevel(true)
 end
 
@@ -558,7 +621,7 @@ function Addon.RefreshAllBackdrops()
   -- pairs, not ipairs: most of these are created the first time they are opened,
   -- so the list has holes. ipairs stops at the first one, and the English panel
   -- sits behind three lazily-created windows -- it never got its backdrop.
-  for _, f in pairs({ Addon.panel, Addon.editor, Addon.listFrame, Addon.statsFrame, Addon.copyDialog, Addon.enPanel, Addon.settingsPanel and Addon.settingsPanel.preview }) do
+  for _, f in pairs({ Addon.panel, Addon.editor, Addon.listFrame, Addon.statsFrame, Addon.copyDialog, Addon.confirmDialog, Addon.enPanel, Addon.settingsPanel and Addon.settingsPanel.preview }) do
     if f and f.SetBackdrop then Addon.ApplyBackground(f) end
   end
 end
@@ -590,6 +653,309 @@ function Addon.TextLines(text)
     lines[#lines + 1] = tokens
   end
   return lines
+end
+
+-- Paragraph boundaries are a stronger alignment hint than sentence counts.
+function Addon.SplitParagraphs(text)
+  local paras = {}
+  local buf = {}
+  local body = tostring(text or "")
+  if body:sub(-1) ~= "\n" then body = body .. "\n" end
+  for line in body:gmatch("([^\n]*)\n") do
+    if Addon.trim(line) == "" then
+      if #buf > 0 then
+        paras[#paras + 1] = table.concat(buf, "\n")
+        buf = {}
+      end
+    else
+      buf[#buf + 1] = line
+    end
+  end
+  if #buf > 0 then paras[#paras + 1] = table.concat(buf, "\n") end
+  return paras
+end
+
+local ABBREVIATIONS = { ["dr."] = true, ["mr."] = true, ["mrs."] = true,
+  ["ms."] = true, ["z.b."] = true, ["d.h."] = true, ["bzw."] = true,
+  ["e.g."] = true, ["i.e."] = true }
+
+function Addon.SplitSentences(text)
+  text = tostring(text or "")
+  local out, spans = {}, {}
+  local first, last
+  local function finish()
+    if not first then return end
+    out[#out + 1] = text:sub(first, last)
+    spans[#spans + 1] = { start = first, finish = last }
+    first, last = nil, nil
+  end
+  -- Walk the very same tokens as the UI. Splitting inside 3.5 or counting a
+  -- closing quote as an extra token used to shift every button after it.
+  for start, token, after in text:gmatch("()(%S+)()") do
+    if last and text:sub(last + 1, start - 1):find("[\r\n]") then finish() end
+    first, last = first or start, after - 1
+    local ending = token:gsub('["\'>%)%]]+$', '')
+    for _, quote in ipairs({ "“", "”", "’", "»" }) do ending = stripMark(ending, quote) end
+    if (ending:find("[.!?]$") or ending:sub(-3) == "…")
+      and not ABBREVIATIONS[Addon.utf8Lower(ending)] then finish() end
+  end
+  finish()
+  return out, spans
+end
+
+-- One index per layout token, in the same order TextLines walks them. The click
+-- handler needs the sentence that token actually sits in -- searching the text
+-- for the word hits the first repeat instead.
+function Addon.TokenSentenceIndexes(text)
+  local indexes = {}
+  local _, spans = Addon.SplitSentences(text)
+  local si = 1
+  for start in tostring(text or ""):gmatch("()%S+") do
+    while spans[si] and start > spans[si].finish do si = si + 1 end
+    indexes[#indexes + 1] = si
+  end
+  return indexes
+end
+
+function Addon.SentenceContaining(text, word)
+  local needle = Addon.wordKey(word)
+  if needle == "" then return nil, nil end
+  local sentences = Addon.SplitSentences(text)
+  for i, sentence in ipairs(sentences) do
+    for token in sentence:gmatch("%S+") do
+      if Addon.wordKey(token) == needle then return i, sentence end
+    end
+  end
+  return nil, nil
+end
+
+local function uniqueGlossHit(enSentences, word)
+  local hit
+  for i, sentence in ipairs(enSentences) do
+    if next(Addon.MatchEnglishTokenIndexes(sentence, word)) then
+      if hit then return nil end
+      hit = i
+    end
+  end
+  return hit
+end
+
+local function mapSentenceIndex(deIndex, deCount, enCount)
+  -- ponytail: proportional fallback cannot align free translations; replace
+  -- with reviewed per-quest spans if exact alignment data becomes available.
+  if deCount == enCount then return deIndex end
+  local mapped = math.floor((deIndex - 1) / math.max(1, deCount) * enCount) + 1
+  return math.min(enCount, math.max(1, mapped))
+end
+
+local function locateSentence(text, globalIndex)
+  local paras = Addon.SplitParagraphs(text)
+  local seen = 0
+  for p, para in ipairs(paras) do
+    local n = #Addon.SplitSentences(para)
+    if globalIndex <= seen + n then
+      return p, globalIndex - seen
+    end
+    seen = seen + n
+  end
+  local last = #paras
+  if last == 0 then return 1, 1 end
+  return last, math.max(1, #Addon.SplitSentences(paras[last]))
+end
+
+local function matchInPair(deText, enText, word, deIndex)
+  local deSentences = Addon.SplitSentences(deText)
+  local enSentences = Addon.SplitSentences(enText)
+  if #enSentences == 0 then return nil, nil end
+  deIndex = math.min(#deSentences, math.max(1, deIndex or 1))
+  if #deSentences == #enSentences then
+    return deIndex, enSentences[deIndex]
+  end
+  -- A translator sometimes splits one German sentence into two English ones.
+  -- Position cannot tell which half was meant; the gloss can, but only inside
+  -- this pair -- never by searching the whole quest for the word.
+  if #deSentences == 1 and #enSentences > 1 then
+    local hit = uniqueGlossHit(enSentences, word)
+    if hit then return hit, enSentences[hit] end
+  end
+  local mapped = mapSentenceIndex(deIndex, math.max(1, #deSentences), #enSentences)
+  return mapped, enSentences[mapped]
+end
+
+function Addon.MatchEnglishSentence(deText, enText, word, deSentenceIndex)
+  deText, enText = tostring(deText or ""), tostring(enText or "")
+  word = tostring(word or "")
+  if enText == "" or Addon.trim(deText) == "" or Addon.wordKey(word) == "" then return nil, nil end
+  if not deSentenceIndex then
+    deSentenceIndex = select(1, Addon.SentenceContaining(deText, word))
+    if not deSentenceIndex then return nil, nil end
+  end
+  local deParas = Addon.SplitParagraphs(deText)
+  local enParas = Addon.SplitParagraphs(enText)
+  local deSentences = Addon.SplitSentences(deText)
+  local enSentences = Addon.SplitSentences(enText)
+  if #enSentences == 0 then return nil, nil end
+  deSentenceIndex = math.min(math.max(1, deSentenceIndex), math.max(1, #deSentences))
+  if #deParas == #enParas and #deParas > 0 then
+    local pIndex, localIndex = locateSentence(deText, deSentenceIndex)
+    local mappedLocal, localSentence = matchInPair(deParas[pIndex], enParas[pIndex], word, localIndex)
+    if localSentence then
+      local seen = 0
+      for i = 1, pIndex - 1 do
+        seen = seen + #Addon.SplitSentences(enParas[i])
+      end
+      local gi = seen + (mappedLocal or 1)
+      if enSentences[gi] then return gi, enSentences[gi] end
+      return gi, localSentence
+    end
+  end
+  if #deSentences == #enSentences then
+    return deSentenceIndex, enSentences[deSentenceIndex]
+  end
+  local mapped = mapSentenceIndex(deSentenceIndex, #deSentences, #enSentences)
+  return mapped, enSentences[mapped]
+end
+
+function Addon.FlattenTokens(text)
+  local tokens = {}
+  for _, line in ipairs(Addon.TextLines(text)) do
+    for _, token in ipairs(line) do
+      tokens[#tokens + 1] = token
+    end
+  end
+  return tokens
+end
+
+-- One typo apart. Only for words long enough that a single letter cannot turn
+-- one word into another, and only behind a five-letter shared opening: that is
+-- what keeps refuge/refuse and head/heal apart while letting a hand-typed
+-- "invaluabel" still find "invaluable".
+local function withinOneEdit(a, b)
+  if #a < 6 or #b < 6 then return false end
+  if math.abs(#a - #b) > 1 then return false end
+  if a:sub(1, 5) ~= b:sub(1, 5) then return false end
+  local prefix = 0
+  while prefix < #a and prefix < #b and a:byte(prefix + 1) == b:byte(prefix + 1) do
+    prefix = prefix + 1
+  end
+  local suffix = 0
+  while suffix < #a - prefix and suffix < #b - prefix
+    and a:byte(#a - suffix) == b:byte(#b - suffix) do
+    suffix = suffix + 1
+  end
+  return (#a - prefix - suffix) <= 1 and (#b - prefix - suffix) <= 1
+end
+
+local function glossKeyMatches(enKey, glossKey, tolerant)
+  if enKey == "" or glossKey == "" then return false end
+  if enKey == glossKey then return true end
+  if #glossKey < 4 or #enKey < 4 then return false end
+  -- Only regular English endings, never arbitrary prefixes (head/headmaster).
+  if enKey == glossKey .. "s" then return true end
+  if glossKey:find("[sxz]$") or glossKey:find("[cs]h$") then
+    if enKey == glossKey .. "es" then return true end
+  elseif glossKey:find("[^aeiou]y$") and enKey == glossKey:sub(1, -2) .. "ies" then
+    return true
+  end
+  return tolerant and withinOneEdit(enKey, glossKey) or false
+end
+
+local function senseWords(sense)
+  local words = {}
+  for part in tostring(sense):gmatch("%S+") do
+    local key = Addon.wordKey(part)
+    if key ~= "" then words[#words + 1] = key end
+  end
+  return words
+end
+
+local function addSenses(packed, seen, translation)
+  translation = tostring(translation or "")
+  if Addon.trim(translation) == "" then return end
+  -- "(formal/pl.)" and the like are notes about the gloss, not words to find.
+  translation = translation:gsub("%b()", "")
+  for sense in translation:gmatch("[^;,/]+") do
+    sense = Addon.trim(sense):gsub("^to%s+", "")
+    local mark = Addon.utf8Lower(sense)
+    if sense ~= "" and not seen[mark] then
+      seen[mark] = true
+      packed[#packed + 1] = sense
+    end
+  end
+end
+
+function Addon.MatchEnglishTokenIndexes(enSentence, deWord, occurrence)
+  local tokens = Addon.FlattenTokens(enSentence)
+  if #tokens == 0 then return {} end
+  local key = Addon.wordKey(deWord)
+  local packed, seen = {}, {}
+  -- Every gloss anyone holds for this word, not only the one that wins the
+  -- lookup. GetEffectiveWord answers with the player's own entry whenever they
+  -- have saved one, which meant that editing the meaning -- rewording it, or
+  -- adding a single letter -- took the dictionary's wording out of the match
+  -- and the English word quietly stopped lighting up. An edit may add a way to
+  -- match; it must never remove one.
+  local own = Addon.GetWordsTable and Addon.GetWordsTable()[key]
+  if own then addSenses(packed, seen, own.translation) end
+  local dict = Addon.GetDictionaryEntry and Addon.GetDictionaryEntry(key)
+  if dict then addSenses(packed, seen, dict.translation) end
+  -- A proper noun is spelled the same in both languages and its gloss, when it
+  -- has one, is itself: Azshara stays Azshara.
+  if #key >= 3 then addSenses(packed, seen, deWord) end
+  local ranked = {}
+  for i, sense in ipairs(packed) do
+    ranked[i] = { sense = sense, words = senseWords(sense), i = i }
+  end
+  table.sort(ranked, function(a, b)
+    if #a.words ~= #b.words then return #a.words > #b.words end
+    if #a.sense ~= #b.sense then return #a.sense > #b.sense end
+    return a.i < b.i
+  end)
+  local function findHits(words, tolerant)
+    if #words == 0 then return {} end
+    local hits = {}
+    for i = 1, #tokens - #words + 1 do
+      local ok = true
+      for j, w in ipairs(words) do
+        if not glossKeyMatches(Addon.wordKey(tokens[i + j - 1]), w, tolerant) then
+          ok = false
+          break
+        end
+      end
+      if ok then hits[#hits + 1] = { start = i, len = #words } end
+    end
+    return hits
+  end
+  local function collect(tolerant)
+    local chosen, occupied = {}, {}
+    for _, item in ipairs(ranked) do
+      for _, hit in ipairs(findHits(item.words, tolerant)) do
+        local overlaps = false
+        for i = hit.start, hit.start + hit.len - 1 do
+          if occupied[i] then overlaps = true end
+        end
+        if not overlaps then
+          chosen[#chosen + 1] = hit
+          for i = hit.start, hit.start + hit.len - 1 do occupied[i] = true end
+        end
+      end
+    end
+    table.sort(chosen, function(a, b) return a.start < b.start end)
+    return chosen
+  end
+  local chosen = collect(false)
+  -- Second pass only when the sentence held nothing the gloss names exactly.
+  -- A near miss must never take a token away from an exact one.
+  if #chosen == 0 then chosen = collect(true) end
+  -- ponytail: occurrence order is only a hint across languages; do not clamp
+  -- a missing occurrence to a different word. Exact links need bilingual data.
+  local hit = chosen[occurrence or 1]
+  if not hit then return {} end
+  local set = {}
+  for i = hit.start, hit.start + hit.len - 1 do
+    set[i] = true
+  end
+  return set
 end
 
 function Addon.cleanWord(token)

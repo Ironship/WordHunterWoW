@@ -2,6 +2,7 @@ local Addon = WordHunterWoW_Addon
 local COLORS = Addon.COLORS
 local STATUS_LABELS = Addon.STATUS_LABELS
 local LABELS = Addon.LABELS
+local unpack = unpack or table.unpack
 
 local editor
 
@@ -32,7 +33,7 @@ local function updateEditorHistory()
     and (selected.encounterCount or 0) >= 5
     and time() - learningSince >= 14 * 24 * 60 * 60
   editor.history:SetText(ready and (history .. "  •  " .. LABELS.readyForKnown) or history)
-  if ready then editor.history:SetTextColor(0.30, 0.88, 0.48) else editor.history:SetTextColor(0.62, 0.66, 0.72) end
+  editor.history:SetTextColor(unpack(ready and COLORS.known or COLORS.muted))
 end
 
 function Addon.openEditor(word, context, questId, questTitle)
@@ -145,6 +146,7 @@ function Addon.createEditor()
   editor.word:SetJustifyH("LEFT")
 
   editor.context = editor:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  editor.context:SetTextColor(unpack(COLORS.muted))
   editor.context:SetPoint("TOPLEFT", 20, -66)
   editor.context:SetPoint("TOPRIGHT", -20, -66)
   editor.context:SetHeight(26)

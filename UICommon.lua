@@ -1,5 +1,6 @@
 local Addon = WordHunterWoW_Addon
 local LABELS = Addon.LABELS
+local unpack = unpack or table.unpack
 
 function Addon.setBackdrop(frame, alpha)
   if Addon.ApplyBackground then
@@ -20,17 +21,13 @@ end
 
 function Addon.styleFlatButton(button, color, active)
   if active then
-    button:SetBackdropColor(color[1] * 0.65, color[2] * 0.65, color[3] * 0.65, 0.98)
+    button:SetBackdropColor(color[1] * 0.20, color[2] * 0.20, color[3] * 0.20, 1)
     button:SetBackdropBorderColor(color[1], color[2], color[3], 1)
   else
-    button:SetBackdropColor(0, 0, 0, 0.35)
+    button:SetBackdropColor(0.06, 0.07, 0.09, 1)
     button:SetBackdropBorderColor(color[1] * 0.55, color[2] * 0.55, color[3] * 0.55, 0.9)
   end
-  if active then
-    button.label:SetTextColor(1, 1, 1)
-  else
-    button.label:SetTextColor(color[1], color[2], color[3])
-  end
+  button.label:SetTextColor(unpack(Addon.COLORS.text))
 end
 
 function Addon.createFlatButton(parent, text, color)
@@ -176,6 +173,7 @@ function Addon.showCopyText(title, value)
     copyDialog.title:SetWordWrap(false)
 
     local hint = copyDialog:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    hint:SetTextColor(unpack(Addon.COLORS.muted))
     hint:SetPoint("TOPLEFT", 20, -52)
     hint:SetText(LABELS.copyHint)
 
