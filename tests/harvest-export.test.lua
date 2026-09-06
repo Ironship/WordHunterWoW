@@ -122,4 +122,51 @@ press()
 assert(copy:IsShown() and copy.text:GetText() == (blob:gsub('|', '||')),
   'a second export must offer the same blob again rather than claim there is nothing')
 
+-- A dialog is the size of the window it came out of.
+--
+-- This is the owner's screenshot: the editor dragged to 150%, and the
+-- confirmation it opened sitting beside it at 100% with smaller buttons and
+-- smaller text. SCALED_WINDOWS names four frames and neither dialog is among
+-- them, so nothing ever scaled either one.
+--
+-- Measured against four different openers, because the obvious fix -- giving
+-- the dialogs the editor's own setting -- is wrong for three of them. They are
+-- opened from the editor, from the quest panel, from the settings page, and
+-- from a slash command with no window at all.
+-- Two plain frames rather than the real editor and panel. What is under test is
+-- the contract -- a dialog is the size of whoever opened it -- and standing it
+-- up against the real windows would test their wiring as well, which is what
+-- makes a failure here hard to read.
+local editorFrame, questFrame = CreateFrame('Frame'), CreateFrame('Frame')
+editorFrame:SetScale(1.5)
+questFrame:SetScale(1)
+
+Addon.showCopyText('t', 'v', nil, editorFrame)
+assert(math.abs(Addon.copyDialog:GetScale() - 1.5) < 0.001,
+  'a dialog opened from the editor at 150% came out at '
+  .. Addon.copyDialog:GetScale() .. ' -- the mismatch in the screenshot')
+-- Straight from 1.5 to no opener at all, deliberately. The slash command has no
+-- window behind it and must come out at 1 -- but checked after a scaled opener
+-- rather than after an unscaled one, or a dialog that simply keeps whatever it
+-- had last would read as correct.
+Addon.showCopyText('t', 'v', nil, nil)
+assert(math.abs(Addon.copyDialog:GetScale() - 1) < 0.001,
+  "a dialog opened from nothing kept the last opener's scale: "
+  .. Addon.copyDialog:GetScale())
+Addon.showCopyText('t', 'v', nil, editorFrame)
+Addon.showCopyText('t', 'v', nil, questFrame)
+assert(math.abs(Addon.copyDialog:GetScale() - 1) < 0.001,
+  "a dialog opened from the quest panel took someone else's scale: "
+  .. Addon.copyDialog:GetScale())
+-- The pool is the trap: the scale of the last opener must not stick to the next.
+editorFrame:SetScale(2)
+Addon.showConfirm('t', 'b', 'go', function() end, editorFrame)
+assert(math.abs(Addon.confirmDialog:GetScale() - 2) < 0.001,
+  "the pooled dialog kept a previous scale instead of taking the new opener's")
+Addon.showConfirm('t', 'b', 'go', function() end, questFrame)
+assert(math.abs(Addon.confirmDialog:GetScale() - 1) < 0.001,
+  "the pooled dialog kept the editor's scale when opened from the quest panel")
+editorFrame:SetScale(1)
+print('  a dialog is the size of the window that opened it')
+
 print('harvest-export: ok')

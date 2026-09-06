@@ -1152,7 +1152,7 @@ function Addon.createPanel()
   local copyQuest = Addon.createActionButton(panel, LABELS.copyQuest)
   copyQuest.baseWidth = 118
   copyQuest:SetScript("OnClick", function()
-    if Addon.lastQuest then Addon.showCopyText(LABELS.copyQuest, Addon.lastQuest.text) end
+    if Addon.lastQuest then Addon.showCopyText(LABELS.copyQuest, Addon.lastQuest.text, nil, panel) end
   end)
 
   local wordsBtn = Addon.createActionButton(panel, LABELS.wordsButton)

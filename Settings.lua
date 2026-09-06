@@ -279,10 +279,10 @@ function Addon.CreateSettingsPanel()
     if type(blob) ~= "string" or blob == "" then
       -- Nothing to confirm, so no action text: showConfirm drops its action
       -- button and the dialog closes on Cancel alone.
-      Addon.showConfirm(Addon.LABELS.harvestExport, Addon.LABELS.harvestExportEmpty)
+      Addon.showConfirm(Addon.LABELS.harvestExport, Addon.LABELS.harvestExportEmpty, nil, nil, panel)
       return
     end
-    Addon.showCopyText(Addon.LABELS.harvestExport, blob, Addon.LABELS.harvestExportHint)
+    Addon.showCopyText(Addon.LABELS.harvestExport, blob, Addon.LABELS.harvestExportHint, panel)
     if panel.refresh then panel.refresh() end
   end)
   panel.harvestExport = harvestExport

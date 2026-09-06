@@ -103,7 +103,28 @@ local confirmDialog
 -- taken away and Cancel is the only way out. The alternative -- leaving it up
 -- with some harmless caption -- is what the empty-export dialog used to do, and
 -- it put two buttons on screen that did exactly the same thing.
-function Addon.showConfirm(title, body, actionText, onConfirm)
+-- A dialog is a part of the window that opened it, so it is the size that
+-- window is.
+--
+-- These two are pooled and parented to UIParent rather than to a caller, which
+-- is what let them fall out of every scale: SCALED_WINDOWS names four frames
+-- and neither of these is among them, so an editor dragged to 150% opened a
+-- confirmation still at 100% and the pair looked like two addons. Tying them to
+-- the editor's own setting would only move the fault: they are opened from the
+-- editor, from the quest panel, from the settings page and from a slash command
+-- with no window at all, and a "Copy quest" box wearing the editor's size is
+-- still the wrong size.
+--
+-- Taking the opener's scale answers all four at once, including the quest
+-- panel, which is deliberately never scaled and so hands over 1. Nothing to
+-- open from -- the slash command -- is also 1, which is what UIParent gives.
+local function matchOpener(dialog, opener)
+  local scale = 1
+  if opener and opener.GetScale then scale = opener:GetScale() or 1 end
+  dialog:SetScale(scale)
+end
+
+function Addon.showConfirm(title, body, actionText, onConfirm, opener)
   if not confirmDialog then
     confirmDialog = CreateFrame("Frame", "WordHunterWoWConfirmDialog", UIParent, "BackdropTemplate")
     Addon.confirmDialog = confirmDialog
@@ -157,6 +178,7 @@ function Addon.showConfirm(title, body, actionText, onConfirm)
   confirmDialog.onConfirm = onConfirm
   -- The dialog is pooled, so this has to be set both ways every time.
   if onConfirm then confirmDialog.action:Show() else confirmDialog.action:Hide() end
+  matchOpener(confirmDialog, opener)
   Addon.ApplyBackground(confirmDialog)
   confirmDialog:Show()
   confirmDialog:Raise()
@@ -165,7 +187,7 @@ end
 -- `hint` replaces the generic line above the box. Copying a word or a quest
 -- needs no explanation -- the player asked for it and knows why -- but the
 -- harvest export does, so that one caller passes its own.
-function Addon.showCopyText(title, value, hint)
+function Addon.showCopyText(title, value, hint, opener)
   if not copyDialog then
     copyDialog = CreateFrame("Frame", "WordHunterWoWCopyDialog", UIParent, "BackdropTemplate")
     Addon.copyDialog = copyDialog
@@ -227,6 +249,7 @@ function Addon.showCopyText(title, value, hint)
   -- them, so SetText ate the string and the box came up empty. Doubling is
   -- how every export box in the game shows a pipe; GetText/Ctrl+C give one.
   copyDialog.text:SetText((value or ""):gsub("|", "||"))
+  matchOpener(copyDialog, opener)
   copyDialog:Show()
   copyDialog:Raise()
   copyDialog.text:SetFocus()

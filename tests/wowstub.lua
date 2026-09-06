@@ -112,6 +112,17 @@ local function node()
   --
   -- A level is inherited from the parent, one step up, exactly as the client
   -- does it; an explicit SetFrameLevel wins over that.
+  -- Scale, which is the mechanism half this addon's windows grow by. It was not
+  -- modelled at all, so SetScale was answered by the fabricating __index and
+  -- GetScale handed back a table -- meaning no test could tell a window that
+  -- scales from one that does not, which is exactly the fault being fixed.
+  -- Multiplied down the parent chain as the client does it.
+  function t:SetScale(value) rawset(self, "_scale", value) end
+  function t:GetScale() return rawget(self, "_scale") or 1 end
+  function t:GetEffectiveScale()
+    local up = rawget(self, "_parent")
+    return self:GetScale() * (up and up:GetEffectiveScale() or 1)
+  end
   function t:SetFrameStrata(value) rawset(self, "_strata", value) end
   function t:GetFrameStrata()
     local own = rawget(self, "_strata")
@@ -242,6 +253,14 @@ GameFontNormal = fontObject(12)
 GameFontNormalLarge = fontObject(16)
 GameFontNormalSmall = fontObject(10)
 GameFontDisableSmall = fontObject(10)
+-- The two the addon uses that were missing here. Absent, they were answered by
+-- the fabricating __index above, so a test that measured a window drawing from
+-- one of them measured a manufactured table. ChatFontNormal is the odd one: it
+-- is the size the player set for their CHAT window, so 14 is a default rather
+-- than a fixed fact, and a surface drawing from it is not the same size as its
+-- neighbours at any setting.
+GameFontHighlightSmall = fontObject(10)
+ChatFontNormal = fontObject(14)
 
 -- The quest windows. Whether they are open decides whether the panel opens.
 QuestFrame, QuestMapFrame, WorldMapFrame = node(), node(), node()

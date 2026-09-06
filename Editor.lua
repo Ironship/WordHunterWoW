@@ -229,7 +229,7 @@ function Addon.createEditor()
   copyWord:SetSize(110, 30)
   copyWord:SetPoint("BOTTOMLEFT", 20, 20)
   copyWord:SetScript("OnClick", function()
-    if Addon.selected then Addon.showCopyText(LABELS.copyWord, Addon.selected.word) end
+    if Addon.selected then Addon.showCopyText(LABELS.copyWord, Addon.selected.word, nil, editor) end
   end)
 
   editor.resetDictionary = Addon.createActionButton(editor, LABELS.resetDictionary)
@@ -249,7 +249,8 @@ function Addon.createEditor()
         editor.translation:SetText(dict.translation or "")
         editor.note:SetText(dict.note or "")
         Addon.updateResetDictionary()
-      end)
+      end,
+      editor)
   end)
   editor.resetDictionary:Hide()
 
