@@ -1,67 +1,125 @@
 -- Run from the addon root:  lua tests/harvest-export.test.lua
 --
--- Getting the collected text out of the game was a slash command nobody could
--- discover: you had to have read the addon's description to know it existed.
--- It is a button in the settings now, beside the switch that starts the
--- collecting.
+-- Getting the collected text out of the game. It used to be written to the
+-- saved-variables file and the dialog explained where that file was and offered
+-- a reload, because the file only reaches disk on reload or logout. That flow is
+-- gone: the button now puts the blob straight into a box the player copies out
+-- of, and no file is involved.
 --
--- The part that actually trips people up is not the export. It is that the file
--- only reaches disk when the game writes its saved variables, which happens on
--- reload or logout and at no other time. Export, go looking, and you find
--- yesterday's file and reasonably conclude it is broken. So the dialog says so,
--- offers the reload, and shows the path in a box you can copy out of.
+-- The version of this file that guarded the old flow could not fail. It asserted
+-- that the old flow's labels and its path helper still existed, then read
+-- Settings.lua as text and asserted the new flow's names appeared in it -- and
+-- both were true at once, for as long as the dead half stayed in the tree. So
+-- this one presses the button instead, and looks at what the player is shown.
 
-strlower = string.lower
-strtrim = function(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
-time = os.time
-GetLocale = function() return "deDE" end
-CreateFrame = function() return setmetatable({}, {__index = function() return function() end end}) end
+local node = dofile('tests/wowstub.lua')
 
-dofile("Core.lua")
+-- The dropdown API, recorded rather than drawn. The settings panel builds three
+-- of them on the way to the export button.
+UIDropDownMenu_SetWidth = function() end
+UIDropDownMenu_SetText = function(frame, text) frame.shownText = text end
+UIDropDownMenu_CreateInfo = function() return {} end
+UIDropDownMenu_AddButton = function() end
+UIDropDownMenu_Initialize = function(frame, initializer) initializer(frame, 1) end
+
+dofile('Core.lua')
+dofile('Compat.lua')
+dofile('UICommon.lua')
+dofile('Harvest.lua')
+-- In .toc order: the settings panel is a set of controls over other files'
+-- settings, and its quest log switch reads a getter QuestPanel.lua defines.
+dofile('QuestPanel.lua')
+dofile('Settings.lua')
 local Addon = WordHunterWoW_Addon
-assert(Addon.HarvestExportPath, "Core.lua should say where the file lands")
+local LABELS = Addon.LABELS
 
--- The path names the game, because the two clients keep separate folders and
--- sending the wrong one is a wasted round trip.
-Addon.Compat = { IsClassic = function() return false end }
-local retail = Addon.HarvestExportPath()
-assert(retail:find("_retail_", 1, true), "Retail's path should name _retail_: " .. retail)
+WordHunterWoWDB = { settings = { targetLocale = 'deDE', frames = {} }, wordsByLocale = {} }
+-- A real table: the harvest counter walks this one, and a manufactured node
+-- hands it its own methods to count.
+WordHunterWoWCorpus = { version = 1, byLocale = {} }
+Addon.initializeDatabase()
 
-Addon.Compat = { IsClassic = function() return true end }
-local classic = Addon.HarvestExportPath()
-assert(classic:find("_classic_era_", 1, true), "Classic's path should name _classic_era_: " .. classic)
-assert(not classic:find("_retail_", 1, true), "and must not name the other one")
+-- Nothing writes a file any more, so nothing needs to say where one would land.
+-- The helper that did is the piece that survived the last removal by itself and
+-- kept a test alive around it; if it comes back, the flow has been half-replaced
+-- a second time.
+assert(rawget(Addon, 'HarvestExportPath') == nil,
+  'the export writes no file, so nothing should be describing where one goes')
 
-for _, path in ipairs({ retail, classic }) do
-  assert(path:find("SavedVariables", 1, true), "the path has to reach SavedVariables")
-  assert(path:find("WordHunterWoW.lua", 1, true), "and name the file")
-  -- The account directory is a Battle.net id that no addon API exposes, so it
-  -- is a placeholder rather than a guess.
-  assert(path:find("<your account>", 1, true), "the account folder cannot be known, and should say so")
-end
+local panel = Addon.CreateSettingsPanel()
+-- rawget: the panel is a stub frame, and reading a field it has not got back
+-- manufactures a child frame, so a plain `panel.harvestExport` is truthy whether
+-- the button was built or not.
+local exportButton = rawget(panel, 'harvestExport')
+assert(exportButton, 'the settings panel has to offer the export button')
+local press = exportButton:GetScript('OnClick')
+assert(press, 'and pressing it has to do something')
 
--- The wording has to carry the one fact that makes this work.
-local labels = Addon.LABELS
-assert(labels.harvestExport and labels.harvestExport ~= "", "the button needs a name")
-assert(labels.harvestExportBody:find("Ctrl+C", 1, true),
-  "the dialog must say how to copy the block")
-assert(labels.harvestExportBody:find("passages", 1, true)
-    and labels.harvestExportBody:find("words", 1, true), "and how much is in it")
-assert(labels.harvestExportEmpty:find("Nothing has been collected", 1, true),
-  "an empty export should say so rather than pointing at a file with nothing in it")
-assert(labels.harvestExportReload and labels.harvestExportReload ~= "")
+-- A dialog that has something to confirm shows both buttons. This is the state
+-- the export's empty case has to undo, and the window is pooled, so it has to be
+-- reached first for the next assertion to mean anything.
+Addon.showConfirm(LABELS.resetDictionary, 'body', LABELS.confirmAction, function() end)
+local confirm = Addon.confirmDialog
+assert(confirm.action:IsShown(), 'a dialog with an action must offer its action button')
 
--- And the settings panel has to actually offer it, wired to the export.
-local settings = io.open("Settings.lua"):read("a")
-assert(settings:find("LABELS.harvestExport", 1, true), "the button belongs in the settings")
-assert(settings:find("Addon.rebuildHarvestExport", 1, true), "pressing it must write the export")
-assert(settings:find("showCopyText", 1, true), "and put the blob in a box that can be copied")
-assert(settings:find("WordHunterWoWCorpusExport", 1, true), "the box holds the export, not a file path")
-assert(settings:find("harvestExportEmpty", 1, true), "with nothing collected it must not pretend otherwise")
+-- Nothing collected. There is nothing to confirm, so there must be exactly one
+-- button. It used to pass LABELS.confirmCancel as the *action* text, which left
+-- two buttons on screen both reading "Cancel".
+press()
+assert(confirm:IsShown(), 'with nothing collected the export has to say so')
+assert(confirm.body:GetText() == LABELS.harvestExportEmpty,
+  'and say it in the words meant for it, got: ' .. tostring(confirm.body:GetText()))
+assert(not confirm.action:IsShown(),
+  'nothing to confirm means no action button -- two buttons reading "Cancel" is what this replaced')
+assert(confirm.cancel:GetText() == LABELS.confirmCancel, 'and Cancel is the way out')
+confirm:Hide()
 
-local ui = io.open("UICommon.lua"):read("a")
-assert(ui:find("HighlightText", 1, true), "the path must be selected so it can be copied")
-assert(ui:find('gsub("|", "||")', 1, true) or ui:find('gsub("|", "||")', 1, true),
-  "pipes in the blob must be escaped or the edit box swallows the text")
+-- Now collect something. A passage and an unglossed word: the blob is built from
+-- both, and its separator is the pipe that the copy box has to escape.
+Addon.SetHarvestEnabled(true)
+assert(Addon.HarvestText('objectives', 184, 'Bringt 8 Stuecke zaehes Wolfsfleisch.'),
+  'the passage should have been collected')
+assert(Addon.HarvestText('word', 184, 'Wolfsfleisch'), 'and the word with it')
 
-print("harvest-export: ok")
+press()
+local copy = Addon.copyDialog
+assert(copy and copy:IsShown(), 'with text collected the export has to open the copy box')
+assert(not confirm:IsShown(), 'and must not also claim nothing was collected')
+assert(copy.title:GetText() == LABELS.harvestExport, 'the box is titled for the export')
+
+local blob = WordHunterWoWCorpusExport
+assert(type(blob) == 'string' and blob:find('^WHC2|'), 'pressing it must build the blob, got ' .. tostring(blob))
+-- Percent-encoded for the importer, so nothing a quest happens to contain can be
+-- read as one of the separators. The spaces are just the cheapest proof it ran:
+-- a passage of German that reaches the blob with its spaces intact did not go
+-- through the encoder at all.
+assert(blob:find('%%20') and not blob:find(' ', 1, true),
+  'the passage should reach the blob percent-encoded, got ' .. blob)
+-- A lone "|" is a UI escape in the game's font strings, and the blob is full of
+-- them. Doubling is how every export box in the game shows a pipe.
+assert(copy.text:GetText() == (blob:gsub('|', '||')),
+  'the box has to show the blob with its pipes doubled, or the game eats the text')
+
+-- The one thing the old dialog said that the new one did not: where the block is
+-- meant to go. Nothing else in the addon names a destination, so the copy box
+-- takes its own hint here instead of the generic "press Ctrl+C".
+assert(copy.hint:GetText() == LABELS.harvestExportHint,
+  'the export box needs its own hint, got: ' .. tostring(copy.hint:GetText()))
+assert(LABELS.harvestExportHint:find('CurseForge', 1, true)
+  and LABELS.harvestExportHint:find('Discord', 1, true),
+  'and that hint is the only place the addon says where to send the block')
+
+-- The window is pooled. A hint one caller set must not still be up for the next.
+Addon.showCopyText(LABELS.copyWord, 'Hund')
+assert(copy.hint:GetText() == LABELS.copyHint,
+  'copying a word must get the plain hint back, got: ' .. tostring(copy.hint:GetText()))
+
+-- Pressing it again. The first export moved the live table into the blob and
+-- emptied it, so a second press finds nothing collected -- but the blob has not
+-- reached disk yet, and telling the player nothing was collected would be a lie.
+assert(Addon.HarvestCount() == 0, 'the export empties the live table')
+press()
+assert(copy:IsShown() and copy.text:GetText() == (blob:gsub('|', '||')),
+  'a second export must offer the same blob again rather than claim there is nothing')
+
+print('harvest-export: ok')

@@ -89,13 +89,11 @@ local again = render(1.0)
 assert(again == small, ("returning to life-size should restore the old layout, got %s vs %s")
   :format(again, small))
 
--- The setting has to be reachable, and the slider has to be bounded by the same
--- numbers the code clamps to, or the two disagree at the edges.
+-- The slider has to be bounded by the same numbers the code clamps to, or the
+-- two disagree at the edges.
 local settings = io.open("Settings.lua"):read("a")
 assert(settings:find("TEXT_SCALE_MIN", 1, true) and settings:find("TEXT_SCALE_MAX", 1, true),
   "the slider's ends must come from the same bounds the setter clamps to")
-assert(settings:find("Addon.SetTextScale", 1, true), "moving the slider must set the size")
-assert(settings:find("textScaleLabel", 1, true), "and the control needs a label")
 
 -- One size per window, and setting one must not move the others.
 Addon.SetTextScale(1.0)
@@ -135,11 +133,64 @@ WordHunterWoWDB.settings.editorScale = 25
 Addon.ApplyWindowScale("editorScale")
 assert(editor.scale == 1.0, "an impossible stored value falls back to life-size")
 
--- Every window in the table has to have a slider, and they all have to come
--- from that same table so one cannot be added without a control.
-local settings = io.open("Settings.lua"):read("a")
-assert(settings:find("Addon.SCALED_WINDOWS", 1, true),
-  "the sliders must be generated from the window table, not listed by hand")
-assert(settings:find("Addon.SetTextScale", 1, true), "the quest text needs its own control")
+-- The English panel is the other addon's window, so it is asked to scale itself
+-- rather than reached into: it also runs without this addon, off its own
+-- remembered size, and there is no load order between the two.
+local enPanel = { asked = 0, scale = 1, SetScale = function(self, v) self.scale = v end }
+enPanel.ApplyTextScale = function() enPanel.asked = enPanel.asked + 1 end
+Addon.enPanel = enPanel
+Addon.SetEnPanelTextScale(1.4)
+assert(enPanel.asked == 1, "the English panel has to be asked to scale itself")
+assert(enPanel.scale == 1, "and not have a scale pushed onto it from here")
+Addon.SetEnPanelTextScale(1.0)
+
+-- Every size the addon stores has to belong to exactly one group, because the
+-- group is what decides the heading a player reads it under and the unit it is
+-- shown in. A key in neither has no control at all; a key in both gets two
+-- sliders writing to one setting.
+local grouped = {}
+for _, group in ipairs(Addon.SIZE_GROUPS) do
+  assert(Addon.LABELS[group.heading] and Addon.LABELS[group.note],
+    "a group without a heading and a note is a group that explains nothing")
+  assert(group.unit == "points" or group.unit == "percent", "unknown unit " .. tostring(group.unit))
+  for _, entry in ipairs(group.entries) do
+    assert(not grouped[entry.key], entry.key .. " is in two groups")
+    assert(Addon.LABELS[entry.label], entry.key .. " has no label")
+    grouped[entry.key] = group.unit
+  end
+end
+for _, key in ipairs(Addon.TEXT_SCALE_KEYS) do
+  assert(grouped[key], key .. " is stored but has no slider")
+end
+for _, w in ipairs(Addon.SCALED_WINDOWS) do
+  assert(grouped[w.key] == "percent" or w.key == "enPanelTextScale",
+    w.key .. " is scaled whole, so it belongs under the window heading")
+end
+
+-- The two families must not read as the same measurement. This is the whole
+-- answer to "the editor and the panel are both at 150% and the editor is
+-- bigger": at equal settings they genuinely do not look equal, because the
+-- surfaces start from different fonts, so the panel must stop offering two
+-- numbers that invite the comparison.
+assert(grouped.textScale == "points", "quest text is a font size and has to be shown as one")
+assert(grouped.editorScale == "percent", "the editor is scaled whole and has to be shown as one")
+for step = 16, 40 do
+  local v = step / 20
+  assert(Addon.FormatSizeValue("points", v) ~= Addon.FormatSizeValue("percent", v),
+    ("the two units read the same at %s, so the numbers can still be compared"):format(v))
+end
+
+-- The point figure has to be the size the panel will actually draw with, not a
+-- stock 12 -- a player who has turned the game's own font up would otherwise be
+-- told the wrong number by every step of the slider.
+assert(Addon.FormatSizeValue("points", 1.5) == "18pt",
+  "12pt at 150% is 18pt, got " .. Addon.FormatSizeValue("points", 1.5))
+assert(Addon.FormatSizeValue("percent", 1.5) == "150%",
+  "a window scale is still a percentage, got " .. Addon.FormatSizeValue("percent", 1.5))
+local realFont = GameFontHighlight
+GameFontHighlight = { GetFont = function() return "FRIZQT__.TTF", 16, "" end }
+assert(Addon.TextScalePoints(1.5) == 24,
+  "the figure must follow the game's font, got " .. Addon.TextScalePoints(1.5))
+GameFontHighlight = realFont
 
 print("text-scale: ok")

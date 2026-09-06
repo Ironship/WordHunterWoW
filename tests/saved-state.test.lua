@@ -13,6 +13,56 @@ local node = dofile("tests/wowstub.lua")
 dofile("Core.lua")
 local Addon = WordHunterWoW_Addon
 
+-- A first login: no saved variables at all. Every other test in this suite hands
+-- initializeDatabase a table that is already most of the way there, so until now
+-- nothing ran the branch that builds one from nothing -- and it could not have,
+-- because the stub used to manufacture WordHunterWoWDB the moment anything read
+-- it, which meant "not a table" was a state no test could put the addon in.
+-- This is the path every fresh install takes exactly once, and it is the one
+-- where a throw costs the player the editor, the quest hooks and the settings
+-- panel at the same time.
+assert(rawget(_G, "WordHunterWoWDB") == nil, "this has to start from nothing to mean anything")
+-- French, not the stub's German: deDE is also the fallback when the client's
+-- language is one the addon does not support, so a deDE client cannot tell the
+-- two branches apart and an assertion made on one would pass for the other.
+GetLocale = function() return "frFR" end
+Addon.initializeDatabase()
+local settings = WordHunterWoWDB.settings
+assert(type(WordHunterWoWDB) == "table" and type(settings) == "table",
+  "a first login has to end up with a database")
+assert(settings.targetLocale == "frFR",
+  "a first login reads the language the client is in, got " .. tostring(settings.targetLocale))
+-- One locale's table, empty: initializeDatabase ends by asking for the target
+-- locale's words, so the table a first login will write into already exists.
+assert(type(WordHunterWoWDB.wordsByLocale) == "table"
+  and type(WordHunterWoWDB.wordsByLocale.frFR) == "table"
+  and next(WordHunterWoWDB.wordsByLocale.frFR) == nil,
+  "the target locale needs an empty word table, not a missing one")
+assert(WordHunterWoWDB.words == nil, "the legacy alias must not be created on a fresh install")
+assert(type(settings.frames) == "table", "geometry has somewhere to go")
+assert(settings.background == Addon.DefaultBackgroundStyle(),
+  "the background falls back to the default, got " .. tostring(settings.background))
+assert(settings.opacity == 1.0, "opaque until asked otherwise, got " .. tostring(settings.opacity))
+for _, key in ipairs(Addon.TEXT_SCALE_KEYS) do
+  assert(settings[key] == 1.0, key .. " should start at 1.0, got " .. tostring(settings[key]))
+end
+-- Defaults to on: the column inside the quest window is the layout the addon is
+-- described by, and a nil here is not the same as false.
+assert(settings.integratedLayout == true, "the integrated layout is the one out of the box")
+-- Stamped, or every login after this one replays all four migrations.
+assert(WordHunterWoWDB.version == 11, "the fresh database is stamped current, got " .. tostring(WordHunterWoWDB.version))
+
+-- And a client in a language the addon has no dictionary for still has to end
+-- up somewhere it can work. German is the fallback because it is the language
+-- the addon was written for.
+WordHunterWoWDB = nil
+GetLocale = function() return "koKR" end
+Addon.initializeDatabase()
+assert(WordHunterWoWDB.settings.targetLocale == "deDE",
+  "an unsupported client language falls back to German, got "
+  .. tostring(WordHunterWoWDB.settings.targetLocale))
+GetLocale = function() return "deDE" end
+
 WordHunterWoWDB = { settings = { targetLocale = "deDE", frames = {} }, words = {}, wordsByLocale = {} }
 Addon.initializeDatabase()
 
@@ -83,5 +133,6 @@ assert(next(WordHunterWoWDB.settings.frames) == nil, "the reset clears the saved
 
 local init = io.open("Init.lua"):read("a")
 assert(init:find("Addon.ResetLayout", 1, true), "and it has to be reachable from a slash command")
+
 
 print("saved-state: ok")

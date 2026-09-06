@@ -176,4 +176,26 @@ assert(marked('Your help was priceless, not invaluable.', 'unschätzbarem') == '
 words[key] = nil
 assert(marked('They refuse to help.', 'unschätzbarem') == '',
   'refuse is not invaluable; tolerance reached too far')
+-- A sentence number on its own, with no word clicked.
+--
+-- The German voiceover asks this way. It knows which sentence it is reading
+-- aloud and nobody has clicked anything, so the English panel can follow the
+-- reading. Before this, the guard rejected an empty word before ever looking at
+-- the index, and the panel stayed dark for the whole passage.
+local de = 'Erste Zeile hier. Zweite Zeile hier. Dritte Zeile hier.'
+local en = 'First line here. Second line here. Third line here.'
+for index, want in ipairs({ 'First line here.', 'Second line here.', 'Third line here.' }) do
+  local got, sentence = Addon.MatchEnglishSentence(de, en, nil, index)
+  assert(got == index, 'sentence ' .. index .. ' mapped to ' .. tostring(got))
+  assert(sentence == want, 'sentence ' .. index .. ' was ' .. tostring(sentence))
+end
+
+-- Without an index the word is still the only way in, and its absence still
+-- means no answer: relaxing the guard must not have made a wordless call with
+-- no index return something invented.
+assert(Addon.MatchEnglishSentence(de, en, nil, nil) == nil,
+  'no word and no sentence number should match nothing')
+assert(Addon.MatchEnglishSentence(de, '', nil, 2) == nil,
+  'no English text should match nothing')
+
 print('english-sentence regressions: ok')

@@ -80,7 +80,7 @@ SlashCmdList.WORDHUNTERWOW = function(message)
       Addon.rebuildHarvestExport()
       local blob = WordHunterWoWCorpusExport
       if Addon.showCopyText and type(blob) == "string" and blob ~= "" then
-        Addon.showCopyText(Addon.LABELS.harvestExport, blob)
+        Addon.showCopyText(Addon.LABELS.harvestExport, blob, Addon.LABELS.harvestExportHint)
       else
         print("|cff66ccffWordHunterWoW:|r Nothing to copy.")
       end

@@ -103,6 +103,19 @@ Addon.lastQuest = { id = 1, text = source, passage = 'offer' }
 GetQuestID = function() return 1 end
 QuestFrame:Show()
 WordHunterWoWENPanelDB = {}
+-- The siblings are separate repositories and a clone of this one alone does not
+-- have them. Skipped rather than failed in that case, and said out loud rather
+-- than skipped in silence: a check that quietly stops running is how coverage
+-- disappears, and this suite has paid for that lesson once already.
+local function beside(path, what)
+  local f = io.open(path, "r")
+  if f then f:close() return true end
+  print("  SKIPPED: " .. what .. " is not beside this repository, so the "
+    .. "cross-addon half of this file did not run")
+  return false
+end
+
+if not beside("../WordHunterWoW-ENPanel/ENPanel.lua", "WordHunterWoW-ENPanel") then print("english-highlight-ui: skipped") os.exit(0) end
 assert(loadfile('../WordHunterWoW-ENPanel/ENPanel.lua'))('WordHunterWoW-ENPanel')
 local events = frames[#frames]
 events.scripts.OnEvent(nil, 'ADDON_LOADED', 'WordHunterWoW-ENPanel')

@@ -22,13 +22,16 @@ Buttons stay in English. Quest text stays in the language you set in WoW.
 
 ## Install
 
-Unzip into `_retail_\Interface\AddOns\`, then:
+Unzip into `_retail_\Interface\AddOns\`, or `_classic_era_\Interface\AddOns\`
+— the download carries a build for each, then:
 
 1. Set WoW's language and the addon's **Target language** to the same thing — `/whw lang`
-2. Accept a quest, or open one in the Quest Log
+2. Accept a quest, or press **Word Hunter** on a quest in the Quest Log
 3. Click a word, give it a meaning, save
 
-`/whw` shows or hides the panel.
+`/whw` closes whichever of the addon's windows is open — the word list first,
+then the statistics, then the quest panel — and opens the quest panel when none
+of them is.
 
 ## Add a dictionary
 
@@ -36,7 +39,7 @@ You don't have to define every word yourself. A dictionary pack fills them in fo
 
 | | |
 |---|---|
-| [German](https://github.com/Ironship/WordHunterWoW-Dictionary-DE) | 73,863 words, every one checked by hand |
+| [German](https://github.com/Ironship/WordHunterWoW-Dictionary-DE) | 104,274 words, every one checked by hand |
 | [French](https://github.com/Ironship/WordHunterWoW-Dictionary-FR) · [Spanish](https://github.com/Ironship/WordHunterWoW-Dictionary-ES) · [Italian](https://github.com/Ironship/WordHunterWoW-Dictionary-IT) · [Portuguese](https://github.com/Ironship/WordHunterWoW-Dictionary-PTBR) | machine-translated, not hand-checked |
 
 Want the English quest text side by side? That is [English Quest Panel](https://github.com/Ironship/WordHunterWoW-ENPanel). With it installed, pointing at a German word lights up the English sentence that says the same thing, and picks out the English word itself.
@@ -52,11 +55,11 @@ It is **off by default**, everything stays on your machine, and nothing is uploa
 ```
 /whw harvest            what has been collected
 /whw harvest on|off     turn it on or off
-/whw harvest export     write it out, ready to send
+/whw harvest export     open it in a box you can copy out of
 /whw harvest clear      throw it away
 ```
 
-Supported languages: English, German, French, Spanish, Italian, Portuguese (Brazil). Retail 12.1.
+Supported languages: English, German, French, Spanish, Italian, Portuguese (Brazil). Retail 12.1 and Classic Era 1.15.9.
 
 Everything stays on your machine. No uploads.
 

@@ -27,6 +27,12 @@ local placed = {}
 local plainCreateFrame = CreateFrame
 local function track(object, parent)
   object.parent = parent
+  -- The tick is modelled for the same reason the stub models shown and sized:
+  -- a field nothing has set answers with another frame, which is truthy, so an
+  -- unmodelled GetChecked reports every box ticked -- and a switch that is meant
+  -- to come up off would pass this file whatever the addon actually did.
+  function object:SetChecked(value) self.checked = not not value end
+  function object:GetChecked() return self.checked and true or false end
   function object:SetPoint(_, a, b)
     -- SetPoint("TOPLEFT", x, y) and SetPoint("TOPLEFT", frame, "TOPLEFT", x, y)
     if type(a) == "number" then self.x, self.y = a, b end
@@ -49,6 +55,11 @@ dofile('Core.lua')
 dofile('Compat.lua')
 dofile('UICommon.lua')
 dofile('Harvest.lua')
+-- Loaded in the order the .toc loads it, and before Settings, because the panel
+-- is only a set of controls over other files' settings: the quest log switch
+-- and its wording both live with the behaviour they govern, and without this
+-- the checkbox would be built against a nil getter.
+dofile('QuestPanel.lua')
 dofile('Settings.lua')
 local Addon = WordHunterWoW_Addon
 WordHunterWoWDB = { settings = { targetLocale = 'deDE', frames = {} }, wordsByLocale = {} }
@@ -62,7 +73,11 @@ assert(panel, 'the settings panel did not build')
 
 local box = _G.WordHunterWoWSettingsContent
 local marking = _G.WordHunterWoWWordMarkingDropdown
-assert(marking and marking.menu, 'the word marking dropdown was never initialised')
+-- rawget for the menu: it is a field the initializer above hangs on the frame,
+-- and a stub frame manufactures a child for any field it has not got. Read
+-- plainly, a dropdown that was built but never initialised answers with a frame,
+-- the assertion passes, and the loop below walks a table that never ends.
+assert(marking and rawget(marking, 'menu'), 'the word marking dropdown was never initialised')
 
 -- Every mode the setting accepts has to be reachable from the menu, or a player
 -- can end up with one they cannot get back out of.
@@ -88,6 +103,84 @@ assert(marking.shownText == Addon.WORD_MARKINGS.underline.name, 'refresh did not
 local ticked
 for _, info in ipairs(marking.menu.entries) do if info.checked then ticked = info.value end end
 assert(ticked == 'underline', 'refresh left the tick on ' .. tostring(ticked))
+
+-- The quest log switch. It is the one control here that governs whether a
+-- window appears at all, so both positions have to be reachable and it has to
+-- come up in the position a player who has never opened this panel is already
+-- in -- unticked, the panel staying out of the quest log's way.
+local questLogAuto = _G.WordHunterWoWQuestLogAutoCheck
+assert(questLogAuto:GetChecked() == false, 'the quest log switch must come up unticked')
+assert(_G.WordHunterWoWQuestLogAutoCheckText:GetText() == Addon.LABELS.questLogAutoLabel,
+  'the switch is unlabelled, so nobody can tell what it does')
+questLogAuto:SetChecked(true)
+questLogAuto:GetScript('OnClick')(questLogAuto)
+assert(Addon.GetQuestLogAutoOpen() == true, 'ticking the switch did not store the setting')
+
+-- Blizzard's own route into this panel calls refresh, not the setters.
+Addon.SetQuestLogAutoOpen(false)
+panel.refresh()
+assert(questLogAuto:GetChecked() == false, 'refresh did not resync the quest log switch')
+
+-- The size sliders, which are the reason this panel has headings at all. The
+-- complaint was that the word editor came up visibly bigger than the quest
+-- panel with both sliders reading the same number -- and it does, because the
+-- two surfaces start from different Blizzard fonts and one grows its window
+-- while the other does not. No arrangement of the scaling makes equal numbers
+-- look equal, so the panel has to stop offering two numbers that invite the
+-- comparison: two headings, and a text size measured in points against a window
+-- size measured in per cent.
+for _, group in ipairs(Addon.SIZE_GROUPS) do
+  for _, entry in ipairs(group.entries) do
+    local suffix = entry.key:sub(1, 1):upper() .. entry.key:sub(2)
+    local slider = _G['WordHunterWoW' .. suffix .. 'Slider']
+    assert(rawget(_G, 'WordHunterWoW' .. suffix .. 'Slider'), entry.key .. ' has no slider in the panel')
+    local label = Addon.LABELS[entry.label]
+    local caption = _G[slider:GetName() .. 'Text']
+    assert(caption:GetText() == label .. ' (' .. Addon.FormatSizeValue(group.unit, 1.0) .. ')',
+      entry.key .. ' reads "' .. tostring(caption:GetText()) .. '"')
+    assert(_G[slider:GetName() .. 'Low']:GetText() == Addon.FormatSizeValue(group.unit, Addon.TEXT_SCALE_MIN)
+      and _G[slider:GetName() .. 'High']:GetText() == Addon.FormatSizeValue(group.unit, Addon.TEXT_SCALE_MAX),
+      entry.key .. ": the ends of the slider are not in the unit its group is measured in")
+    -- Spelled out rather than only compared against the formatter, which would
+    -- agree with itself however both families came to be measured the same.
+    local ending = group.unit == 'points' and 'pt%)$' or '%%%)$'
+    assert(caption:GetText():find(ending), entry.key .. ' is not measured in ' .. group.unit)
+    -- Moving it has to store the size and redraw the figure. A slider whose
+    -- caption lags is worse than one with no caption: it reports a size the
+    -- player is not looking at.
+    slider:GetScript('OnValueChanged')(slider, 1.5)
+    assert(Addon['Get' .. suffix]() == 1.5, entry.key .. ' did not store what the slider was moved to')
+    assert(caption:GetText() == label .. ' (' .. Addon.FormatSizeValue(group.unit, 1.5) .. ')',
+      entry.key .. ': the figure did not follow the slider')
+  end
+end
+
+-- The headings and the small print under them. They are what the panel says
+-- instead of the comment nobody reads, so their absence is the bug coming back.
+local drawn = {}
+for _, object in ipairs(placed) do
+  local text = object.GetText and object:GetText()
+  if type(text) == 'string' then drawn[text] = true end
+end
+for _, group in ipairs(Addon.SIZE_GROUPS) do
+  assert(drawn[Addon.LABELS[group.heading]], Addon.LABELS[group.heading] .. ': heading never drawn')
+  assert(drawn[Addon.LABELS[group.note]],
+    Addon.LABELS[group.heading] .. ': the line saying what these numbers measure is missing')
+  for _, entry in ipairs(group.entries) do
+    if entry.note then
+      assert(drawn[Addon.LABELS[entry.note]], entry.key .. ': its own note was never drawn')
+    end
+  end
+end
+
+-- Blizzard's own route in calls refresh, not the setters, and SetValue leaves
+-- the figure alone when the slider is already at the value it is handed. So a
+-- panel reopened after /whw reset showed the size it had been built with.
+Addon.SetEditorScale(1.2)
+panel.refresh()
+assert(_G.WordHunterWoWEditorScaleSliderText:GetText()
+    == Addon.LABELS.editorScaleLabel .. ' (' .. Addon.FormatSizeValue('percent', 1.2) .. ')',
+  'refresh left the editor size reading ' .. tostring(_G.WordHunterWoWEditorScaleSliderText:GetText()))
 
 -- The scroll box is a fixed height and everything in it is at a fixed offset.
 -- Inserting a control pushes the rest down; if the box is not grown to match,

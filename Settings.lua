@@ -14,7 +14,7 @@ function Addon.CreateSettingsPanel()
   scroll:SetPoint("BOTTOMRIGHT", -26, 4)
 
   local box = CreateFrame("Frame", "WordHunterWoWSettingsContent", scroll)
-  box:SetSize(600, 978)
+  box:SetSize(600, 1060)
   scroll:SetScrollChild(box)
 
   local title = box:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
@@ -69,39 +69,12 @@ function Addon.CreateSettingsPanel()
     _G[self:GetName() .. "Text"]:SetText(Addon.LABELS.opacityLabel .. " (" .. math.floor(value * 100 + 0.5) .. "%)")
   end)
 
-  local scaleLabel = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  scaleLabel:SetPoint("TOPLEFT", 16, -285)
-  scaleLabel:SetText(Addon.LABELS.textScaleLabel)
-
-  local scale = CreateFrame("Slider", "WordHunterWoWTextScaleSlider", box, "OptionsSliderTemplate")
-  scale:SetPoint("TOPLEFT", 16, -305)
-  scale:SetSize(460, 16)
-  scale:SetMinMaxValues(Addon.TEXT_SCALE_MIN, Addon.TEXT_SCALE_MAX)
-  scale:SetValueStep(0.05)
-  scale:SetObeyStepOnDrag(true)
-  scale:SetValue(Addon.GetTextScale())
-  _G[scale:GetName() .. "Low"]:SetText(string.format("%d%%", Addon.TEXT_SCALE_MIN * 100))
-  _G[scale:GetName() .. "High"]:SetText(string.format("%d%%", Addon.TEXT_SCALE_MAX * 100))
-  local function scaleText(v)
-    -- floor, not %d: rounding is the point, and %d truncating a float is a
-    -- Lua 5.1 courtesy the game happens to extend and 5.4 refuses outright,
-    -- which kept this file out of the tests entirely.
-    return Addon.LABELS.textScaleLabel .. string.format(" (%d%%)", math.floor(v * 100 + 0.5))
-  end
-  _G[scale:GetName() .. "Text"]:SetText(scaleText(Addon.GetTextScale()))
-  scale:SetScript("OnValueChanged", function(self, value)
-    value = math.floor(value * 20 + 0.5) / 20
-    Addon.SetTextScale(value)
-    _G[self:GetName() .. "Text"]:SetText(scaleText(value))
-  end)
-  panel.textScaleSlider = scale
-
   local markLabel = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  markLabel:SetPoint("TOPLEFT", 16, -338)
+  markLabel:SetPoint("TOPLEFT", 16, -285)
   markLabel:SetText(Addon.LABELS.wordMarkingLabel)
 
   local markDropdown = CreateFrame("Frame", "WordHunterWoWWordMarkingDropdown", box, "UIDropDownMenuTemplate")
-  markDropdown:SetPoint("TOPLEFT", 12, -358)
+  markDropdown:SetPoint("TOPLEFT", 12, -305)
   UIDropDownMenu_SetWidth(markDropdown, 220)
 
   local function UpdateMarkText()
@@ -132,11 +105,24 @@ function Addon.CreateSettingsPanel()
   UIDropDownMenu_Initialize(markDropdown, InitializeMark)
   UpdateMarkText()
 
-  -- One slider per surface rather than one for everything: the quest panel can
-  -- grow its rows to match, while the editor and the list sit on frames with
-  -- fixed heights and have less room before the text collides. A single slider
-  -- would have to be set for the tightest of them.
-  local function sizeSlider(name, y, label, get, set)
+  -- A wrapped line of small print under a control. Anchored on both sides so it
+  -- wraps to the panel rather than running off it.
+  local function note(y, text)
+    local fs = box:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    fs:SetPoint("TOPLEFT", 16, y)
+    fs:SetPoint("TOPRIGHT", -16, y)
+    fs:SetJustifyH("LEFT")
+    fs:SetWordWrap(true)
+    fs:SetTextColor(0.8, 0.82, 0.88)
+    fs:SetText(text)
+    return fs
+  end
+
+  -- The unit belongs to the group, not the slider, and it is the whole point of
+  -- the split: a text size reads "18pt" and a window size reads "150%", so the
+  -- two cannot be read as the same promise about what the screen will look
+  -- like. Addon.SIZE_GROUPS carries the argument.
+  local function sizeSlider(name, y, label, unit, get, set)
     local caption = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     caption:SetPoint("TOPLEFT", 16, y)
     caption:SetText(label)
@@ -147,36 +133,58 @@ function Addon.CreateSettingsPanel()
     s:SetValueStep(0.05)
     s:SetObeyStepOnDrag(true)
     s:SetValue(get())
-    _G[s:GetName() .. "Low"]:SetText(string.format("%d%%", Addon.TEXT_SCALE_MIN * 100))
-    _G[s:GetName() .. "High"]:SetText(string.format("%d%%", Addon.TEXT_SCALE_MAX * 100))
-    local function caption_for(v) return label .. string.format(" (%d%%)", math.floor(v * 100 + 0.5)) end
-    _G[s:GetName() .. "Text"]:SetText(caption_for(get()))
+    _G[s:GetName() .. "Low"]:SetText(Addon.FormatSizeValue(unit, Addon.TEXT_SCALE_MIN))
+    _G[s:GetName() .. "High"]:SetText(Addon.FormatSizeValue(unit, Addon.TEXT_SCALE_MAX))
+    -- Kept on the slider so refresh can redraw the figure too. SetValue only
+    -- fires OnValueChanged when the value actually moves, so a panel reopened
+    -- on an unchanged setting was showing the caption it was built with.
+    function s.captionFor(v) return label .. " (" .. Addon.FormatSizeValue(unit, v) .. ")" end
+    _G[s:GetName() .. "Text"]:SetText(s.captionFor(get()))
     s:SetScript("OnValueChanged", function(self, value)
       value = math.floor(value * 20 + 0.5) / 20
       set(value)
-      _G[self:GetName() .. "Text"]:SetText(caption_for(value))
+      _G[self:GetName() .. "Text"]:SetText(self.captionFor(value))
     end)
     return s
   end
 
-  -- One slider per window, generated from the same table the scaling reads, so
-  -- adding a window in one place cannot leave it without a control here.
-  panel.windowSliders = {}
-  local y = -396
-  for _, w in ipairs(Addon.SCALED_WINDOWS) do
-    local name = "WordHunterWoW" .. w.key:sub(1, 1):upper() .. w.key:sub(2) .. "Slider"
-    local getter = Addon["Get" .. w.key:sub(1, 1):upper() .. w.key:sub(2)]
-    local setter = Addon["Set" .. w.key:sub(1, 1):upper() .. w.key:sub(2)]
-    panel.windowSliders[w.key] = sizeSlider(name, y, Addon.LABELS[w.label], getter, setter)
-    y = y - 53
+  -- Every size slider, generated from the same table that says which family a
+  -- key belongs to, so a window cannot be added to the addon and left without a
+  -- control -- and so it cannot land in the wrong group either.
+  --
+  -- Laid out by carrying an offset down the section rather than at hand-written
+  -- ones: this block changes length whenever a window or a note is added, and
+  -- everything below it used to have to be renumbered by hand to match.
+  panel.sizeSliders = {}
+  local y = -348
+  for _, group in ipairs(Addon.SIZE_GROUPS) do
+    -- Larger than the slider captions under it. A heading in the same font as
+    -- the things it governs is not a heading, and the split only works if the
+    -- eye takes in "these are two lists" before it reads any number.
+    local heading = box:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    heading:SetPoint("TOPLEFT", 16, y)
+    heading:SetText(Addon.LABELS[group.heading])
+    note(y - 22, Addon.LABELS[group.note])
+    y = y - 58
+    for _, entry in ipairs(group.entries) do
+      local suffix = entry.key:sub(1, 1):upper() .. entry.key:sub(2)
+      panel.sizeSliders[entry.key] = sizeSlider("WordHunterWoW" .. suffix .. "Slider",
+        y, Addon.LABELS[entry.label], group.unit, Addon["Get" .. suffix], Addon["Set" .. suffix])
+      y = y - 53
+      if entry.note then
+        note(y, Addon.LABELS[entry.note])
+        y = y - 28
+      end
+    end
+    y = y - 14
   end
 
   local langLabel = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  langLabel:SetPoint("TOPLEFT", 16, -608)
+  langLabel:SetPoint("TOPLEFT", 16, y)
   langLabel:SetText(Addon.LABELS.languageLabel)
 
   local langDropdown = CreateFrame("Frame", "WordHunterWoWLanguageDropdown", box, "UIDropDownMenuTemplate")
-  langDropdown:SetPoint("TOPLEFT", 12, -628)
+  langDropdown:SetPoint("TOPLEFT", 12, y - 20)
   UIDropDownMenu_SetWidth(langDropdown, 220)
 
   local function UpdateLangDropdownText()
@@ -210,16 +218,10 @@ function Addon.CreateSettingsPanel()
   UIDropDownMenu_Initialize(langDropdown, InitializeLang)
   UpdateLangDropdownText()
 
-  local langNote = box:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-  langNote:SetPoint("TOPLEFT", 16, -665)
-  langNote:SetPoint("TOPRIGHT", -16, -665)
-  langNote:SetJustifyH("LEFT")
-  langNote:SetWordWrap(true)
-  langNote:SetText("Required — words are stored separately per language. English US/GB both export as 'en'.")
-  langNote:SetTextColor(0.8, 0.82, 0.88)
+  note(y - 57, "Required — words are stored separately per language. English US/GB both export as 'en'.")
 
   local integrated = CreateFrame("CheckButton", "WordHunterWoWIntegratedCheck", box, "UICheckButtonTemplate")
-  integrated:SetPoint("TOPLEFT", 12, -695)
+  integrated:SetPoint("TOPLEFT", 12, y - 87)
   local integratedText = _G[integrated:GetName() .. "Text"]
   if integratedText then
     integratedText:SetText(Addon.LABELS.integratedLabel)
@@ -230,8 +232,24 @@ function Addon.CreateSettingsPanel()
   end)
   panel.integratedCheck = integrated
 
+  -- Next to the layout box rather than down among the sliders: both are about
+  -- how the panel behaves rather than what it looks like. This one is off out
+  -- of the box, which is the change it exists to undo -- the panel opening
+  -- itself from the quest log put it over the quest that had just been clicked.
+  local questLogAuto = CreateFrame("CheckButton", "WordHunterWoWQuestLogAutoCheck", box, "UICheckButtonTemplate")
+  questLogAuto:SetPoint("TOPLEFT", 12, y - 115)
+  local questLogAutoText = _G[questLogAuto:GetName() .. "Text"]
+  if questLogAutoText then
+    questLogAutoText:SetText(Addon.LABELS.questLogAutoLabel)
+  end
+  questLogAuto:SetChecked(Addon.GetQuestLogAutoOpen())
+  questLogAuto:SetScript("OnClick", function(self)
+    Addon.SetQuestLogAutoOpen(self:GetChecked())
+  end)
+  panel.questLogAutoCheck = questLogAuto
+
   local harvest = CreateFrame("CheckButton", "WordHunterWoWHarvestCheck", box, "UICheckButtonTemplate")
-  harvest:SetPoint("TOPLEFT", 12, -723)
+  harvest:SetPoint("TOPLEFT", 12, y - 143)
   local harvestText = _G[harvest:GetName() .. "Text"]
   if harvestText then
     harvestText:SetText(Addon.LABELS.harvestLabel)
@@ -242,12 +260,7 @@ function Addon.CreateSettingsPanel()
   end)
   panel.harvestCheck = harvest
 
-  local harvestNote = box:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-  harvestNote:SetPoint("TOPLEFT", 16, -747)
-  harvestNote:SetPoint("TOPRIGHT", -16, -747)
-  harvestNote:SetJustifyH("LEFT")
-  harvestNote:SetWordWrap(true)
-  harvestNote:SetTextColor(0.8, 0.82, 0.88)
+  local harvestNote = note(y - 167, "")
   panel.harvestNote = harvestNote
 
   -- The slash command did this already, but only someone who read the addon's
@@ -259,16 +272,17 @@ function Addon.CreateSettingsPanel()
   -- many lines the note wraps to.
   harvestExport:SetPoint("TOPLEFT", harvestNote, "BOTTOMLEFT", 0, -8)
   harvestExport:SetScript("OnClick", function()
-    local written = Addon.rebuildHarvestExport and Addon.rebuildHarvestExport() or 0
+    if Addon.rebuildHarvestExport then Addon.rebuildHarvestExport() end
     local blob = WordHunterWoWCorpusExport
     -- A previous export this session already moved the live table into the blob.
     -- Showing "nothing collected" would lie; offer the blob again.
     if type(blob) ~= "string" or blob == "" then
-      Addon.showConfirm(Addon.LABELS.harvestExport, Addon.LABELS.harvestExportEmpty,
-        Addon.LABELS.confirmCancel, nil)
+      -- Nothing to confirm, so no action text: showConfirm drops its action
+      -- button and the dialog closes on Cancel alone.
+      Addon.showConfirm(Addon.LABELS.harvestExport, Addon.LABELS.harvestExportEmpty)
       return
     end
-    Addon.showCopyText(Addon.LABELS.harvestExport, blob)
+    Addon.showCopyText(Addon.LABELS.harvestExport, blob, Addon.LABELS.harvestExportHint)
     if panel.refresh then panel.refresh() end
   end)
   panel.harvestExport = harvestExport
@@ -305,10 +319,14 @@ function Addon.CreateSettingsPanel()
   UpdateDropdownText()
 
   panel.refresh = function()
-    if panel.textScaleSlider then panel.textScaleSlider:SetValue(Addon.GetTextScale()) end
-    for key, slider in pairs(panel.windowSliders or {}) do
+    for key, slider in pairs(panel.sizeSliders or {}) do
       local get = Addon["Get" .. key:sub(1, 1):upper() .. key:sub(2)]
-      if get then slider:SetValue(get()) end
+      if get then
+        slider:SetValue(get())
+        -- And the figure, which SetValue does not touch when the value it is
+        -- given is the one the slider already holds.
+        _G[slider:GetName() .. "Text"]:SetText(slider.captionFor(get()))
+      end
     end
     UpdateDropdownText()
     UIDropDownMenu_Initialize(dropdown, Initialize)
@@ -321,6 +339,7 @@ function Addon.CreateSettingsPanel()
     slider:SetValue(v)
     _G[slider:GetName() .. "Text"]:SetText(Addon.LABELS.opacityLabel .. " (" .. math.floor(v * 100 + 0.5) .. "%)")
     if panel.integratedCheck then panel.integratedCheck:SetChecked(Addon.GetIntegratedLayout()) end
+    if panel.questLogAutoCheck then panel.questLogAutoCheck:SetChecked(Addon.GetQuestLogAutoOpen()) end
     if panel.harvestCheck then panel.harvestCheck:SetChecked(Addon.GetHarvestEnabled()) end
     if panel.harvestNote then
       local passages = Addon.HarvestCount and (Addon.HarvestCount() - Addon.HarvestWordCount()) or 0

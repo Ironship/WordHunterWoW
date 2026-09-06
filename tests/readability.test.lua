@@ -80,11 +80,40 @@ for _, client in ipairs({'retail', 'classic', 'sod'}) do
 end
 local button = frame()
 button.label = { SetTextColor = function(self, ...) self.color = {...} end }
+local function styled(status, active)
+  Addon.styleFlatButton(button, Addon.COLORS[status], active)
+  return {
+    background = { unpack(button.background) },
+    border = { unpack(button.border) },
+    label = { unpack(button.label.color) },
+  }
+end
 for _, status in ipairs({'new', 'learning', 'known', 'ignored'}) do
-  for _, active in ipairs({true, false}) do
-    Addon.styleFlatButton(button, Addon.COLORS[status], active)
-    assert(contrast(button.label.color, button.background) >= 4.5, 'unreadable status button')
-  end
+  local on, off = styled(status, true), styled(status, false)
+  assert(contrast(on.label, on.background) >= 4.5, 'unreadable status button')
+  assert(contrast(off.label, off.background) >= 4.5, 'unreadable status button')
+
+  -- Chosen has to look chosen. This is the assertion the four status buttons
+  -- were missing, and its absence is the whole reason they read as identical:
+  -- the tint between them was two shades of black and the label was one colour
+  -- in both states, so nothing on screen said which of the four a word was set
+  -- to. Contrast alone never noticed, because both states were perfectly
+  -- readable -- and indistinguishable.
+  --
+  -- Measured as contrast between the two states rather than as a difference of
+  -- channels, because that is what an eye does. 1.6:1 is well under what these
+  -- actually reach and well over "two shades of black": the old pair measured
+  -- 1.16:1 on the background and exactly 1.00 on the label.
+  assert(contrast(on.background, off.background) >= 1.6,
+    status .. ': chosen and unchosen backgrounds are ' ..
+    string.format('%.2f', contrast(on.background, off.background)) ..
+    ':1 apart, which is not a difference anybody can see')
+  assert(contrast(on.label, off.label) >= 1.6,
+    status .. ': the label is the same brightness whether chosen or not, so the'
+    .. ' clearest thing on the button says nothing')
+  local dimmer = 0
+  for i = 1, 3 do if off.border[i] < on.border[i] - 0.001 then dimmer = dimmer + 1 end end
+  assert(dimmer == 3, status .. ': the unchosen border is not dimmer than the chosen one')
 end
 Addon.panel, Addon.confirmDialog = nil, nil
 WordHunterWoWDB = { version = 11, settings = { targetLocale = 'deDE' } }

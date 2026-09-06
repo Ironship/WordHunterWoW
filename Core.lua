@@ -59,7 +59,6 @@ Addon.LABELS = {
   status = "Status",
   empty = "Open a quest to mark words.",
   german = "For %s quest text, set the WoW text language to %s.",
-  saved = "%d saved",
   -- The per-quest progress line. Assembled from parts so the three figures
   -- can each carry the colour its words are drawn in.
   progressWords = "%d words",
@@ -83,11 +82,18 @@ Addon.LABELS = {
   backgroundLabel = "Background style",
   wordMarkingLabel = "Marking for words you have met",
   opacityLabel = "Frame opacity",
-  textScaleLabel = "Quest text size",
-  enPanelScaleLabel = "English panel size",
-  editorScaleLabel = "Word editor size",
-  listScaleLabel = "Word list size",
-  statsScaleLabel = "Statistics window size",
+  -- Two headings rather than one run of sliders, and each says what its numbers
+  -- measure. Addon.SIZE_GROUPS carries the reasoning.
+  textGroupLabel = "Text size",
+  textGroupNote = "Shown as the size the letters end up. The window keeps whatever size you dragged it to — only the text in it grows.",
+  windowGroupLabel = "Window size",
+  windowGroupNote = "Shown as a percentage of the whole window — border, buttons and text together. Not the same measurement as a text size above, and the two are not meant to match.",
+  textScaleLabel = "Quest panel text",
+  enPanelScaleLabel = "English text",
+  enPanelScaleNote = "Sizes the English wherever it is shown: the column inside the quest panel, and the separate English window when that column is switched off.",
+  editorScaleLabel = "Word editor window",
+  listScaleLabel = "Word list window",
+  statsScaleLabel = "Statistics window",
   languageLabel = "Target (learned and in game) language",
   resetDictionary = "Reset to dictionary",
   confirmAction = "Reset",
@@ -99,13 +105,14 @@ Addon.LABELS = {
     .. "|cff8ab4f8Meaning|r\n%s\n\n|cff8ab4f8Note|r\n%s",
   resetNothing = "|cff888888(empty)|r",
   harvestExport = "Export collected text",
-  -- The file only reaches disk when the game writes its saved variables, which
-  -- it does on reload or logout and at no other time. Someone who exports and
-  -- then goes looking finds yesterday's file and reasonably concludes it broke.
-  harvestExportBody = "%d passages and %d words. Ctrl+C copies the block — paste it in a CurseForge comment or a Discord message.",
+  -- Stands in for copyHint in the export box, and says the one thing copyHint
+  -- cannot: where the block is supposed to go. Everywhere else the copy box is
+  -- opened -- a word, a quest -- the player already knows what they wanted it
+  -- for. Here they pressed a button labelled "export" and got a wall of text,
+  -- and nothing else in the addon or its description names a destination.
+  harvestExportHint = "Ctrl+C copies the block — paste it in a CurseForge comment or a Discord message.",
   harvestExportEmpty = "Nothing has been collected yet.\n\n"
     .. "Switch on the box above and read a few quests, then come back.",
-  harvestExportReload = "Reload now",
   integratedLabel = "Integrated quest window",
   harvestLabel = "Collect quest and NPC text for the dictionary project",
   harvestNote = "Off by default. Records objectives, progress and hand-in text plus NPC dialogue you actually see — the passages Blizzard's quest API does not publish. Stored locally; %d passages and %d words no dictionary covers. Turning it off keeps what was collected until you export or /whw harvest clear.",
@@ -195,12 +202,12 @@ end
 -- directly, so the game's UI scale never reaches it and there was nothing the
 -- player could do about text that was simply too small.
 --
--- Three separate sizes rather than one, because the surfaces cannot take the
--- same treatment. The quest panel lays its words out itself and can grow its
--- rows to match. The editor and the word list are built on frames with fixed
--- heights, so their text has less room before it collides. And the English
--- panel is a separate addon with its own window. One slider would have to be
--- set for the tightest of the three.
+-- One number per surface rather than one for all of them, because the surfaces
+-- cannot take the same treatment. The quest panel lays its words out itself and
+-- can grow its rows to match. The editor and the word list are built on frames
+-- with fixed heights, so their text has less room before it collides. And the
+-- English panel is a separate addon with its own window. One slider would have
+-- to be set for the tightest of them.
 --
 -- Bounded at both ends: below the floor the words stop being clickable targets,
 -- and above the ceiling a long quest no longer fits a window that can be
@@ -233,14 +240,92 @@ Addon.TEXT_SCALE_KEYS = {
   "textScale", "enPanelTextScale", "editorScale", "listScale", "statsScale",
 }
 
--- Every window this addon owns, and the key that sizes it. Named here once so
--- the settings panel and the code that applies them cannot drift apart.
+-- Every window this addon owns that is scaled whole, and the key that sizes it.
+-- Which slider a key gets is SIZE_GROUPS below; this is only what to reach for
+-- once one has moved.
 Addon.SCALED_WINDOWS = {
-  { key = "enPanelTextScale", label = "enPanelScaleLabel", frame = function() return Addon.enPanel end },
-  { key = "editorScale",      label = "editorScaleLabel",  frame = function() return Addon.editor end },
-  { key = "listScale",        label = "listScaleLabel",    frame = function() return Addon.listFrame end },
-  { key = "statsScale",       label = "statsScaleLabel",   frame = function() return Addon.statsFrame end },
+  { key = "enPanelTextScale", frame = function() return Addon.enPanel end },
+  { key = "editorScale",      frame = function() return Addon.editor end },
+  { key = "listScale",        frame = function() return Addon.listFrame end },
+  { key = "statsScale",       frame = function() return Addon.statsFrame end },
 }
+
+-- The two families of size setting, and the only place that knows which key is
+-- in which. The settings panel draws every size slider from this.
+--
+-- It is split because the word editor came up visibly bigger than the quest
+-- panel with both sliders reading the same number. Both halves of that are
+-- real, and neither is a fault in the scaling:
+--
+--   * The window. A font size leaves the frame the size the player dragged it
+--     to; SetScale multiplies the frame as well. So the editor grew and the
+--     panel did not, and that is deliberate -- the panel is sized to sit beside
+--     the game's own quest window, and the point of it is how much text fits.
+--
+--   * The letters. The surfaces draw from different Blizzard font objects: the
+--     quest words are GameFontHighlight at 12, the editor's boxes are the chat
+--     font and the word above them is 16, the list rows are 10. That gap is
+--     already there at 100% and survives any change of mechanism, so making
+--     every window scale the same way would not have closed it.
+--
+-- What was actually wrong was this panel: five sliders in one column, every one
+-- of them reading 80-200%, invite a comparison no arrangement of the code can
+-- honour. So they are two groups under headings that say what each one grows,
+-- and the text sizes are given as the point size the letters end up at.
+-- Different units is the part that stops the comparison; a heading alone still
+-- leaves two numbers side by side for the eye to match up.
+--
+-- The stored values are untouched -- the same keys, still 0.8 to 2.0 -- so
+-- nobody who has already chosen a size finds their windows have moved.
+Addon.SIZE_GROUPS = {
+  {
+    heading = "textGroupLabel", note = "textGroupNote", unit = "points",
+    entries = {
+      { key = "textScale",        label = "textScaleLabel" },
+      -- The one setting with two faces, so it is the one that gets a note. With
+      -- the integrated layout on, which is the default, it sizes the English
+      -- column inside the quest panel and no window moves; with it off, the
+      -- separate English window is scaled whole.
+      { key = "enPanelTextScale", label = "enPanelScaleLabel", note = "enPanelScaleNote" },
+    },
+  },
+  {
+    heading = "windowGroupLabel", note = "windowGroupNote", unit = "percent",
+    entries = {
+      { key = "editorScale", label = "editorScaleLabel" },
+      { key = "listScale",   label = "listScaleLabel" },
+      { key = "statsScale",  label = "statsScaleLabel" },
+    },
+  },
+}
+
+-- What a font at this multiple ends up as, taken from the font object the quest
+-- panel actually draws its words with -- so the figure under the slider is the
+-- number the panel passes to SetFont, and a player who has changed the game's
+-- font size sees their own scale rather than a stock one.
+function Addon.TextScalePoints(scale)
+  local size = 12
+  local object = _G.GameFontHighlight
+  if type(object) == "table" and object.GetFont then
+    local _, base = object:GetFont()
+    if type(base) == "number" and base > 0 then size = base end
+  end
+  return math.floor(size * (tonumber(scale) or 1) + 0.5)
+end
+
+-- The figure under a size slider, in the unit its group is measured in. Here
+-- rather than in the settings panel so a test can check the two families really
+-- do read differently without building the panel.
+--
+-- floor, not %d: rounding is the point, and %d truncating a float is a Lua 5.1
+-- courtesy the game happens to extend and 5.4 refuses outright, which kept the
+-- settings file out of the tests entirely.
+function Addon.FormatSizeValue(unit, scale)
+  if unit == "points" then
+    return string.format("%dpt", Addon.TextScalePoints(scale))
+  end
+  return string.format("%d%%", math.floor((tonumber(scale) or 1) * 100 + 0.5))
+end
 
 -- The clickable quest words, in both columns of the panel. This one is a font
 -- size rather than a window scale: the panel lays its words out itself, so it
@@ -274,6 +359,16 @@ function Addon.ApplyWindowScale(which)
         if type(v) ~= "number" or v < TEXT_SCALE_MIN or v > TEXT_SCALE_MAX then v = 1.0 end
         frame:SetScale(v)
       end
+      -- With the integrated layout on, this setting also draws the English
+      -- column inside the quest panel, and that column is laid out by this
+      -- addon rather than by the English window -- so nothing above has told it
+      -- anything. Without this the column and its heading kept their old size
+      -- until the next quest was read, which is a slider you drag and watch
+      -- half the panel answer.
+      if w.key == "enPanelTextScale" and Addon.refreshPanel
+        and Addon.panel and Addon.panel:IsShown() then
+        Addon.refreshPanel()
+      end
     end
   end
 end
@@ -284,18 +379,6 @@ for _, w in ipairs(Addon.SCALED_WINDOWS) do
   Addon["Set" .. key:sub(1, 1):upper() .. key:sub(2)] = scaleSetter(key, function()
     Addon.ApplyWindowScale(key)
   end)
-end
-
--- Applies a scale to one font string, taking the base size from the Blizzard
--- font object it would otherwise have used. Reading the base each time means a
--- font the player changes in the game's own settings still comes through.
-function Addon.ScaleFontString(fs, fontObjectName, scale)
-  if not fs or not fs.SetFont then return end
-  local object = _G[fontObjectName or "GameFontHighlight"]
-  if type(object) ~= "table" or not object.GetFont then return end
-  local path, size, flags = object:GetFont()
-  if not path then return end
-  fs:SetFont(path, (size or 12) * (scale or 1), flags)
 end
 
 -- How a word the player has already met is marked in the quest text. Both ways
@@ -785,11 +868,17 @@ end
 function Addon.MatchEnglishSentence(deText, enText, word, deSentenceIndex)
   deText, enText = tostring(deText or ""), tostring(enText or "")
   word = tostring(word or "")
-  if enText == "" or Addon.trim(deText) == "" or Addon.wordKey(word) == "" then return nil, nil end
+  if enText == "" or Addon.trim(deText) == "" then return nil, nil end
   if not deSentenceIndex then
+    -- Without an index the word is the only way in: it is what says which
+    -- German sentence is meant.
+    if Addon.wordKey(word) == "" then return nil, nil end
     deSentenceIndex = select(1, Addon.SentenceContaining(deText, word))
     if not deSentenceIndex then return nil, nil end
   end
+  -- With an index the word is only a refinement, so it may be absent. The
+  -- voiceover asks this way: it knows the sentence it is reading and there is
+  -- no word being clicked.
   local deParas = Addon.SplitParagraphs(deText)
   local enParas = Addon.SplitParagraphs(enText)
   local deSentences = Addon.SplitSentences(deText)
@@ -1394,17 +1483,6 @@ function Addon.CloseAll()
     closed = true
   end
   return closed
-end
-
--- Where the collected text ends up. An addon cannot see its own WoW folder or
--- the name of the account directory -- neither is exposed to Lua -- so this is
--- the shape of the path with the one part it does know filled in: which game
--- it is running on.
-function Addon.HarvestExportPath()
-  local flavour = "_retail_"
-  if Addon.Compat and Addon.Compat.IsClassic() then flavour = "_classic_era_" end
-  return "World of Warcraft\\" .. flavour
-    .. "\\WTF\\Account\\<your account>\\SavedVariables\\WordHunterWoW.lua"
 end
 
 -- SetPropagateKeyboardInput is protected: calling it from an addon while the

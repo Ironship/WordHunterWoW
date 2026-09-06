@@ -118,6 +118,16 @@ local function saveSelected()
 end
 
 function Addon.createEditor()
+  -- Built once. Nothing in the game calls this twice -- ADDON_LOADED fires once
+  -- per addon and Init.lua's branch is guarded by the addon's own name -- but a
+  -- second call would silently abandon the frame the player is looking at,
+  -- along with the position they dragged it to, and hand back a fresh one. That
+  -- has already cost time inside the test suite, where calling it again to get
+  -- at the frame reset state the rest of the file depended on.
+  --
+  -- Checked against the public handle rather than the upvalue, so a test that
+  -- clears Addon.editor to start over still gets a new one.
+  if Addon.editor then return Addon.editor end
   editor = CreateFrame("Frame", "WordHunterWoWEditor", UIParent, "BackdropTemplate")
   Addon.editor = editor
   editor:SetSize(420, 380)

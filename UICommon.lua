@@ -19,15 +19,39 @@ function Addon.setBackdrop(frame, alpha)
   frame:SetToplevel(true)
 end
 
+-- Which of the four a word is set to, said three ways at once.
+--
+-- It used to be said in one and a half. The chosen button was tinted its own
+-- colour at a fifth strength, which against a background of 0.06 is two shades
+-- of black; its border went from 55% of the colour to 100%, a step you can find
+-- if you already know which button to look at. And the label -- the brightest
+-- thing on the button and the first thing an eye lands on -- was the same
+-- colour in both states, so the strongest signal available carried no
+-- information at all. Four buttons in a row, one of them chosen, and a player
+-- could not tell which.
+--
+-- Now the chosen one is lit and the others are dimmed: a background that is
+-- visibly its colour rather than a hint of it, a border at full strength
+-- against a third, and a label in full white against a grey. Any one of the
+-- three would do on its own, which is the point -- none of them has to be
+-- noticed for the button to read as chosen.
+--
+-- The numbers are picked against the contrast floor rather than by eye.
+-- tests/readability.test.lua holds every state of every status at 4.5:1, and
+-- the tint is what threatens it: the brighter the chosen background, the closer
+-- the white label gets to it. 0.38 measures 7.64:1 at worst -- that is `known`,
+-- the palest of the four -- and the dimmed label measures 6.05:1 on black.
 function Addon.styleFlatButton(button, color, active)
   if active then
-    button:SetBackdropColor(color[1] * 0.20, color[2] * 0.20, color[3] * 0.20, 1)
+    button:SetBackdropColor(color[1] * 0.38, color[2] * 0.38, color[3] * 0.38, 1)
     button:SetBackdropBorderColor(color[1], color[2], color[3], 1)
+    button.label:SetTextColor(unpack(Addon.COLORS.text))
   else
     button:SetBackdropColor(0.06, 0.07, 0.09, 1)
-    button:SetBackdropBorderColor(color[1] * 0.55, color[2] * 0.55, color[3] * 0.55, 0.9)
+    button:SetBackdropBorderColor(color[1] * 0.30, color[2] * 0.30, color[3] * 0.30, 0.6)
+    local muted = Addon.COLORS.muted
+    button.label:SetTextColor(muted[1] * 0.72, muted[2] * 0.72, muted[3] * 0.72)
   end
-  button.label:SetTextColor(unpack(Addon.COLORS.text))
 end
 
 function Addon.createFlatButton(parent, text, color)
@@ -75,9 +99,11 @@ local confirmDialog
 -- it is asked from. It exists because overwriting what someone typed is not
 -- something to do on a single click: the body says what the new value will be,
 -- and cancelling is the wider of the two buttons.
--- `copyText`, when given, appears in a selected box under the body. A file path
--- is no use to someone who has to retype it from a screenshot.
-function Addon.showConfirm(title, body, actionText, onConfirm, copyText)
+-- Without an `onConfirm` there is nothing to confirm, so the action button is
+-- taken away and Cancel is the only way out. The alternative -- leaving it up
+-- with some harmless caption -- is what the empty-export dialog used to do, and
+-- it put two buttons on screen that did exactly the same thing.
+function Addon.showConfirm(title, body, actionText, onConfirm)
   if not confirmDialog then
     confirmDialog = CreateFrame("Frame", "WordHunterWoWConfirmDialog", UIParent, "BackdropTemplate")
     Addon.confirmDialog = confirmDialog
@@ -101,14 +127,6 @@ function Addon.showConfirm(title, body, actionText, onConfirm, copyText)
     confirmDialog.body:SetJustifyH("LEFT")
     confirmDialog.body:SetJustifyV("TOP")
     confirmDialog.body:SetSpacing(3)
-
-    -- Selected on show, so Ctrl+C takes it. Read-only in practice: editing it
-    -- changes nothing, and the box exists to be copied out of.
-    confirmDialog.copy = Addon.createEditBox(confirmDialog)
-    confirmDialog.copy:SetPoint("BOTTOMLEFT", 20, 56)
-    confirmDialog.copy:SetPoint("BOTTOMRIGHT", -20, 56)
-    confirmDialog.copy:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-    confirmDialog.copy:Hide()
 
     confirmDialog.cancel = Addon.createActionButton(confirmDialog, LABELS.confirmCancel)
     confirmDialog.cancel:SetSize(120, 26)
@@ -137,21 +155,17 @@ function Addon.showConfirm(title, body, actionText, onConfirm, copyText)
   confirmDialog.body:SetText(body or "")
   confirmDialog.action:SetText(actionText or LABELS.confirmAction)
   confirmDialog.onConfirm = onConfirm
-  if copyText and copyText ~= "" then
-    confirmDialog.copy:SetText(copyText)
-    confirmDialog.copy:Show()
-    confirmDialog.copy:SetCursorPosition(0)
-    confirmDialog.copy:HighlightText()
-  else
-    confirmDialog.copy:SetText("")
-    confirmDialog.copy:Hide()
-  end
+  -- The dialog is pooled, so this has to be set both ways every time.
+  if onConfirm then confirmDialog.action:Show() else confirmDialog.action:Hide() end
   Addon.ApplyBackground(confirmDialog)
   confirmDialog:Show()
   confirmDialog:Raise()
 end
 
-function Addon.showCopyText(title, value)
+-- `hint` replaces the generic line above the box. Copying a word or a quest
+-- needs no explanation -- the player asked for it and knows why -- but the
+-- harvest export does, so that one caller passes its own.
+function Addon.showCopyText(title, value, hint)
   if not copyDialog then
     copyDialog = CreateFrame("Frame", "WordHunterWoWCopyDialog", UIParent, "BackdropTemplate")
     Addon.copyDialog = copyDialog
@@ -172,13 +186,19 @@ function Addon.showCopyText(title, value)
     copyDialog.title:SetMaxLines(1)
     copyDialog.title:SetWordWrap(false)
 
-    local hint = copyDialog:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    hint:SetTextColor(unpack(Addon.COLORS.muted))
-    hint:SetPoint("TOPLEFT", 20, -52)
-    hint:SetText(LABELS.copyHint)
+    -- Kept on the dialog rather than local: the window is pooled, so a hint one
+    -- caller set would otherwise still be up for the next one.
+    copyDialog.hint = copyDialog:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    copyDialog.hint:SetTextColor(unpack(Addon.COLORS.muted))
+    copyDialog.hint:SetPoint("TOPLEFT", 20, -52)
+    copyDialog.hint:SetPoint("TOPRIGHT", -20, -52)
+    copyDialog.hint:SetJustifyH("LEFT")
 
     copyDialog.scroll = CreateFrame("ScrollFrame", nil, copyDialog, "InputScrollFrameTemplate")
-    copyDialog.scroll:SetPoint("TOPLEFT", 20, -74)
+    -- Under the hint rather than at a fixed offset, so a hint that wraps pushes
+    -- the box down instead of being covered by it. The export's hint is three
+    -- times the length of the generic one and only just fits on a line.
+    copyDialog.scroll:SetPoint("TOPLEFT", copyDialog.hint, "BOTTOMLEFT", 0, -10)
     copyDialog.scroll:SetPoint("BOTTOMRIGHT", -20, 24)
     copyDialog.scroll.hideCharCount = true
     InputScrollFrame_OnLoad(copyDialog.scroll)
@@ -202,6 +222,7 @@ function Addon.showCopyText(title, value)
   end
 
   copyDialog.title:SetText(title)
+  copyDialog.hint:SetText(hint or LABELS.copyHint)
   -- A lone "|" is a UI escape (colours, links). The harvest blob is full of
   -- them, so SetText ate the string and the box came up empty. Doubling is
   -- how every export box in the game shows a pipe; GetText/Ctrl+C give one.

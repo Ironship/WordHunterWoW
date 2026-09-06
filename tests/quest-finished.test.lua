@@ -38,13 +38,21 @@ Addon.readCurrentQuest()
 assert(not panel:IsShown(),
   "with no quest window open the panel must stay closed after a hand-in")
 
--- The same while reading from the quest log, which is a different window.
+-- The same while reading from the quest log, which is a different window -- and
+-- a window the panel no longer opens itself over. tests/quest-log-button.test.lua
+-- holds that rule; what matters here is that the hide on hand-in and the quest
+-- log's own rule do not fight each other, in either position of the setting.
 QuestFrame:Hide()
 QuestLogFrame = node()
 QuestLogFrame:Show()
 panel:Hide()
 Addon.readCurrentQuest()
-assert(panel:IsShown(), "reading from the quest log should still show the panel")
+assert(not panel:IsShown(), "the quest log must not open the panel by itself")
+
+Addon.SetQuestLogAutoOpen(true)
+Addon.readCurrentQuest()
+assert(panel:IsShown(), "with the old behaviour asked for, the quest log opens the panel")
+Addon.SetQuestLogAutoOpen(false)
 QuestLogFrame:Hide()
 
 -- A panel the player opened by hand stays open and keeps updating: this guard

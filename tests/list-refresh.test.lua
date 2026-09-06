@@ -78,4 +78,29 @@ walks = 0
 Addon.refreshWordList()
 assert(walks == 1, "reopening rebuilds, so nothing is stale, got " .. walks)
 
+-- Built once, and a second call hands back what the player is looking at.
+--
+-- Nothing in the game calls these twice: ADDON_LOADED fires once per addon and
+-- Init.lua's branch is guarded by the addon's own name. The cost is not a crash
+-- -- it is that a second call would quietly abandon the window that is open,
+-- and the position dragged onto it, for an identical empty one. That has
+-- already happened inside this suite, where reaching for the frame by calling
+-- the constructor again reset state the rest of the file was standing on.
+Addon.createPanel()
+Addon.createEditor()
+local firstPanel, firstEditor = Addon.panel, Addon.editor
+assert(firstPanel and firstEditor, "the panel and editor were never built")
+firstPanel.marker, firstEditor.marker = "in use", "in use"
+assert(Addon.createPanel() == firstPanel, "createPanel built a second panel")
+assert(Addon.panel == firstPanel and rawget(Addon.panel, "marker") == "in use",
+  "a second createPanel replaced the panel already on screen")
+assert(Addon.createEditor() == firstEditor, "createEditor built a second editor")
+assert(Addon.editor == firstEditor and rawget(Addon.editor, "marker") == "in use",
+  "a second createEditor replaced the editor already on screen")
+-- Cleared, it starts over, which is what lets a test build a fresh one.
+Addon.panel = nil
+assert(Addon.createPanel() ~= firstPanel,
+  "clearing Addon.panel did not let a new one be built")
+print("  the panel and editor are built once, and a second call returns them")
+
 print("list-refresh: ok")
