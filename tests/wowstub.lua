@@ -262,6 +262,25 @@ GameFontDisableSmall = fontObject(10)
 GameFontHighlightSmall = fontObject(10)
 ChatFontNormal = fontObject(14)
 
+-- The slash command table, and the dropdown calls Settings.lua makes.
+--
+-- Without these two, Init.lua and Stats.lua could not be loaded here at all --
+-- Init.lua indexes SlashCmdList at file scope -- and so the event dispatcher
+-- and the whole /whw command tree were reached by no test. The one file that
+-- names Init.lua reads it off disk as text and greps it. That is string
+-- matching, not execution: a nil-global typo in the file that decides what
+-- happens on ADDON_LOADED and on every quest event would ship.
+--
+-- Settings.lua's dropdown calls were being answered by the fabricating __index
+-- for the same reason, which is why settings-panel.test.lua defines its own
+-- five locally rather than relying on them.
+SlashCmdList = {}
+UIDropDownMenu_Initialize = function() end
+UIDropDownMenu_SetWidth = function() end
+UIDropDownMenu_SetText = function() end
+UIDropDownMenu_AddButton = function() end
+UIDropDownMenu_CreateInfo = function() return {} end
+
 -- The quest windows. Whether they are open decides whether the panel opens.
 QuestFrame, QuestMapFrame, WorldMapFrame = node(), node(), node()
 GetQuestID = function() return 184 end
