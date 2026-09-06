@@ -20,6 +20,23 @@ QuestWordHunter keeps the quest on screen as clickable text. See a word you don'
 
 Buttons stay in English. Quest text stays in the language you set in WoW.
 
+## What changed in 1.17
+
+**The quest log no longer opens the panel by itself.** On a live realm the quest
+log is a pane of the world map, and the panel opened over the very row you had
+clicked — so reading a quest's objectives, or abandoning it, meant closing the
+panel first. There is a **Word Hunter** button on the log now, and the panel
+waits for it. A quest giver's window is unchanged: its text is the reason that
+window opened. If you liked the old behaviour, `/whw settings` has a switch for
+it, off by default.
+
+**The size sliders are two groups instead of one list.** Text sizes read as the
+point size the letters end up at; window sizes read as a percentage of the whole
+window. They are different measurements and always were — a font size leaves the
+window where you dragged it, and a window size grows the border and buttons too
+— so showing both as "80–200%" invited a comparison that could never hold. Your
+stored sizes are unchanged; a window you had at 1.2 now says 120%.
+
 ## Install
 
 Unzip into `_retail_\Interface\AddOns\`, or `_classic_era_\Interface\AddOns\`
