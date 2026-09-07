@@ -44,6 +44,10 @@ local function refreshWordList()
   end)
   table.sort(items, function(a, b) return a.sortKey < b.sortKey end)
   for _, row in ipairs(listRows) do row:Hide() end
+  -- Reachable from outside so a test can measure a row's letters. The rows
+  -- are pooled and file-local, and the size a row is drawn at is now a thing
+  -- worth holding.
+  listFrame.rows = listRows
   local y = 0
   for index, item in ipairs(items) do
     if index > 200 then break end
@@ -57,6 +61,11 @@ local function refreshWordList()
       row.statusDot:SetSize(4, 4)
       row.statusDot:SetPoint("LEFT", 2, 0)
       row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+      -- The word itself is the thing this window exists to be read, so it is
+      -- body, not label. HighlightSmall stays for the white it brings; only
+      -- the size moves, from 10 up to the 12 the quest panel has always drawn
+      -- the same word at. The meta beside it stays at 10 -- it is meta.
+      Addon.ApplyFontRole(row.name, "body")
       row.name:SetPoint("TOPLEFT", 12, 0)
       row.name:SetPoint("RIGHT", row, "CENTER", -8, 0)
       row.name:SetJustifyH("LEFT")
@@ -170,7 +179,7 @@ function Addon.toggleWordList()
         mode == "all" and LABELS.all or STATUS_LABELS[mode],
         color
       )
-      button:SetSize(64, 22)
+      button:SetSize(64, Addon.RoleButtonHeight())
       button:SetPoint("TOPLEFT", 18 + (index - 1) * 68, -94)
       button.mode = mode
       button:SetScript("OnClick", function(self)

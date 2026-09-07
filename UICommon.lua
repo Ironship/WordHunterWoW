@@ -63,6 +63,7 @@ function Addon.createFlatButton(parent, text, color)
     insets = { left = 2, right = 2, top = 2, bottom = 2 },
   })
   button.label = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  button:SetHeight(Addon.RoleButtonHeight())
   button.label:SetPoint("CENTER")
   button.label:SetText(text)
   button.color = color
@@ -86,6 +87,13 @@ end
 function Addon.createEditBox(parent)
   local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
   box:SetFontObject("ChatFontNormal")
+  -- For the family and the colour only. ChatFontNormal's size is whatever the
+  -- player set for their chat window, which is not a decision anybody made
+  -- about this addon and is an odd thing to size a translation field by; the
+  -- body role puts it back on the same footing as every other line of text
+  -- here. This box is in the editor and in the word list's search field, so it
+  -- was two surfaces disagreeing, not one.
+  Addon.ApplyFontRole(box, "body")
   box:SetAutoFocus(false)
   box:SetHeight(28)
   return box
@@ -150,12 +158,12 @@ function Addon.showConfirm(title, body, actionText, onConfirm, opener)
     confirmDialog.body:SetSpacing(3)
 
     confirmDialog.cancel = Addon.createActionButton(confirmDialog, LABELS.confirmCancel)
-    confirmDialog.cancel:SetSize(120, 26)
+    confirmDialog.cancel:SetSize(120, Addon.RoleButtonHeight())
     confirmDialog.cancel:SetPoint("BOTTOMRIGHT", -20, 20)
     confirmDialog.cancel:SetScript("OnClick", function() confirmDialog:Hide() end)
 
     confirmDialog.action = Addon.createActionButton(confirmDialog, LABELS.confirmAction)
-    confirmDialog.action:SetSize(120, 26)
+    confirmDialog.action:SetSize(120, Addon.RoleButtonHeight())
     confirmDialog.action:SetPoint("RIGHT", confirmDialog.cancel, "LEFT", -8, 0)
     confirmDialog.action:SetScript("OnClick", function()
       local run = confirmDialog.onConfirm
@@ -226,6 +234,10 @@ function Addon.showCopyText(title, value, hint, opener)
     InputScrollFrame_OnLoad(copyDialog.scroll)
     copyDialog.text = copyDialog.scroll.EditBox
     copyDialog.text:SetFontObject("ChatFontNormal")
+    -- Same reason as createEditBox: the family from the chat font, the size
+    -- from the role. A dialog takes its opener's scale, so the frame does the
+    -- multiplying and the role passes none.
+    Addon.ApplyFontRole(copyDialog.text, "body")
     copyDialog.text:SetMultiLine(true)
     copyDialog.text:SetAutoFocus(false)
     -- 0 means "no letters" on some clients, not "unlimited". A harvest blob is

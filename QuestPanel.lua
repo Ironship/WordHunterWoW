@@ -68,9 +68,14 @@ local function fitToPane(scroll, width)
 end
 
 local function tokenFont(fs, scale)
-  local path, size, flags = GameFontHighlight:GetFont()
+  -- GameFontHighlight for the family and the white; the body role for the
+  -- size. They are the same number here -- body is anchored to this very
+  -- object -- which is exactly why the word list's rows and the editor's boxes
+  -- were moved onto it rather than the panel being moved off it.
+  local path, _, flags = GameFontHighlight:GetFont()
   scale = scale or (Addon.GetTextScale and Addon.GetTextScale() or 1)
-  if path then fs:SetFont(path, (size or 12) * scale, flags) end
+  local size = Addon.RoleSize("body", scale)
+  if path then fs:SetFont(path, size or (12 * scale), flags) end
   fs:SetShadowColor(0, 0, 0, 0.9)
   fs:SetShadowOffset(1, -1)
 end
@@ -129,11 +134,17 @@ end
 -- the object rather than written down here so that a player who has turned the
 -- game's own font up keeps that: the setting is a multiple of whatever the
 -- client draws with, never a replacement for it.
-local function chromeFont(fs, objectName, scale)
+-- The object still supplies the family and, with it, the colour the string was
+-- built to wear; the role supplies the size. Splitting the two is what lets
+-- every surface share one set of sizes without a single string changing
+-- colour, which is what re-basing them onto shared font objects would have
+-- done silently.
+local function chromeFont(fs, objectName, role, scale)
   local object = _G[objectName]
   if not (fs and fs.SetFont and object and object.GetFont) then return end
   local path, size, flags = object:GetFont()
-  if path then fs:SetFont(path, (size or 12) * scale, flags) end
+  size = Addon.RoleSize(role, scale) or (size or 12) * scale
+  if path then fs:SetFont(path, size, flags) end
 end
 
 -- The four status colours and their names along the bottom of the panel.
@@ -150,7 +161,7 @@ local function layoutLegend(m)
   local available = math.max(1, (panel:GetWidth() or 0) - margin * 2)
   local offsets, rowOf, rows, x = {}, {}, 1, 0
   for index, item in ipairs(panel.legend) do
-    chromeFont(item.text, "GameFontNormalSmall", m.scale)
+    chromeFont(item.text, "GameFontNormalSmall", "label", m.scale)
     local width = m.dotSize + m.dotGap + math.ceil(item.text:GetStringWidth() or 0)
     if x > 0 and x + width > available then
       x = 0
@@ -180,7 +191,7 @@ local function layoutActions(m)
   local previous
   for _, action in ipairs(panel.actions) do
     if action.GetFontString then
-      chromeFont(action:GetFontString(), "GameFontNormal", m.scale)
+      chromeFont(action:GetFontString(), "GameFontNormal", "body", m.scale)
     end
     action:SetSize(action.baseWidth * m.scale, m.buttonH)
     action:ClearAllPoints()
@@ -211,13 +222,13 @@ local function layoutChrome()
   -- would simply have moved one column across.
   local en = chromeMetrics(Addon.GetEnPanelTextScale and Addon.GetEnPanelTextScale() or 1)
 
-  chromeFont(panel.title, "GameFontNormalLarge", m.scale)
+  chromeFont(panel.title, "GameFontNormalLarge", "heading", m.scale)
   panel.title:SetHeight(m.titleH)
   panel.title:ClearAllPoints()
-  chromeFont(panel.meta, "GameFontDisableSmall", m.scale)
+  chromeFont(panel.meta, "GameFontDisableSmall", "meta", m.scale)
   panel.meta:SetHeight(m.metaH)
   panel.meta:ClearAllPoints()
-  chromeFont(panel.enTitle, "GameFontNormalLarge", en.scale)
+  chromeFont(panel.enTitle, "GameFontNormalLarge", "heading", en.scale)
   panel.enTitle:SetHeight(en.titleH)
   panel.enTitle:ClearAllPoints()
   panel.enTitle:SetPoint("TOPLEFT", 18, -en.topPad)

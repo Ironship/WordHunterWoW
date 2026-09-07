@@ -74,8 +74,29 @@ local function node()
   -- layout at all.
   -- LAST_FONT_SIZE lets a test see the size the addon actually asked for,
   -- without having to reach into pooled frames it does not own.
-  function t:SetFont(_, size) self._fontSize = size LAST_FONT_SIZE = size end
+  function t:SetFont(path, size, flags)
+    self._fontPath, self._fontFlags = path or self._fontPath, flags or self._fontFlags
+    self._fontSize = size
+    LAST_FONT_SIZE = size
+  end
+  -- The other half of SetFont, and the reason a size-only re-base can be
+  -- checked at all: Addon.SetRoleSize reads the path and flags back off the
+  -- string so that it changes nothing but the number. Without GetFont here that
+  -- helper silently did nothing and every assertion about it passed anyway.
+  function t:GetFont() return self._fontPath, self._fontSize, self._fontFlags end
   function t:GetFontSize() return self._fontSize end
+  -- Font objects are named, not passed, so both routes to one go through here.
+  function t:SetFontObject(name)
+    local object = type(name) == "string" and _G[name] or name
+    if type(object) ~= "table" or not object.GetFont then return end
+    self._fontObject = type(name) == "string" and name or nil
+    local path, size, flags = object:GetFont()
+    self._fontPath, self._fontSize, self._fontFlags = path, size, flags
+    if object.GetFontColor then self._r, self._g, self._b = object:GetFontColor() end
+  end
+  function t:GetFontObjectName() return self._fontObject end
+  function t:SetTextColor(r, g, b) self._r, self._g, self._b = r, g, b end
+  function t:GetTextColor() return self._r, self._g, self._b end
   -- Width follows the font and the string, not the font alone. Every string
   -- being the same width made the four legend labels the same width, so a
   -- layout that steps past a label by a flat amount and one that measures it
@@ -150,7 +171,14 @@ local function node()
   -- frame. Manufacturing them through __index handed out the same node for
   -- every call, so a test could not tell the title from the line under it --
   -- and a change that re-fonted only one of them would have passed.
-  function t:CreateFontString() return node() end
+  -- The template argument was thrown away, so every string here started life
+  -- with no font at all and a test could not tell a 16pt heading from a 10pt
+  -- caption until something called SetFont on it.
+  function t:CreateFontString(_, _, template)
+    local fs = node()
+    if template then fs:SetFontObject(template) end
+    return fs
+  end
   function t:CreateTexture() return node() end
   return setmetatable(t, {
     -- Never for the underscored names above. Those are this file's own
@@ -175,8 +203,13 @@ end
 -- stub that does not answer those lookups fails on code that is perfectly fine.
 local created = 0
 local namedFrames = {}
-CreateFrame = function(_, name, parent)
+CreateFrame = function(kind, name, parent)
   local f = node()
+  -- Kept so a test can ask what a frame IS. The first argument was thrown away,
+  -- which meant a check over "every button built here" could not tell a button
+  -- from an edit box and had to guess from its height.
+  rawset(f, "_kind", kind)
+  function f:GetObjectType() return f._kind end
   created = created + 1
   local given = name or ("Stub" .. created)
   function f:GetName() return given end
@@ -245,22 +278,30 @@ setmetatable(_G, {
 -- from a fourth, and a stub that made them equal would hide the one thing the
 -- split is about -- that two surfaces at the same setting are not the same size
 -- on screen.
-local function fontObject(size)
-  return { GetFont = function() return "FRIZQT__.TTF", size, "" end }
+local function fontObject(size, r, g, b)
+  return {
+    GetFont = function() return "FRIZQT__.TTF", size, "" end,
+    -- A font object carries a COLOUR as well as a size, which is the trap in
+    -- any size work here: Normal is gold, Highlight is white, Disable is grey,
+    -- so a string re-pointed at another object to fix its size comes back a
+    -- different colour and no assertion in this suite used to be able to see
+    -- it. Modelled so one can.
+    GetFontColor = function() return r, g, b end,
+  }
 end
-GameFontHighlight = fontObject(12)
-GameFontNormal = fontObject(12)
-GameFontNormalLarge = fontObject(16)
-GameFontNormalSmall = fontObject(10)
-GameFontDisableSmall = fontObject(10)
+GameFontHighlight = fontObject(12, 1, 1, 1)
+GameFontNormal = fontObject(12, 1, 0.82, 0)
+GameFontNormalLarge = fontObject(16, 1, 0.82, 0)
+GameFontNormalSmall = fontObject(10, 1, 0.82, 0)
+GameFontDisableSmall = fontObject(10, 0.5, 0.5, 0.5)
 -- The two the addon uses that were missing here. Absent, they were answered by
 -- the fabricating __index above, so a test that measured a window drawing from
 -- one of them measured a manufactured table. ChatFontNormal is the odd one: it
 -- is the size the player set for their CHAT window, so 14 is a default rather
 -- than a fixed fact, and a surface drawing from it is not the same size as its
 -- neighbours at any setting.
-GameFontHighlightSmall = fontObject(10)
-ChatFontNormal = fontObject(14)
+GameFontHighlightSmall = fontObject(10, 1, 1, 1)
+ChatFontNormal = fontObject(14, 1, 1, 1)
 
 -- The slash command table, and the dropdown calls Settings.lua makes.
 --

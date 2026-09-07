@@ -194,6 +194,9 @@ function Addon.createEditor()
   InputScrollFrame_OnLoad(editor.noteScroll)
   editor.note = editor.noteScroll.EditBox
   editor.note:SetFontObject("ChatFontNormal")
+  -- The note box is built here rather than by createEditBox, so it needs the
+  -- same correction: chat font for the family, body role for the size.
+  Addon.ApplyFontRole(editor.note, "body")
   editor.note:SetAutoFocus(false)
   editor.note:SetMultiLine(true)
   editor.note:SetMaxLetters(1000)
@@ -206,7 +209,7 @@ function Addon.createEditor()
   local statuses = { "new", "learning", "known", "ignored" }
   for index, status in ipairs(statuses) do
     local button = Addon.createFlatButton(editor, STATUS_LABELS[status], COLORS[status])
-    button:SetSize(89, 26)
+    button:SetSize(89, Addon.RoleButtonHeight())
     button:SetPoint("TOPLEFT", 20 + (index - 1) * 95, -278)
     button.status = status
     button:SetScript("OnClick", function(self)
@@ -218,22 +221,22 @@ function Addon.createEditor()
   end
 
   local save = Addon.createActionButton(editor, LABELS.save)
-  save:SetSize(112, 30)
+  save:SetSize(112, Addon.RoleButtonHeight())
   save:SetPoint("BOTTOMRIGHT", -20, 20)
   save:SetScript("OnClick", saveSelected)
   local cancel = Addon.createActionButton(editor, LABELS.cancel)
-  cancel:SetSize(112, 30)
+  cancel:SetSize(112, Addon.RoleButtonHeight())
   cancel:SetPoint("RIGHT", save, "LEFT", -8, 0)
   cancel:SetScript("OnClick", function() editor:Hide() end)
   local copyWord = Addon.createActionButton(editor, LABELS.copyWord)
-  copyWord:SetSize(110, 30)
+  copyWord:SetSize(110, Addon.RoleButtonHeight())
   copyWord:SetPoint("BOTTOMLEFT", 20, 20)
   copyWord:SetScript("OnClick", function()
     if Addon.selected then Addon.showCopyText(LABELS.copyWord, Addon.selected.word, nil, editor) end
   end)
 
   editor.resetDictionary = Addon.createActionButton(editor, LABELS.resetDictionary)
-  editor.resetDictionary:SetSize(145, 24)
+  editor.resetDictionary:SetSize(145, Addon.RoleButtonHeight())
   editor.resetDictionary:SetPoint("BOTTOMLEFT", copyWord, "TOPLEFT", 0, 6)
   editor.resetDictionary:SetScript("OnClick", function()
     local dict = Addon.selected and Addon.selected.dictionaryEntry

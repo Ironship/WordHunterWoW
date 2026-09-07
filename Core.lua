@@ -240,6 +240,97 @@ Addon.TEXT_SCALE_KEYS = {
   "textScale", "enPanelTextScale", "editorScale", "listScale", "statsScale",
 }
 
+-- The four jobs a piece of text does in this addon, and the one size each of
+-- them is. They exist because the surfaces did not agree with each other: the
+-- same kind of word was 12 in the quest panel, 10 in a word list row and the
+-- player's own chat-window size in the editor's boxes. That gap is there at
+-- 100%, so no slider could ever close it -- a multiplier lands on whatever
+-- base it is given, and the bases disagreed.
+--
+-- Sizes, not font objects. A Blizzard font object carries colour as well as
+-- size -- the Normal family is gold, Highlight is white, DisableSmall is grey
+-- -- so re-basing strings onto one shared object would silently recolour a
+-- dozen headings and labels, and nothing in the suite checks those colours.
+-- SetFont on top of the object a string already has moves the size and leaves
+-- the colour where it was, which is the move chromeFont has always made in the
+-- quest panel.
+--
+-- heading and label keep the sizes the surfaces already agreed on, so nothing
+-- on those two roles moves for anybody who has already chosen a size. Only
+-- body had three values, and it is the only one that moves. meta shares
+-- label's size and is named apart because what separates the two is colour.
+--
+-- Read off the client, never written down: each role names the Blizzard font
+-- object it has always been drawn from, and takes that object's size. A player
+-- who has turned the game's own font up keeps that, because the settings have
+-- always been a multiple of what the client draws with rather than a
+-- replacement for it. If a client has no such object, the role falls back to a
+-- ratio of the quest panel's own body font -- one anchor for the whole set --
+-- and only then to the number below. What the roles change is that there are
+-- four anchors where there were nine.
+Addon.TEXT_ROLE_RATIO = {
+  heading = 4 / 3,  -- 16 against a stock body of 12: the window's own name
+  body    = 1,      -- 12: text that is read rather than glanced at
+  label   = 5 / 6,  -- 10: the caption above a field
+  meta    = 5 / 6,  -- 10: the muted line beside it
+}
+
+Addon.FONT_ROLES = {
+  heading = { object = "GameFontNormalLarge", size = 16 },
+  body    = { object = "GameFontHighlight",   size = 12 },
+  label   = { object = "GameFontNormalSmall", size = 10 },
+  meta    = { object = "GameFontNormalSmall", size = 10 },
+}
+
+local function fontObjectSize(name)
+  local object = _G[name]
+  if type(object) == "table" and object.GetFont then
+    local _, size = object:GetFont()
+    if type(size) == "number" and size > 0 then return size end
+  end
+end
+
+function Addon.RoleSize(role, scale)
+  local spec = Addon.FONT_ROLES[role]
+  if not spec then return end
+  local size = fontObjectSize(spec.object)
+  if not size then
+    local anchor = fontObjectSize("GameFontHighlight")
+    size = anchor and anchor * (Addon.TEXT_ROLE_RATIO[role] or 1) or spec.size
+  end
+  return size * (tonumber(scale) or 1)
+end
+
+-- `scale` is the surface's own multiplier where the frame does not already
+-- carry one -- the quest panel, which sizes its letters rather than its window.
+-- A window that is SetScale'd whole passes nothing, because the frame does the
+-- multiplying for everything inside it.
+function Addon.ApplyFontRole(fs, role, scale)
+  local size = Addon.RoleSize(role, scale)
+  if not size or not fs or not fs.GetFont or not fs.SetFont then return end
+  local path, _, flags = fs:GetFont()
+  if not path then return end
+  fs:SetFont(path, size, flags)
+  return size
+end
+
+-- One height for every button this addon draws. The complaint named button
+-- sizes before it named letters, and it was right to: the editor's status
+-- buttons stood 26 high, the word list's filters 22, save and cancel 30 and
+-- the reset 24 -- four heights for two widgets, every one of them wrong at
+-- 100% and none of them reachable by any slider. Widths are left alone: a
+-- button is as wide as the word on it.
+--
+-- Off the body role rather than typed, for the same reason the roles are: 26
+-- is what the quest panel's chrome has always used against a stock 12, so a
+-- client drawing bigger gets buttons to match its letters.
+--
+-- Not applied to the button this addon hangs in Blizzard's own quest log. That
+-- one is a guest in someone else's window and should match its host, not us.
+function Addon.RoleButtonHeight(scale)
+  return math.floor(Addon.RoleSize("body", scale) * 13 / 6 + 0.5)  -- 26 at 12
+end
+
 -- Every window this addon owns that is scaled whole, and the key that sizes it.
 -- Which slider a key gets is SIZE_GROUPS below; this is only what to reach for
 -- once one has moved.
@@ -304,13 +395,10 @@ Addon.SIZE_GROUPS = {
 -- number the panel passes to SetFont, and a player who has changed the game's
 -- font size sees their own scale rather than a stock one.
 function Addon.TextScalePoints(scale)
-  local size = 12
-  local object = _G.GameFontHighlight
-  if type(object) == "table" and object.GetFont then
-    local _, base = object:GetFont()
-    if type(base) == "number" and base > 0 then size = base end
-  end
-  return math.floor(size * (tonumber(scale) or 1) + 0.5)
+  -- The body role is anchored to that same font object, so this is the figure
+  -- the panel passes to SetFont -- and now also the figure the editor boxes and
+  -- the word list rows end up at, which is the point of the roles.
+  return math.floor((Addon.RoleSize("body", scale) or 12) + 0.5)
 end
 
 -- The figure under a size slider, in the unit its group is measured in. Here

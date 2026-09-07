@@ -26,7 +26,12 @@ function Addon.CreateSettingsPanel()
   subtitle:SetText("Choose a frame style. Text stays on an opaque reading surface in every theme.")
   subtitle:SetTextColor(0.7, 0.74, 0.8)
 
+  -- Gold, like every other caption on this page, but pulled to the label
+  -- role: this was the only surface drawing its captions at 12 where the
+  -- other five draw them at 10. The page itself is never scaled, so this
+  -- is the whole of what it had to answer for.
   local label = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  Addon.ApplyFontRole(label, "label")
   label:SetPoint("TOPLEFT", 16, -64)
   label:SetText(Addon.LABELS.backgroundLabel)
 
@@ -49,6 +54,7 @@ function Addon.CreateSettingsPanel()
   Addon.ApplyBackground(preview)
 
   local opacityLabel = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  Addon.ApplyFontRole(opacityLabel, "label")
   opacityLabel:SetPoint("TOPLEFT", 16, -232)
   opacityLabel:SetText(Addon.LABELS.opacityLabel)
 
@@ -70,6 +76,7 @@ function Addon.CreateSettingsPanel()
   end)
 
   local markLabel = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  Addon.ApplyFontRole(markLabel, "label")
   markLabel:SetPoint("TOPLEFT", 16, -285)
   markLabel:SetText(Addon.LABELS.wordMarkingLabel)
 
@@ -124,6 +131,7 @@ function Addon.CreateSettingsPanel()
   -- like. Addon.SIZE_GROUPS carries the argument.
   local function sizeSlider(name, y, label, unit, get, set)
     local caption = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    Addon.ApplyFontRole(caption, "label")
     caption:SetPoint("TOPLEFT", 16, y)
     caption:SetText(label)
     local s = CreateFrame("Slider", name, box, "OptionsSliderTemplate")
@@ -180,6 +188,7 @@ function Addon.CreateSettingsPanel()
   end
 
   local langLabel = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  Addon.ApplyFontRole(langLabel, "label")
   langLabel:SetPoint("TOPLEFT", 16, y)
   langLabel:SetText(Addon.LABELS.languageLabel)
 
