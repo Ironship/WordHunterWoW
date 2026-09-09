@@ -131,7 +131,7 @@ WordHunterWoWDB.settings.frames["panel:npc"] = { point = "CENTER", x = -9000, y 
 Addon.ResetLayout()
 assert(next(WordHunterWoWDB.settings.frames) == nil, "the reset clears the saved geometry")
 
-local init = io.open("Init.lua"):read("a")
+local init = io.open("Init.lua"):read("*a")
 assert(init:find("Addon.ResetLayout", 1, true), "and it has to be reachable from a slash command")
 
 
