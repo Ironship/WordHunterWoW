@@ -91,7 +91,7 @@ assert(again == small, ("returning to life-size should restore the old layout, g
 
 -- The slider has to be bounded by the same numbers the code clamps to, or the
 -- two disagree at the edges.
-local settings = io.open("Settings.lua"):read("a")
+local settings = io.open("Settings.lua"):read("*a")
 assert(settings:find("TEXT_SCALE_MIN", 1, true) and settings:find("TEXT_SCALE_MAX", 1, true),
   "the slider's ends must come from the same bounds the setter clamps to")
 

@@ -194,7 +194,12 @@ for _, object in ipairs(placed) do
   if object.parent == box and type(object.y) == 'number' then
     local height = rawget(object, 'h')
     local depth = -object.y + (type(height) == 'number' and height or 0)
-    if depth > lowest then lowest, lowestName = depth, object.GetName and object:GetName() or 'label' end
+    if depth > lowest then
+      -- rawget: a font string has no GetName, and the stub would manufacture
+      -- one that answers with a table -- which Lua 5.1's %s then refuses.
+      local name = rawget(object, 'GetName') and object:GetName()
+      lowest, lowestName = depth, type(name) == 'string' and name or 'label'
+    end
   end
 end
 assert(lowest > 0, 'no control was placed in the scroll box')
