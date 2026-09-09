@@ -1,9 +1,9 @@
 -- Run from the addon root:  lua tests/every-file.test.lua
 --
--- Load the ten files the .toc names, in the order it names them, and run the
--- surfaces the rest of the suite never reaches.
+-- Load the eleven files the .toc names, in the order it names them, and run
+-- the surfaces the rest of the suite never reaches.
 --
--- Two of the ten could not be loaded here at all until now. Init.lua indexes
+-- Two of the eleven could not be loaded here at all until now. Init.lua indexes
 -- SlashCmdList at file scope and the stub had no such table, and Settings.lua
 -- calls UIDropDownMenu_SetWidth, which the fabricating __index used to answer
 -- with a manufactured node. So the file that decides what happens on
@@ -16,12 +16,24 @@
 
 local node = dofile("tests/wowstub.lua")
 
-local TOC = {}
-for line in io.lines("WordHunterWoW_Mainline.toc") do
-  local file = line:match("^(%S+%.lua)%s*$")
-  if file then TOC[#TOC + 1] = file end
+local function manifest(path)
+  local files = {}
+  for line in io.lines(path) do
+    local file = line:match("^(%S+%.lua)%s*$")
+    if file then files[#files + 1] = file end
+  end
+  return files
 end
-assert(#TOC == 10, "the manifest names " .. #TOC .. " lua files, expected 10")
+local TOC = manifest("WordHunterWoW_Mainline.toc")
+assert(#TOC == 11, "the manifest names " .. #TOC .. " lua files, expected 11")
+-- The Classic manifest is a second copy of the same list. A file added to one
+-- and not the other loads on Retail and is nil on Classic Era, and nothing
+-- else here reads the second file at all.
+local VANILLA = manifest("WordHunterWoW_Vanilla.toc")
+assert(#VANILLA == #TOC, "the two manifests name a different number of files")
+for i, file in ipairs(TOC) do
+  assert(VANILLA[i] == file, "the manifests disagree at line " .. i .. ": " .. file .. " vs " .. tostring(VANILLA[i]))
+end
 
 -- Loaded from the manifest rather than from a list written here. A list would
 -- be a second answer to "what does this addon load", and the two drift.
@@ -49,6 +61,7 @@ print = function(...) said[#said + 1] = table.concat({ ... }, " ") end
 local commands = {
   "", "settings", "words", "stats", "reset", "bg", "opacity",
   "lang", "harvest", "harvest on", "harvest off", "harvest clear", "export",
+  "difficult", "difficult export", "recall", "recall on", "recall off",
 }
 for _, command in ipairs(commands) do
   local ok, err = pcall(run, command)
@@ -58,6 +71,13 @@ for _, command in ipairs(commands) do
 end
 print = realPrint
 print("  every /whw command runs on a fresh profile without raising")
+-- The recall commands say what they did, and the switch really moves.
+local recallOn
+for _, line in ipairs(said) do
+  if line:find("Recall check on.", 1, true) then recallOn = true end
+end
+assert(recallOn, "/whw recall on did not report the switch")
+assert(Addon.GetRecallCheck() == false, "/whw recall off ran last and has to leave it off")
 
 -- Stats.lua, which no other test loads. Its arithmetic is checked elsewhere;
 -- what is checked here is that opening it on an empty profile does not raise,
@@ -65,6 +85,11 @@ print("  every /whw command runs on a fresh profile without raising")
 assert(Addon.toggleStats, "Stats.lua defined no toggleStats")
 local ok, err = pcall(Addon.toggleStats)
 assert(ok, "opening the statistics window on an empty profile raised: " .. tostring(err))
+-- And the row this release added reads zero rather than nothing.
+assert(Addon.statsFrame and Addon.statsFrame.extraRows and Addon.statsFrame.extraRows.difficult,
+  "the statistics window has no difficult-words row")
+assert(Addon.statsFrame.extraRows.difficult:GetText() == "0",
+  "on an empty profile the difficult count reads " .. tostring(Addon.statsFrame.extraRows.difficult:GetText()))
 pcall(Addon.toggleStats)
 print("  the statistics window opens and closes on an empty profile")
 

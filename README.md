@@ -13,12 +13,40 @@ QuestWordHunter keeps the quest on screen as clickable text. See a word you don'
 - Quest text you can click instead of retyping into a notes app
 - Colours and underlines for **New**, **Learning**, **Known** and **Ignored**, so you see progress in the paragraph itself — keep both or pick one
 - A meaning, a personal note, and the sentence the word came from
+- An optional **recall check**: a word you have been learning for a day asks how well you knew it, 1 to 5, before it shows its meaning. Words that keep scoring low are **difficult**, and you can export them for a flashcard app
 - A word list and simple stats — `/whw words`, `/whw stats`
 - A quiet **Ready for Known** hint after five different quests and two weeks. It never promotes anything by itself
 - Separate lists per language, so German and French don't mix
 - Windows you can move, resize and theme — `/whw settings`
 
 Buttons stay in English. Quest text stays in the language you set in WoW.
+
+## What changed in 1.18
+
+**A Learning word can ask before it tells.** Switch on the recall check in
+`/whw settings` and a word that has been Learning for a day no longer opens
+with its meaning filled in. It shows the sentence it sits in and five buttons,
+1 to 5 -- no idea, to knew it at once -- and the meaning only after you have
+answered, or pressed **Show meaning** to look without answering. The number
+keys work too. Each word is asked at most once a day, and only when clicked in
+a quest: the word list shows the meaning beside the word already, so it never
+asks. The verdict is written the moment you give it; Cancel does not lose it.
+Off by default, because it changes what a click does.
+
+**Difficult words, and a way to get them out.** Five or more ratings with an
+average below 3 make a word difficult. The settings page counts them and has
+an **Export difficult words** button that puts them in a box you copy out of,
+one word per line, tab-separated: word, meaning, note, the example sentences,
+the recent average and the number of ratings. Paste it into Anki or any
+flashcard program that reads a tab-separated file. `/whw difficult` says how
+many there are and `/whw difficult export` opens the same box.
+
+**The sentences come along.** Up to five example sentences are kept for every
+word you mark Learning: the one it was marked in, and the ones it was met or
+rated in later. They go into the export beside the word.
+
+The ratings and sentences are stored beside your word list, not in it, so the
+file the desktop Word Hunter imports is unchanged.
 
 ## What changed in 1.17
 
@@ -74,6 +102,14 @@ It is **off by default**, everything stays on your machine, and nothing is uploa
 /whw harvest on|off     turn it on or off
 /whw harvest export     open it in a box you can copy out of
 /whw harvest clear      throw it away
+```
+
+The recall check has the same shape:
+
+```
+/whw recall on|off      ask how well you knew a Learning word before showing its meaning
+/whw difficult          how many words are difficult
+/whw difficult export   open them in a box you can copy into a flashcard app
 ```
 
 Supported languages: English, German, French, Spanish, Italian, Portuguese (Brazil). Retail 12.1 and Classic Era 1.15.9.

@@ -45,6 +45,9 @@ local function computeStats(now)
     readyForKnown = readyForKnown,
     added7 = added7,
     added30 = added30,
+    -- Counted off the recall rows, not in the walk above: there are a few
+    -- hundred of those at most, against the dictionary's tens of thousands.
+    difficult = Addon.CountDifficult and Addon.CountDifficult() or 0,
     top = best,
   }
 end
@@ -68,7 +71,7 @@ function Addon.toggleStats()
     Addon.SetupEscapeClose(statsFrame)
     Addon.PlaceFrame(statsFrame, "stats")
     Addon.ApplyWindowScale("statsScale")
-    Addon.MakeResizable(statsFrame, "stats", 340, 380, 650, 700)
+    Addon.MakeResizable(statsFrame, "stats", 340, 400, 650, 700)
     statsFrame:Hide()
 
     local brand = statsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -124,6 +127,7 @@ function Addon.toggleStats()
       { key = "readyForKnown", label = LABELS.readyForKnown },
       { key = "added7", label = LABELS.added7 },
       { key = "added30", label = LABELS.added30 },
+      { key = "difficult", label = LABELS.difficultWords },
     }
     for index, extra in ipairs(extras) do
       local y = -208 - (index - 1) * 20
@@ -137,17 +141,17 @@ function Addon.toggleStats()
 
     local divider2 = statsFrame:CreateTexture(nil, "ARTWORK")
     divider2:SetColorTexture(0.20, 0.30, 0.43, 0.55)
-    divider2:SetPoint("TOPLEFT", 18, -272)
-    divider2:SetPoint("TOPRIGHT", -18, -272)
+    divider2:SetPoint("TOPLEFT", 18, -292)
+    divider2:SetPoint("TOPRIGHT", -18, -292)
     divider2:SetHeight(1)
 
     local mostLabel = statsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    mostLabel:SetPoint("TOPLEFT", 18, -282)
+    mostLabel:SetPoint("TOPLEFT", 18, -302)
     mostLabel:SetText(LABELS.mostEncountered)
 
     statsFrame.topRows = {}
     for index = 1, 5 do
-      local y = -300 - (index - 1) * 20
+      local y = -320 - (index - 1) * 20
       local name = statsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
       name:SetPoint("TOPLEFT", 18, y)
       name:SetPoint("TOPRIGHT", -70, y)
@@ -177,6 +181,7 @@ function Addon.toggleStats()
     statsFrame.extraRows.readyForKnown:SetText(tostring(stats.readyForKnown))
     statsFrame.extraRows.added7:SetText(tostring(stats.added7))
     statsFrame.extraRows.added30:SetText(tostring(stats.added30))
+    statsFrame.extraRows.difficult:SetText(tostring(stats.difficult))
     for index, row in ipairs(statsFrame.topRows) do
       local entry = stats.top[index]
       if entry then
@@ -190,6 +195,11 @@ function Addon.toggleStats()
       end
     end
     Addon.PlaceFrame(statsFrame, "stats")
+    -- A height saved before the difficult-words row existed is twenty short
+    -- of the rows it now has to hold, and the resize floor only stops a drag
+    -- from going below it -- it does not lift a frame that is already there.
+    local height = statsFrame:GetHeight()
+    if type(height) == "number" and height < 400 then statsFrame:SetHeight(400) end
     statsFrame:Show()
     statsFrame:Raise()
   end
