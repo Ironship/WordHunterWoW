@@ -36,7 +36,7 @@ test("statistics count all words without linked forms", () => {
 
 test("statistics respect ready-for-known thresholds", () => {
   const statsSource = source;
-  const computeBlock = statsSource.slice(statsSource.indexOf("computeStats"));
+  const computeBlock = statsSource.slice(statsSource.indexOf("local function computeStats("));
   assert.ok(computeBlock.includes("(entry.encounterCount or 0) >= 5"));
   assert.ok(computeBlock.includes("14 * 24 * 60 * 60"));
 });

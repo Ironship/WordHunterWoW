@@ -44,9 +44,14 @@ assert(_G.WordHunterWoWRecallCheckText:GetText() == LABELS.recallLabel, 'and say
 check:SetChecked(true)
 check:GetScript('OnClick')(check)
 assert(Addon.GetRecallCheck() == true, 'ticking it stores the setting')
+-- The setter refreshes the page itself: /whw recall off has to move a switch
+-- that is on screen.
 Addon.SetRecallCheck(false)
+assert(check:GetChecked() == false, 'the setter resyncs the switch on the open page')
+WordHunterWoWDB.settings.recallCheck = true
 panel.refresh()
-assert(check:GetChecked() == false, 'refresh resyncs the switch after a change made elsewhere')
+assert(check:GetChecked() == true, 'and refresh resyncs it after a change made elsewhere')
+Addon.SetRecallCheck(false)
 
 -- The count under it, filled by refresh like the harvest note.
 local note = rawget(panel, 'difficultNote')
@@ -74,6 +79,7 @@ Addon.RecordExample('hund', 'Der Hund bellt.', 1, 'Q', now)
 Addon.RecordExample('hund', 'Der Hund schläft.', 2, 'Q', now)
 panel.refresh()
 assert(note:GetText() == string.format(LABELS.difficultNote, 1), 'the count follows the rows: ' .. tostring(note:GetText()))
+panel:SetScale(1.3)
 press()
 local copy = Addon.copyDialog
 assert(copy and copy:IsShown(), 'a difficult word opens the copy box')
@@ -82,7 +88,8 @@ assert(copy.hint:GetText() == LABELS.difficultExportHint, 'with the hint that sa
 local expected = (Addon.BuildDifficultExport():gsub('|', '||'))
 assert(copy.text:GetText() == expected, 'the box holds the export: ' .. tostring(copy.text:GetText()))
 assert(expected:find('Der Hund bellt. || Der Hund schläft.', 1, true), 'sentences are joined by a pipe, shown doubled')
-assert(copy:GetScale() == panel:GetScale(), 'and the box is the size of the page it came from')
+assert(math.abs(copy:GetScale() - 1.3) < 0.001, 'and the box is the size of the page it came from: ' .. tostring(copy:GetScale()))
+panel:SetScale(1)
 
 -- The switch and the export sit at fixed offsets, so the layout test can see
 -- them, and above the harvest block they pushed down.

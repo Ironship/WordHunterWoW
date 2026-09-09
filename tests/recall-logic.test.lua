@@ -77,9 +77,10 @@ assert(Addon.RecallGated("katze", now) == false,
 assert(Addon.RecallGated("", now) == false and Addon.RecallGated(nil, now) == false)
 
 -- Ratings. Refused outside one to five, and only whole numbers.
-for _, bad in ipairs({ 0, 6, 2.5, "x", nil, -1 }) do
+for _, bad in ipairs({ 0, 6, 2.5, "x", -1 }) do
   assert(Addon.RecordRating("hund", bad, now) == nil, "score " .. tostring(bad) .. " must be refused")
 end
+assert(Addon.RecordRating("hund", nil, now) == nil, "no score at all must be refused")
 assert(Addon.GetRecallRow("hund") == nil, "a refused rating leaves no row behind")
 local row = Addon.RecordRating("hund", 3, now)
 assert(row and row == Addon.GetRecallRow("hund"), "a rating makes the row and returns it")
@@ -124,6 +125,19 @@ rows.alt = { ratings = { { at = now, score = 2 }, { at = now, score = 4 } } }
 local alt = Addon.GetRecallRow("alt")
 assert(alt.ratingCount == 2 and alt.ratingSum == 6 and type(alt.examples) == "table",
   "a bare row gets its count, sum and examples filled in")
+rows.broken = { ratings = "x" }
+local broken = Addon.GetRecallRow("broken")
+assert(type(broken.ratings) == "table" and #broken.ratings == 0 and broken.ratingCount == 0 and broken.ratingSum == 0,
+  "ratings that are not a list are replaced by an empty one")
+assert(select(2, Addon.RecallAverage(broken)) == 0)
+assert(Addon.RecordRating("broken", 3, now), "and the repaired row takes a rating")
+-- A scalar where a row should be is no row at all, and nothing that reads
+-- rows may trip over it.
+rows.scalar = "x"
+assert(Addon.GetRecallRow("scalar") == nil, "a scalar is not a row")
+assert(Addon.RecallSummary("scalar") == nil and Addon.IsDifficult(Addon.GetRecallRow("scalar")) == false)
+assert(Addon.RecallGated("scalar", now) == false)
+rows.scalar = nil
 
 -- Examples: trimmed and collapsed, five kept, the same sentence once.
 rows.hund = nil
@@ -159,6 +173,16 @@ for _, item in ipairs(difficult) do names[#names + 1] = item.word end
 assert(#difficult == 3, "three are difficult and still Learning, got " .. table.concat(names, ","))
 assert(names[1] == "Katze" and names[2] == "Hund" and names[3] == "Baum",
   "hardest first (1.0, 1.4, 2.0): got " .. table.concat(names, ","))
+-- Two at the same average come out by word, folded, so the export is in the
+-- same order every session rather than the order pairs() happened to walk.
+words.zebra = { word = "Zebra", status = "learning", translation = "zebra", statusChangedAt = now - 2 * DAY }
+words.apfel = { word = "apfel", status = "learning", translation = "apple", statusChangedAt = now - 2 * DAY }
+rated("zebra", { 1, 1, 1, 1, 1 })
+rated("apfel", { 1, 1, 1, 1, 1 })
+local tied = {}
+for _, item in ipairs(Addon.DifficultWords()) do if item.mean == 1 then tied[#tied + 1] = item.word end end
+assert(table.concat(tied, ",") == "apfel,Katze,Zebra", "ties go by word: " .. table.concat(tied, ","))
+words.zebra, words.apfel, rows.zebra, rows.apfel = nil, nil, nil, nil
 -- Katze is a dictionary word the pack marks Learning; its ratings still count
 -- it, and its meaning comes from the pack since the player never wrote one.
 assert(difficult[1].translation == "cat", "a dictionary word exports the pack's meaning")

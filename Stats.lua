@@ -71,7 +71,7 @@ function Addon.toggleStats()
     Addon.SetupEscapeClose(statsFrame)
     Addon.PlaceFrame(statsFrame, "stats")
     Addon.ApplyWindowScale("statsScale")
-    Addon.MakeResizable(statsFrame, "stats", 340, 400, 650, 700)
+    Addon.MakeResizable(statsFrame, "stats", 340, 420, 650, 700)
     statsFrame:Hide()
 
     local brand = statsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -198,8 +198,10 @@ function Addon.toggleStats()
     -- A height saved before the difficult-words row existed is twenty short
     -- of the rows it now has to hold, and the resize floor only stops a drag
     -- from going below it -- it does not lift a frame that is already there.
+    -- Lifted to the new default, not the floor: at the floor the last row
+    -- sits on the border.
     local height = statsFrame:GetHeight()
-    if type(height) == "number" and height < 400 then statsFrame:SetHeight(400) end
+    if type(height) == "number" and height < 420 then statsFrame:SetHeight(420) end
     statsFrame:Show()
     statsFrame:Raise()
   end
