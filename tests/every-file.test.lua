@@ -78,6 +78,27 @@ for _, line in ipairs(said) do
 end
 assert(recallOn, "/whw recall on did not report the switch")
 assert(Addon.GetRecallCheck() == false, "/whw recall off ran last and has to leave it off")
+-- With a difficult word the export command opens the copy box rather than
+-- saying there is nothing. The word is taken away again below, so the
+-- statistics still open on an empty profile.
+local now = time()
+Addon.GetWordsTable().hund = { word = "Hund", status = "learning", translation = "dog", statusChangedAt = now - 3 * 86400 }
+for i = 1, 5 do Addon.RecordRating("hund", 1, now + i) end
+said = {}
+print = function(...) said[#said + 1] = table.concat({ ... }, " ") end
+local okExport, errExport = pcall(run, "difficult export")
+print = realPrint
+assert(okExport, "/whw difficult export with a difficult word raised: " .. tostring(errExport))
+assert(Addon.copyDialog and Addon.copyDialog:IsShown(), "/whw difficult export did not open the copy box")
+assert(Addon.copyDialog.title:GetText() == Addon.LABELS.difficultExport, "under its own title")
+assert(Addon.copyDialog.hint:GetText() == Addon.LABELS.difficultExportHint, "with the hint that says where it goes")
+for _, line in ipairs(said) do
+  assert(not line:find("Nothing to copy.", 1, true), "said there was nothing to copy with a difficult word present")
+end
+Addon.copyDialog:Hide()
+Addon.GetWordsTable().hund = nil
+WordHunterWoWDB.recallByLocale = nil
+print("  /whw difficult export puts a difficult word in the copy box")
 
 -- Stats.lua, which no other test loads. Its arithmetic is checked elsewhere;
 -- what is checked here is that opening it on an empty profile does not raise,
@@ -92,5 +113,22 @@ assert(Addon.statsFrame.extraRows.difficult:GetText() == "0",
   "on an empty profile the difficult count reads " .. tostring(Addon.statsFrame.extraRows.difficult:GetText()))
 pcall(Addon.toggleStats)
 print("  the statistics window opens and closes on an empty profile")
+
+-- The row counts, and a height saved before the row existed is lifted to
+-- hold it. Closed first: the toggle above may have left it either way.
+local statsFrame = Addon.statsFrame
+if statsFrame:IsShown() then Addon.toggleStats() end
+Addon.GetWordsTable().hund = { word = "Hund", status = "learning", translation = "dog", statusChangedAt = now - 2 * 86400 }
+for _ = 1, 5 do Addon.RecordRating("hund", 1, now) end
+Addon.toggleStats()
+assert(statsFrame.extraRows.difficult:GetText() == "1",
+  "one difficult word reads " .. tostring(statsFrame.extraRows.difficult:GetText()))
+Addon.toggleStats()
+WordHunterWoWDB.settings.frames[Addon.LayoutKey("stats")] =
+  { point = "CENTER", relPoint = "CENTER", x = 0, y = 0, w = 340, h = 400 }
+Addon.toggleStats()
+assert(statsFrame:GetHeight() >= 420, "a 1.17 height of 400 was not lifted: " .. tostring(statsFrame:GetHeight()))
+Addon.toggleStats()
+print("  the difficult row counts, and an old short height is lifted")
 
 print("every-file: ok")

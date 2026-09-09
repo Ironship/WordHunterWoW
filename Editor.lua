@@ -62,14 +62,28 @@ local function showFields(shown)
     if shown then button:Show() else button:Hide() end
   end
   if editor.cover then
-    if shown then editor.cover:Hide() else editor.cover:Show() end
+    if shown then
+      editor.cover:Hide()
+    else
+      -- No keys at all in combat. The cover decides per key whether the game
+      -- sees it, and that call is refused in combat, so a cover that took
+      -- keys then would either swallow Escape and the movement keys or let a
+      -- digit both rate the word and fire the action bar. The buttons still
+      -- work; EnableKeyboard is not protected.
+      editor.cover:EnableKeyboard(not (InCombatLockdown and InCombatLockdown()))
+      editor.cover:Show()
+    end
+    -- At rest, let everything through. A digit that rated the word left the
+    -- flag at "keep", and a flag is a frame attribute that outlives the
+    -- keystroke; shown again from that state the cover would eat every key.
+    if Addon.SafePropagate then Addon.SafePropagate(editor.cover, true) end
   end
 end
 
 -- Takes the cover down and fills the boxes. The texts were held back rather
 -- than written into hidden boxes: a hidden box still answers GetText, and the
 -- meaning must not be anywhere in the editor until it is meant to be seen.
-local function reveal()
+local function reveal(fromKey)
   local selected = Addon.selected
   if not selected then return end
   selected.recallPending = false
@@ -78,9 +92,29 @@ local function reveal()
   showFields(true)
   Addon.updateResetDictionary()
   updateEditorHistory()
-  editor.translation:SetFocus()
-  editor.translation:HighlightText()
+  if fromKey then
+    -- The digit that gave the verdict is still being handled. Focus the box
+    -- now and the same keystroke's character lands in it -- over the meaning,
+    -- which HighlightText has just selected -- and Enter would save "3" as the
+    -- translation. Focus once the keystroke is over.
+    C_Timer.After(0, function()
+      if editor:IsShown() and Addon.selected and not Addon.selected.recallPending then
+        editor.translation:SetFocus()
+        editor.translation:HighlightText()
+      end
+    end)
+  else
+    editor.translation:SetFocus()
+    editor.translation:HighlightText()
+  end
   if Addon.RevealSelectedHighlight then Addon.RevealSelectedHighlight() end
+end
+
+-- For the setting being switched off under an open cover: the quest panel
+-- reads the setting live and would light the English word beside an editor
+-- still asking for a verdict.
+function Addon.RevealRecall()
+  if editor and editor:IsShown() and Addon.selected and Addon.selected.recallPending then reveal() end
 end
 
 -- Written the moment it is given. Save is not involved: cancelling the editor
@@ -88,7 +122,7 @@ end
 -- Save would be lost on most of them. Guarded against a cover left up by a
 -- quest window closing under it -- the rating is for the word the editor is
 -- showing, or nobody.
-local function rate(score)
+local function rate(score, fromKey)
   local selected = Addon.selected
   if not selected or not selected.recallPending or not editor:IsShown() then return end
   local now = time()
@@ -96,7 +130,7 @@ local function rate(score)
   if Addon.RecordExample then
     Addon.RecordExample(selected.key, selected.context, selected.questId, selected.questTitle, now)
   end
-  reveal()
+  reveal(fromKey)
 end
 
 -- `opts.origin` says where the click came from. Only the quest panel passes
@@ -147,6 +181,11 @@ function Addon.openEditor(word, context, questId, questTitle, opts)
     -- box would take the number keys as typing.
     editor.translation:SetText("")
     editor.note:SetText("")
+    -- Whatever holds the keyboard, not only these two: a click on a quest
+    -- word does not take focus from the word list's search box, and a digit
+    -- typed there is a filter, not a verdict.
+    local focus = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus()
+    if focus and focus.ClearFocus then focus:ClearFocus() end
     editor.translation:ClearFocus()
     editor.note:ClearFocus()
     showFields(false)
@@ -443,14 +482,25 @@ function Addon.createEditor()
     NUMPAD1 = 1, NUMPAD2 = 2, NUMPAD3 = 3, NUMPAD4 = 4, NUMPAD5 = 5,
   }
   cover:EnableKeyboard(true)
+  if Addon.SafePropagate then Addon.SafePropagate(cover, true) end
   cover:SetScript("OnKeyDown", function(self, key)
     local score = KEY_SCORES[key]
-    if score and Addon.selected and Addon.selected.recallPending then
+    if score and Addon.selected and Addon.selected.recallPending
+        and not (InCombatLockdown and InCombatLockdown()) then
       if Addon.SafePropagate then Addon.SafePropagate(self, false) end
-      rate(score)
+      rate(score, true)
     else
       if Addon.SafePropagate then Addon.SafePropagate(self, true) end
     end
+  end)
+  -- Combat starting or ending while the cover is up: showFields decided the
+  -- keyboard once, at show time, and this keeps the decision current.
+  cover:RegisterEvent("PLAYER_REGEN_DISABLED")
+  cover:RegisterEvent("PLAYER_REGEN_ENABLED")
+  cover:SetScript("OnEvent", function(self, event)
+    local out = event == "PLAYER_REGEN_ENABLED"
+    self:EnableKeyboard(out)
+    if out and Addon.SafePropagate then Addon.SafePropagate(self, true) end
   end)
 end
 

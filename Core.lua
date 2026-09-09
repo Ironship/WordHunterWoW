@@ -570,6 +570,9 @@ function Addon.SetTargetLocale(locale)
   end
   if Addon.listFrame and Addon.listFrame:IsShown() then Addon.refreshWordList() end
   if Addon.statsFrame and Addon.statsFrame:IsShown() then Addon.statsFrame:Hide() end
+  -- And the editor: it is open on a word of the old language, and both Save
+  -- and a rating write to whichever language is current when they happen.
+  if Addon.editor and Addon.editor:IsShown() then Addon.editor:Hide() end
   if Addon.panel and Addon.panel:IsShown() and Addon.lastQuest then Addon.refreshPanel() end
 end
 

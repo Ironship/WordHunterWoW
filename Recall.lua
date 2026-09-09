@@ -66,6 +66,8 @@ function Addon.SetRecallCheck(value)
   if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
   if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
   WordHunterWoWDB.settings.recallCheck = not not value
+  -- Switched off under an open question, the question comes down with it.
+  if not value and Addon.RevealRecall then Addon.RevealRecall() end
   if Addon.settingsPanel and Addon.settingsPanel.refresh then Addon.settingsPanel.refresh() end
 end
 
@@ -88,7 +90,10 @@ function Addon.GetRecallRow(key, create)
     row = { ratings = {}, ratingCount = 0, ratingSum = 0, examples = {} }
     rows[key] = row
   end
-  if type(row) == "table" then
+  -- A scalar where a row should be -- a hand-edited file -- is no row at
+  -- all, rather than a value every reader has to be ready for.
+  if type(row) ~= "table" then return nil end
+  do
     -- Rows written by an earlier build, or edited by hand, may be missing a
     -- field. Filled in on read rather than by a migration, so the saved file
     -- needs no version stamp for this.
