@@ -116,6 +116,23 @@ Addon.LABELS = {
   integratedLabel = "Integrated quest window",
   harvestLabel = "Collect quest and NPC text for the dictionary project",
   harvestNote = "Off by default. Records objectives, progress and hand-in text plus NPC dialogue you actually see — the passages Blizzard's quest API does not publish. Stored locally; %d passages and %d words no dictionary covers. Turning it off keeps what was collected until you export or /whw harvest clear.",
+  -- The recall check. Off by default like the harvest box: it changes what a
+  -- click does, and nobody who has not read about it should find their
+  -- meanings hidden behind a question.
+  recallLabel = "Ask for a 1–5 rating before showing the meaning of a word in Learning for over a day",
+  difficultNote = "%d difficult words so far — five or more ratings with an average below 3.",
+  difficultExport = "Export difficult words",
+  -- Like harvestExportHint: says where the block goes and what the columns
+  -- are, because a wall of tab-separated text explains neither.
+  difficultExportHint = "Ctrl+C copies the list — one word per line, tab-separated: word, meaning, note, example sentences, average, ratings. Paste it into a flashcard app.",
+  difficultExportEmpty = "No difficult words yet.\n\n"
+    .. "A word counts as difficult after five or more ratings with an average below 3. Switch on the rating box above and keep reading quests.",
+  difficultWords = "Difficult words",
+  recallPrompt = "How well did you know this word?",
+  recallScale = "1 = no idea  •  5 = knew it at once",
+  recallShow = "Show meaning",
+  recallSoFar = "Rated %d times so far, average %.1f",
+  recallHistory = "Recall %.1f (%d)",
   englishHeader = "English",
   enOfferOnly = "[Blizzard publishes no English text for this part of a quest. Showing the quest's opening text instead.]",
   -- Classic quest records carry a title and an objective and no opening text at
@@ -1339,13 +1356,13 @@ Addon.LAYOUT_DEFAULTS = {
   npc = {
     panel = { point = "LEFT", relPoint = "LEFT", x = 420, y = 40, w = 720, h = 500 },
     list = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -16, y = -36, w = 420, h = 520 },
-    stats = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -448, y = -36, w = 340, h = 400 },
+    stats = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -448, y = -36, w = 340, h = 420 },
     editor = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -448, y = -448, w = 430, h = 400 },
   },
   questlog = {
     panel = { point = "RIGHT", relPoint = "RIGHT", x = -20, y = 40, w = 680, h = 500 },
     list = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -16, y = -36, w = 420, h = 500 },
-    stats = { point = "BOTTOMRIGHT", relPoint = "BOTTOMRIGHT", x = -16, y = 90, w = 340, h = 400 },
+    stats = { point = "BOTTOMRIGHT", relPoint = "BOTTOMRIGHT", x = -16, y = 90, w = 340, h = 420 },
     editor = { point = "CENTER", relPoint = "CENTER", x = 180, y = 50, w = 430, h = 400 },
   },
 }
@@ -1581,6 +1598,9 @@ local function SafePropagate(frame, propagate)
   if InCombatLockdown and InCombatLockdown() then return end
   if frame.SetPropagateKeyboardInput then frame:SetPropagateKeyboardInput(propagate) end
 end
+-- Shared with the editor's rating cover, which takes keys of its own and has
+-- the same combat rule to respect.
+Addon.SafePropagate = SafePropagate
 
 function Addon.SetupEscapeClose(frame)
   if not frame or not frame.GetName then return end

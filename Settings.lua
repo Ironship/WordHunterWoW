@@ -14,7 +14,7 @@ function Addon.CreateSettingsPanel()
   scroll:SetPoint("BOTTOMRIGHT", -26, 4)
 
   local box = CreateFrame("Frame", "WordHunterWoWSettingsContent", scroll)
-  box:SetSize(600, 1060)
+  box:SetSize(600, 1160)
   scroll:SetScrollChild(box)
 
   local title = box:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
@@ -257,8 +257,44 @@ function Addon.CreateSettingsPanel()
   end)
   panel.questLogAutoCheck = questLogAuto
 
+  -- The recall check, above the harvest box: both change what happens as you
+  -- read, and this one changes it more visibly. Off out of the box, like the
+  -- harvest, and for the same reason -- nobody who has not read about it
+  -- should find their meanings behind a question.
+  local recall = CreateFrame("CheckButton", "WordHunterWoWRecallCheck", box, "UICheckButtonTemplate")
+  recall:SetPoint("TOPLEFT", 12, y - 143)
+  local recallText = _G[recall:GetName() .. "Text"]
+  if recallText then
+    recallText:SetText(Addon.LABELS.recallLabel)
+  end
+  recall:SetChecked(Addon.GetRecallCheck and Addon.GetRecallCheck() or false)
+  recall:SetScript("OnClick", function(self)
+    if Addon.SetRecallCheck then Addon.SetRecallCheck(self:GetChecked()) end
+  end)
+  panel.recallCheck = recall
+
+  -- One line, filled in by refresh, so the export button under it can sit at
+  -- a fixed offset and the layout test can see where it ends.
+  local difficultNote = note(y - 169, "")
+  panel.difficultNote = difficultNote
+
+  -- The same shape as the harvest export below: the list goes into the copy
+  -- box, and an empty list says so in a dialog with nothing to confirm.
+  local difficultExport = Addon.createActionButton(box, Addon.LABELS.difficultExport)
+  difficultExport:SetSize(180, 24)
+  difficultExport:SetPoint("TOPLEFT", 16, y - 187)
+  difficultExport:SetScript("OnClick", function()
+    local text = Addon.BuildDifficultExport and Addon.BuildDifficultExport() or ""
+    if type(text) ~= "string" or text == "" then
+      Addon.showConfirm(Addon.LABELS.difficultExport, Addon.LABELS.difficultExportEmpty, nil, nil, panel)
+      return
+    end
+    Addon.showCopyText(Addon.LABELS.difficultExport, text, Addon.LABELS.difficultExportHint, panel)
+  end)
+  panel.difficultExport = difficultExport
+
   local harvest = CreateFrame("CheckButton", "WordHunterWoWHarvestCheck", box, "UICheckButtonTemplate")
-  harvest:SetPoint("TOPLEFT", 12, y - 143)
+  harvest:SetPoint("TOPLEFT", 12, y - 227)
   local harvestText = _G[harvest:GetName() .. "Text"]
   if harvestText then
     harvestText:SetText(Addon.LABELS.harvestLabel)
@@ -269,7 +305,7 @@ function Addon.CreateSettingsPanel()
   end)
   panel.harvestCheck = harvest
 
-  local harvestNote = note(y - 167, "")
+  local harvestNote = note(y - 251, "")
   panel.harvestNote = harvestNote
 
   -- The slash command did this already, but only someone who read the addon's
@@ -350,6 +386,10 @@ function Addon.CreateSettingsPanel()
     if panel.integratedCheck then panel.integratedCheck:SetChecked(Addon.GetIntegratedLayout()) end
     if panel.questLogAutoCheck then panel.questLogAutoCheck:SetChecked(Addon.GetQuestLogAutoOpen()) end
     if panel.harvestCheck then panel.harvestCheck:SetChecked(Addon.GetHarvestEnabled()) end
+    if panel.recallCheck then panel.recallCheck:SetChecked(Addon.GetRecallCheck and Addon.GetRecallCheck() or false) end
+    if panel.difficultNote then
+      panel.difficultNote:SetText(string.format(Addon.LABELS.difficultNote, Addon.CountDifficult and Addon.CountDifficult() or 0))
+    end
     if panel.harvestNote then
       local passages = Addon.HarvestCount and (Addon.HarvestCount() - Addon.HarvestWordCount()) or 0
       panel.harvestNote:SetText(string.format(Addon.LABELS.harvestNote, passages, Addon.HarvestWordCount and Addon.HarvestWordCount() or 0))

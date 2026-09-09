@@ -303,6 +303,18 @@ local lastHighlightOccurrence
 local lastHighlightSentenceOnly
 local selectedHighlight
 
+-- Whether the English word beside this one has to stay dark. With the recall
+-- check on, a word that is about to ask for a rating must not have its
+-- translation lit in the next column -- on hover, and on the click that opens
+-- the question. Read live rather than decided at render time, so a rating
+-- given a moment ago counts at once and the panel is not redrawn for it. nil
+-- rather than false when it does not apply, which is what every caller
+-- passed before this existed.
+local function recallGated(button)
+  if not Addon.RecallGated or not button.key then return nil end
+  return Addon.RecallGated(button.key, time()) or nil
+end
+
 local function sentenceForWord(text, word)
   local _, sentence = Addon.SentenceContaining(text, word)
   return sentence or Addon.trim(text)
@@ -375,6 +387,14 @@ function Addon.HighlightEnglishForWord(word, deSentenceIndex, wordOccurrence, se
   if Addon.OnHighlightEnglishForWord then
     Addon.OnHighlightEnglishForWord(word, Addon.lastQuest, deSentenceIndex, wordOccurrence, sentenceOnly)
   end
+end
+
+-- Once the editor has shown the meaning -- rated, or looked at -- the English
+-- word may light up the way it does for any other click.
+function Addon.RevealSelectedHighlight()
+  if not panel or not selectedHighlight or not selectedHighlight[4] then return end
+  selectedHighlight[4] = nil
+  Addon.HighlightEnglishForWord(selectedHighlight[1], selectedHighlight[2], selectedHighlight[3])
 end
 
 local function refreshPanel()
@@ -663,13 +683,14 @@ local function refreshPanel()
         end
       end
       button.word = word
+      button.key = key
       button.sentenceIndex = deSentenceOfToken[deTokenNum]
       local occKey = tostring(button.sentenceIndex or 0) .. "\0" .. key
       wordOccurrenceInSentence[occKey] = (wordOccurrenceInSentence[occKey] or 0) + 1
       button.wordOccurrence = wordOccurrenceInSentence[occKey]
       button:SetScript("OnEnter", function(self)
         if self.word and self.word ~= "" then
-          Addon.HighlightEnglishForWord(self.word, self.sentenceIndex, self.wordOccurrence)
+          Addon.HighlightEnglishForWord(self.word, self.sentenceIndex, self.wordOccurrence, recallGated(self))
         end
       end)
       button:SetScript("OnLeave", function()
@@ -677,12 +698,13 @@ local function refreshPanel()
         Addon.HighlightEnglishForWord(selected[1], selected[2], selected[3], true)
       end)
       button:SetScript("OnClick", function(self)
-        selectedHighlight = { self.word, self.sentenceIndex, self.wordOccurrence }
-        Addon.HighlightEnglishForWord(self.word, self.sentenceIndex, self.wordOccurrence)
+        local gated = recallGated(self)
+        selectedHighlight = { self.word, self.sentenceIndex, self.wordOccurrence, gated }
+        Addon.HighlightEnglishForWord(self.word, self.sentenceIndex, self.wordOccurrence, gated)
         local deSentences = Addon.SplitSentences(lastQuest.text)
         local context = (self.sentenceIndex and deSentences[self.sentenceIndex])
           or sentenceForWord(lastQuest.text, self.word)
-        Addon.openEditor(self.word, context, lastQuest.id, lastQuest.title)
+        Addon.openEditor(self.word, context, lastQuest.id, lastQuest.title, { origin = "panel" })
       end)
       button:SetEnabled(word ~= "")
       button:Show()

@@ -89,6 +89,29 @@ SlashCmdList.WORDHUNTERWOW = function(message)
         Addon.GetHarvestEnabled() and "on" or "off", Addon.HarvestCount() - Addon.HarvestWordCount(),
         Addon.HarvestWordCount(), Addon.GetTargetLocale()))
     end
+  elseif command:match("^difficult") then
+    local arg = strtrim(command:match("^%S+%s*(.*)$") or "")
+    if arg == "export" then
+      local text = Addon.BuildDifficultExport and Addon.BuildDifficultExport() or ""
+      if Addon.showCopyText and type(text) == "string" and text ~= "" then
+        Addon.showCopyText(Addon.LABELS.difficultExport, text, Addon.LABELS.difficultExportHint)
+      else
+        print("|cff66ccffWordHunterWoW:|r Nothing to copy.")
+      end
+    else
+      print(string.format("|cff66ccffWordHunterWoW:|r Recall check %s, %d difficult words for %s.  •  /whw difficult export  •  /whw recall <on|off>",
+        Addon.GetRecallCheck and Addon.GetRecallCheck() and "on" or "off",
+        Addon.CountDifficult and Addon.CountDifficult() or 0, Addon.GetTargetLocale()))
+    end
+  elseif command:match("^recall") then
+    local arg = strtrim(command:match("^%S+%s*(.*)$") or "")
+    if (arg == "on" or arg == "off") and Addon.SetRecallCheck then
+      Addon.SetRecallCheck(arg == "on")
+      print("|cff66ccffWordHunterWoW:|r Recall check " .. arg .. ".")
+    else
+      print(string.format("|cff66ccffWordHunterWoW:|r Recall check %s.  •  /whw recall <on|off>",
+        Addon.GetRecallCheck and Addon.GetRecallCheck() and "on" or "off"))
+    end
   elseif command == "reset" or command == "resetlayout" then
     -- A way back from a window dragged off the screen or shrunk to nothing.
     -- Without one the only remedy is deleting the saved file, which takes the
