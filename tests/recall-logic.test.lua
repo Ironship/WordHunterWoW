@@ -22,10 +22,15 @@ WordHunterWoWDB = { settings = { targetLocale = "deDE", frames = {} }, wordsByLo
 Addon.initializeDatabase()
 local words = Addon.GetWordsTable()
 
--- Off out of the box, and nil is off: a profile from before this existed must
--- not come up asking questions.
-assert(Addon.GetRecallCheck() == false, "the recall check has to start off")
+-- On out of the box, and still never seeded. The distinction the whole setting
+-- rests on: nil is "never asked", which now means on, and only an explicit
+-- false is off -- so a profile where the player turned it off keeps it off
+-- through every later build, which seeding a default would have destroyed.
+assert(Addon.GetRecallCheck() == true, "the recall check has to start on")
 assert(WordHunterWoWDB.settings.recallCheck == nil, "and must not be seeded into the settings")
+Addon.SetRecallCheck(false)
+assert(Addon.GetRecallCheck() == false and WordHunterWoWDB.settings.recallCheck == false,
+  "switching it off is remembered as false, not as absent")
 Addon.SetRecallCheck(true)
 assert(Addon.GetRecallCheck() == true and WordHunterWoWDB.settings.recallCheck == true)
 

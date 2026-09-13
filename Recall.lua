@@ -54,11 +54,20 @@ Addon.RECALL_SCORE_MIN, Addon.RECALL_SCORE_MAX = SCORE_MIN, SCORE_MAX
 Addon.RECALL_ASK_AFTER, Addon.RECALL_ASK_AGAIN_AFTER = ASK_AFTER, ASK_AGAIN_AFTER
 Addon.RECALL_DIFFICULT_MIN_RATINGS = DIFFICULT_MIN_RATINGS
 
--- Off unless the player switched it on, and never seeded: nil reads as off,
--- the same way the quest log switch does it. Seeding would make an existing
--- profile and a fresh one differ for no reason.
+-- On unless the player switched it off, and still never seeded: nil reads as
+-- on, and only an explicit false turns it off. Seeding would make an existing
+-- profile and a fresh one differ for no reason, and it is the difference
+-- between nil and false that carries the whole setting -- a profile that has
+-- never seen this switch gets the question, and one where it was turned off
+-- stays off across every later build.
+--
+-- It starts on because the question is the point of marking a word Learning.
+-- Off by default it was a feature nobody met: the colour promised to come back
+-- to the word and nothing ever asked. It costs the reader one click on a word
+-- they were opening anyway, and the meaning is on screen the whole time.
 function Addon.GetRecallCheck()
   local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.recallCheck
+  if v == nil then return true end
   return v and true or false
 end
 
