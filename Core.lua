@@ -119,7 +119,7 @@ Addon.LABELS = {
   -- The recall check. Off by default like the harvest box: it changes what a
   -- click does, and nobody who has not read about it should find their
   -- meanings hidden behind a question.
-  recallLabel = "Ask for a 1–5 rating before showing the meaning of a word in Learning for over a day",
+  recallLabel = "Ask for a 1–5 rating when a word in Learning for over a day is opened",
   difficultNote = "%d difficult words so far — five or more ratings with an average below 3.",
   difficultExport = "Export difficult words",
   -- Like harvestExportHint: says where the block goes and what the columns
@@ -128,9 +128,9 @@ Addon.LABELS = {
   difficultExportEmpty = "No difficult words yet.\n\n"
     .. "A word counts as difficult after five or more ratings with an average below 3. Switch on the rating box above and keep reading quests.",
   difficultWords = "Difficult words",
-  recallPrompt = "How well did you know this word?",
-  recallScale = "1 = no idea  •  5 = knew it at once",
-  recallShow = "Show meaning",
+  recallPrompt = "Before you read it — how well did you know this word?",
+  recallScale = "1 = no idea  •  5 = knew it at once  •  or press 1–5",
+  recallLater = "Not now",
   recallSoFar = "Rated %d times so far, average %.1f",
   recallHistory = "Recall %.1f (%d)",
   englishHeader = "English",

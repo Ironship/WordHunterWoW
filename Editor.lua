@@ -40,44 +40,86 @@ local function updateEditorHistory()
   editor.history:SetTextColor(unpack(ready and COLORS.known or COLORS.muted))
 end
 
--- The recall cover: what stands in for the meaning and note boxes while the
--- word is asking to be rated. The boxes themselves are hidden, not painted
--- over -- a frame in front of a box can be seen through at the wrong opacity,
--- scrolled under, or drawn below the box's own scroll bar, and a hidden box
--- has none of those. The cover is a frame of its own so it can take the
--- number keys without sharing the editor's OnKeyDown, which the Escape hook
--- already owns.
--- Save goes with them: with the boxes empty there is nothing to save, and a
--- Save that read the empty boxes would write them over the meaning.
-local FIELD_WIDGETS = { "meaningLabel", "translation", "noteLabel", "noteScroll", "statusLabel", "save" }
+-- The recall strip: the 1-5 rating, under the meaning rather than in front of
+-- it.
+--
+-- It used to cover the boxes and ask first, which is how every flashcard
+-- program works and is wrong here. A flashcard shows the front, you try to
+-- recall, you turn it over, and only then do you say how it went -- the
+-- rating comes after the answer in Anki too. Covering the meaning and asking
+-- first asks something else: how confident are you, with no way to find out
+-- whether the confidence was earned. The owner put it plainly -- I cannot be
+-- sure whether I know it well or badly.
+--
+-- So the meaning is there the moment the word is clicked, the way it is for
+-- every word that is not being asked about, and the question sits underneath
+-- it. The editor grows by the height of the strip while it is up, so nothing
+-- above it moves and the answer does not jump under the reader's eye.
+--
+-- A frame of its own so it can take the number keys without sharing the
+-- editor's OnKeyDown, which the Escape hook already owns.
+-- The strip takes the status row's space rather than making the window taller.
+-- Growing the editor looked simpler and is not: Addon.PlaceFrame restores the
+-- size on every open, so the added height is overwritten the moment it is set,
+-- and forcing it back afterwards would make SaveFramePosition store the taller
+-- shape the next time the player dragged the window -- a window that grows by
+-- sixty pixels every session.
+local STRIP_TOP = -252
 
-local function showFields(shown)
+-- Whether the question is up. The boxes are no longer part of this: the
+-- meaning shows for every word, asked about or not, and only the strip and the
+-- editor's height change.
+local function showStrip(shown)
+  if not editor.cover then return end
+  if shown then
+    -- No keys at all in combat. The strip decides per key whether the game
+    -- sees it, and that call is refused in combat, so a strip that took keys
+    -- then would either swallow Escape and the movement keys or let a digit
+    -- both rate the word and fire the action bar. The buttons still work;
+    -- EnableKeyboard is not protected.
+    editor.cover:EnableKeyboard(not (InCombatLockdown and InCombatLockdown()))
+    editor.cover:Show()
+  else
+    editor.cover:Hide()
+  end
+  -- At rest, let everything through. A digit that rated the word left the flag
+  -- at "keep", and a flag is a frame attribute that outlives the keystroke;
+  -- shown again from that state the strip would eat every key.
+  if Addon.SafePropagate then Addon.SafePropagate(editor.cover, true) end
+end
+
+-- The boxes the old cover used to hide. They are shown unconditionally now,
+-- and the list is kept because "shown" has to be stated rather than assumed:
+-- an editor that has been through an older build, or a frame the client has
+-- never been told to show, is hidden until something says otherwise.
+-- Always on screen, whether the word is being asked about or not. Stated
+-- rather than assumed: a frame the client has never been told to show is
+-- hidden, and an editor carried over from a build where these were hidden
+-- stays that way until something says otherwise.
+local FIELD_WIDGETS = { "meaningLabel", "translation", "noteLabel", "noteScroll", "save" }
+
+-- The row the strip stands in. Hidden while the question is up, which is what
+-- makes room for it without touching the window's size. Losing the status
+-- buttons for the few seconds the question is up costs nothing: changing a
+-- word's status is not what the click was for, and they come back the moment
+-- it is answered.
+local STATUS_WIDGETS = { "statusLabel", "resetDictionary" }
+
+local function showFields(asking)
   for _, name in ipairs(FIELD_WIDGETS) do
     local widget = editor[name]
+    if widget and widget.Show then widget:Show() end
+  end
+  for _, name in ipairs(STATUS_WIDGETS) do
+    local widget = editor[name]
     if widget then
-      if shown then widget:Show() else widget:Hide() end
+      if asking then widget:Hide() else widget:Show() end
     end
   end
   for _, button in pairs(editor.statusButtons or {}) do
-    if shown then button:Show() else button:Hide() end
+    if asking then button:Hide() else button:Show() end
   end
-  if editor.cover then
-    if shown then
-      editor.cover:Hide()
-    else
-      -- No keys at all in combat. The cover decides per key whether the game
-      -- sees it, and that call is refused in combat, so a cover that took
-      -- keys then would either swallow Escape and the movement keys or let a
-      -- digit both rate the word and fire the action bar. The buttons still
-      -- work; EnableKeyboard is not protected.
-      editor.cover:EnableKeyboard(not (InCombatLockdown and InCombatLockdown()))
-      editor.cover:Show()
-    end
-    -- At rest, let everything through. A digit that rated the word left the
-    -- flag at "keep", and a flag is a frame attribute that outlives the
-    -- keystroke; shown again from that state the cover would eat every key.
-    if Addon.SafePropagate then Addon.SafePropagate(editor.cover, true) end
-  end
+  showStrip(asking)
 end
 
 -- Takes the cover down and fills the boxes. The texts were held back rather
@@ -89,7 +131,7 @@ local function reveal(fromKey)
   selected.recallPending = false
   editor.translation:SetText(selected.translationText or "")
   editor.note:SetText(selected.noteText or "")
-  showFields(true)
+  showFields(false)
   Addon.updateResetDictionary()
   updateEditorHistory()
   if fromKey then
@@ -188,7 +230,12 @@ function Addon.openEditor(word, context, questId, questTitle, opts)
     if focus and focus.ClearFocus then focus:ClearFocus() end
     editor.translation:ClearFocus()
     editor.note:ClearFocus()
-    showFields(false)
+    -- The meaning goes in like any other word's. It used to be held back here
+    -- and written only on reveal, because the cover in front of it could be
+    -- read through; there is nothing in front of it now.
+    editor.translation:SetText(selected.translationText or "")
+    editor.note:SetText(selected.noteText or "")
+    showFields(true)
     Addon.updateResetDictionary()
     updateEditorHistory()
     if editor.cover and editor.cover.soFar then
@@ -202,7 +249,7 @@ function Addon.openEditor(word, context, questId, questTitle, opts)
   else
     editor.translation:SetText(selected.translationText)
     editor.note:SetText(selected.noteText)
-    showFields(true)
+    showFields(false)
     Addon.updateResetDictionary()
     updateEditorHistory()
     editor.translation:SetFocus()
@@ -285,7 +332,7 @@ function Addon.createEditor()
   if Addon.editor then return Addon.editor end
   editor = CreateFrame("Frame", "WordHunterWoWEditor", UIParent, "BackdropTemplate")
   Addon.editor = editor
-  editor:SetSize(420, 380)
+  editor:SetSize(420, 400)
   editor:SetFrameStrata("FULLSCREEN_DIALOG")
   editor:SetFrameLevel(30)
   editor:SetClampedToScreen(true)
@@ -423,27 +470,26 @@ function Addon.createEditor()
   editor.translation:HookScript("OnTextChanged", Addon.updateResetDictionary)
   editor.note:HookScript("OnTextChanged", Addon.updateResetDictionary)
 
-  -- The cover, over the same area the boxes occupy: from under the history
-  -- line to above the bottom row of buttons, so Cancel and Copy word stay
-  -- reachable and the resize corner stays uncovered. Not mouse-enabled
-  -- itself, so a drag on it moves the editor as a drag anywhere else does;
-  -- the buttons on it take their own clicks.
+  -- Under the status buttons, in the space the extra height opens up, so the
+  -- meaning and the note keep the positions they have when nothing is being
+  -- asked. Not mouse-enabled itself, so a drag on it moves the editor as a
+  -- drag anywhere else does; the buttons on it take their own clicks.
   local cover = CreateFrame("Frame", nil, editor)
-  cover:SetPoint("TOPLEFT", 0, -128)
+  cover:SetPoint("TOPLEFT", 0, STRIP_TOP)
   cover:SetPoint("BOTTOMRIGHT", 0, 84)
   cover:Hide()
   editor.cover = cover
 
   cover.prompt = cover:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  cover.prompt:SetPoint("TOPLEFT", 20, -8)
-  cover.prompt:SetPoint("TOPRIGHT", -20, -8)
+  cover.prompt:SetPoint("TOPLEFT", 20, -2)
+  cover.prompt:SetPoint("TOPRIGHT", -20, -2)
   cover.prompt:SetJustifyH("LEFT")
   cover.prompt:SetText(LABELS.recallPrompt)
 
   cover.scale = cover:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   cover.scale:SetTextColor(unpack(COLORS.muted))
-  cover.scale:SetPoint("TOPLEFT", 20, -30)
-  cover.scale:SetPoint("TOPRIGHT", -20, -30)
+  cover.scale:SetPoint("TOPLEFT", 20, -20)
+  cover.scale:SetPoint("TOPRIGHT", -20, -20)
   cover.scale:SetJustifyH("LEFT")
   cover.scale:SetText(LABELS.recallScale)
 
@@ -454,7 +500,7 @@ function Addon.createEditor()
   for score = 1, 5 do
     local button = Addon.createFlatButton(cover, tostring(score), scoreColors[score])
     button:SetSize(70, Addon.RoleButtonHeight())
-    button:SetPoint("TOPLEFT", 20 + (score - 1) * 76, -52)
+    button:SetPoint("TOPLEFT", 20 + (score - 1) * 76, -36)
     button.score = score
     button:SetScript("OnClick", function(self) rate(self.score) end)
     cover.buttons[score] = button
@@ -462,15 +508,16 @@ function Addon.createEditor()
 
   cover.soFar = cover:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   cover.soFar:SetTextColor(unpack(COLORS.muted))
-  cover.soFar:SetPoint("TOPLEFT", 20, -88)
-  cover.soFar:SetPoint("TOPRIGHT", -20, -88)
-  cover.soFar:SetJustifyH("LEFT")
+  cover.soFar:SetPoint("TOPRIGHT", -20, -20)
+  cover.soFar:SetJustifyH("RIGHT")
 
-  -- Looking without answering. Not a rating of any kind: sometimes a word is
-  -- clicked to check a spelling, and that says nothing about knowing it.
-  cover.show = Addon.createActionButton(cover, LABELS.recallShow)
-  cover.show:SetSize(140, Addon.RoleButtonHeight())
-  cover.show:SetPoint("TOPLEFT", 20, -108)
+  -- Declining the question. Not a rating of any kind: sometimes a word is
+  -- clicked to check a spelling, and that says nothing about knowing it. It
+  -- used to be "Show meaning", which was the only way past the cover; with the
+  -- meaning already on screen what is left is to put the question away.
+  cover.show = Addon.createActionButton(cover, LABELS.recallLater)
+  cover.show:SetSize(90, Addon.RoleButtonHeight())
+  cover.show:SetPoint("TOPLEFT", 20 + 5 * 76 + 10, -36)
   cover.show:SetScript("OnClick", function() reveal() end)
 
   -- The number keys, on the cover's own frame. The keys 1 to 5 are the action

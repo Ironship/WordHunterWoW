@@ -1,11 +1,12 @@
 -- Run from the addon root:  lua tests/recall-cover.test.lua
 --
--- The recall cover: a Learning word clicked in a quest asks how well it was
--- known before it shows its meaning. What this file holds is the one thing
--- the feature is for -- that the meaning is nowhere on screen until the
--- player has answered -- and the one thing that would make it useless: a
--- rating that needed Save to survive. Cancel is how most of these editors
--- close, and the verdict has to be on disk by then.
+-- The recall strip: a Learning word clicked in a quest shows its meaning at
+-- once, the way every other word does, and asks underneath how well it was
+-- known. What this file holds is that the meaning is not held back -- asking
+-- first was asking how confident the reader felt, which is not a thing anyone
+-- can answer before reading the answer -- and the one thing that would make
+-- the feature useless: a rating that needed Save to survive. Cancel is how
+-- most of these editors close, and the verdict has to be on disk by then.
 
 local node = dofile("tests/wowstub.lua")
 
@@ -41,7 +42,7 @@ Addon.createPanel()
 Addon.createEditor()
 local editor = Addon.editor
 assert(editor.cover and editor.cover.buttons and #editor.cover.buttons == 5, "the editor needs a cover with five buttons")
-assert(editor.cover.show and editor.cancel, "and a way past it, and a Cancel a test can press")
+assert(editor.cover.show and editor.cancel, "a way to decline it, and a Cancel a test can press")
 
 -- Modelled where the stub only pretends: focus, the reset button's SetShown,
 -- and keyboard propagation, because the feature turns on all three.
@@ -71,44 +72,35 @@ local function openFromPanel()
   Addon.openEditor("Hund", "Der Hund bellt.", 184, "Sten", { origin = "panel" })
 end
 
--- Gated: the meaning is held back everywhere it could show.
+-- Asked: the strip is up and the meaning is on screen with it.
 editor.note:SetFocus()
 openFromPanel()
 assert(not noteFocused, "the note box gives up focus too")
 assert(editor:IsShown(), "the editor opens")
-assert(editor.cover:IsShown(), "and the cover is up for a Learning word two days old")
+assert(editor.cover:IsShown(), "and the strip is up for a Learning word two days old")
 assert(Addon.selected.recallPending == true, "the editor knows it is waiting for a verdict")
-assert(not editor.translation:IsShown() and not editor.noteScroll:IsShown() and not editor.meaningLabel:IsShown(),
-  "the meaning and note boxes are hidden, not merely covered")
-assert(not editor.statusButtons.learning:IsShown(), "and the status buttons with them")
-assert(not editor.resetDictionary:IsShown(), "reset-to-dictionary would print the meaning, so it is hidden too")
-assert(editor.translation:GetText() == "" and editor.note:GetText() == "", "the boxes hold nothing")
--- Cancel is left alone; the stub never shows a button by itself, so only the
--- one that is hidden and shown on purpose can be measured here.
-assert(not editor.save:IsShown(), "Save is away with the boxes")
--- Save reached anyway -- Enter in a box, say -- must not write the empty
--- boxes over the meaning. It shows the meaning instead.
+-- The point of the change, asserted in the terms the old design failed at:
+-- the reader can see what the word means while deciding how well they knew it.
+assert(editor.translation:IsShown() and editor.noteScroll:IsShown() and editor.meaningLabel:IsShown(),
+  "the meaning and note boxes are on screen while the question is asked")
+assert(editor.translation:GetText() == "dog", "and the meaning is in the box, not held back")
+assert(editor.save:IsShown(), "Save stays, because there is something to save")
+assert(not editor.statusButtons.learning:IsShown() and not editor.statusLabel:IsShown(),
+  "the status row stands aside to make room, so the window need not grow")
+assert(editor.cover.keyboard == true, "out of combat the strip takes the keys")
+assert(not focused, "no box has focus, or the number keys would type into it")
+-- Save while the question is up is an ordinary Save now: the boxes hold the
+-- real text, so there is nothing to protect them from.
 editor.save:GetScript("OnClick")()
-assert(WordHunterWoWDB.wordsByLocale.deDE.hund.translation == "dog", "a Save under the cover saved nothing")
-assert(not editor.cover:IsShown() and editor.translation:GetText() == "dog", "and took the cover down instead")
-assert(editor.save:IsShown(), "and Save is back with the boxes")
-assert(Addon.GetRecallRow("hund").ratingCount == 0, "without counting as a rating")
-assert(revealed == 1, "showing the meaning asks the panel to light the English word")
+assert(WordHunterWoWDB.wordsByLocale.deDE.hund.translation == "dog", "Save wrote the meaning back unharmed")
+assert(Addon.GetRecallRow("hund").ratingCount == 0, "and saving is not a verdict")
 editor:Hide()
 openFromPanel()
 assert(editor.cover:IsShown(), "unrated, the word asks again")
--- Now the boxes have been shown once, so hiding them is a real transition
--- and not the stub's starting state.
-assert(not editor.translation:IsShown() and not editor.noteScroll:IsShown() and not editor.meaningLabel:IsShown()
-  and not editor.noteLabel:IsShown() and not editor.statusLabel:IsShown() and not editor.save:IsShown()
-  and not editor.statusButtons.learning:IsShown() and not editor.resetDictionary:IsShown(),
-  "the boxes are hidden again once they have been shown")
-assert(editor.cover.keyboard == true, "out of combat the cover takes the keys")
-assert(not seen("dog") and not seen("n"), "the meaning was never written to any string")
-assert(not focused, "no box has focus, or the number keys would type into it")
 assert(editor.word:GetText() == "Hund" and editor.context:GetText() == "Der Hund bellt.",
   "the word and its sentence are what is shown")
 assert(editor.cover.soFar:GetText() == "", "nothing rated yet, nothing to summarise")
+assert(not editor.statusButtons.learning:IsShown(), "and the status row is aside again")
 -- Opening a Learning word from a quest keeps the sentence, rated or not.
 local row = Addon.GetRecallRow("hund")
 assert(row and #row.examples == 1 and row.examples[1].text == "Der Hund bellt." and row.examples[1].questId == "184",

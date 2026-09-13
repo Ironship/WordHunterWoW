@@ -38,12 +38,15 @@ assert(check, 'the settings page has no recall switch')
 function check:SetChecked(value) self.checked = not not value end
 function check:GetChecked() return self.checked and true or false end
 panel.refresh()
-assert(check:GetChecked() == false, 'the recall switch has to come up off')
+assert(check:GetChecked() == true, 'the recall switch has to come up on')
 assert(_G.WordHunterWoWRecallCheckText:GetText() == LABELS.recallLabel, 'and say what it does')
 
+check:SetChecked(false)
+check:GetScript('OnClick')(check)
+assert(Addon.GetRecallCheck() == false, 'unticking it stores the setting')
 check:SetChecked(true)
 check:GetScript('OnClick')(check)
-assert(Addon.GetRecallCheck() == true, 'ticking it stores the setting')
+assert(Addon.GetRecallCheck() == true, 'and ticking it again stores that')
 -- The setter refreshes the page itself: /whw recall off has to move a switch
 -- that is on screen.
 Addon.SetRecallCheck(false)
