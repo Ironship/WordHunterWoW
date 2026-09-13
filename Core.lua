@@ -543,6 +543,8 @@ function Addon.SetOpacity(value)
   if not value then return end
   value = math.max(0, math.min(1.0, value))
   value = math.floor(value * 20 + 0.5) / 20
+  if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
+  if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
   WordHunterWoWDB.settings.opacity = value
   Addon.RefreshAllBackdrops()
   if Addon.settingsPanel and Addon.settingsPanel:IsShown() and Addon.settingsPanel.refresh then
@@ -555,13 +557,30 @@ function Addon.GetTargetLocale()
   if v and Addon.SUPPORTED_LOCALES[v] then return v end
   local client = GetLocale and GetLocale() or "enUS"
   if Addon.SUPPORTED_LOCALES[client] then return client end
-  -- An unsupported client locale must not pretend the player is learning German,
-  -- or the German dictionary overlays quest text it was never written for.
-  return client
+  -- German for a client this addon has no dictionary for, which is what
+  -- initializeDatabase writes into the settings for the same case. The two used
+  -- to disagree: this returned the client's own locale -- ruRU, koKR -- and the
+  -- comment here argued that German must not be assumed for a player who never
+  -- chose it.
+  --
+  -- The argument does not survive contact with what happens next. Once
+  -- initializeDatabase has run, the settings hold deDE anyway, so the
+  -- disagreement only ever showed in the window before it -- and what it did
+  -- there was worse than the thing it was avoiding: GetWordsTable builds
+  -- wordsByLocale[locale] on demand, so returning ruRU quietly created a word
+  -- table for a language with no dictionary behind it and left it in the saved
+  -- variables for good.
+  --
+  -- A German dictionary over Korean quest text highlights nothing, because no
+  -- German word is in it. It is useless, not harmful, and the player can pick a
+  -- language in the settings. A junk locale table on disk is neither.
+  return "deDE"
 end
 
 function Addon.SetTargetLocale(locale)
   if not Addon.SUPPORTED_LOCALES[locale] then return end
+  if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
+  if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
   WordHunterWoWDB.settings.targetLocale = locale
   Addon.GetWordsTable()
   Addon.rebuildExport()
@@ -804,6 +823,8 @@ end
 
 function Addon.SetBackgroundStyle(key)
   if not Addon.BACKGROUNDS[key] then return end
+  if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
+  if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
   WordHunterWoWDB.settings.background = key
   Addon.RefreshAllBackdrops()
 end
