@@ -165,7 +165,25 @@ function Addon.toggleWordList()
     listFrame.search = Addon.createEditBox(listFrame)
     listFrame.search:SetPoint("TOPLEFT", 18, -56)
     listFrame.search:SetPoint("TOPRIGHT", -18, -56)
-    listFrame.search:SetScript("OnTextChanged", function() refreshWordList() end)
+    -- Debounced, like the resize above it and for the same reason: a rebuild
+    -- walks every word the player has plus the dictionary behind it, and there
+    -- is no sense doing that for the "S" in "Schwert" when "Sc" is a
+    -- twentieth of a second away. A hundred thousand entries is the size that
+    -- makes this matter; the resize path already had the answer.
+    --
+    -- The same 0.15 rather than a number picked for typing. Two delays doing
+    -- one job in one file is how they start to differ, and 150ms is under what
+    -- a typist notices between keystrokes either way.
+    do
+      local debounce
+      listFrame.search:SetScript("OnTextChanged", function(self)
+        if debounce then debounce:Cancel() end
+        debounce = C_Timer.NewTimer(0.15, function()
+          -- The box can be gone, or the panel closed, by the time this fires.
+          if listFrame:IsShown() then refreshWordList() end
+        end)
+      end)
+    end
     listFrame.search:SetScript("OnEscapePressed", function()
       Addon.CloseAll()
     end)
