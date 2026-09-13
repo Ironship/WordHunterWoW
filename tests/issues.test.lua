@@ -30,6 +30,12 @@ dofile("UICommon.lua")
 dofile("QuestPanel.lua")
 dofile("Editor.lua")
 dofile("WordList.lua")
+-- Harvest before Settings: the page builds a checkbox against the harvest
+-- getter, and Settings.lua is only a set of controls over other files'
+-- settings. Recall too, for the switch 1.19.0 added.
+dofile("Harvest.lua")
+dofile("Recall.lua")
+dofile("Settings.lua")
 local Addon = WordHunterWoW_Addon
 
 -- ---------------------------------------------------------------------------
@@ -119,4 +125,54 @@ list:Hide()
 pending.fn()
 assert(walks == 0, "a rebuild fired at a closed list, walked " .. walks)
 
-print("issues: settings writers guarded, search debounced")
+
+-- ---------------------------------------------------------------------------
+-- The options page opens by a number, and the category is Blizzard's.
+--
+-- Found in the voiceover addon and present here word for word: the page wrote
+-- its own name over category.ID so the read below would find something, and
+-- that broke the read it was serving. Settings.OpenToCategory takes the number
+-- the client put there; handed a string it opens nothing, and /whw options did
+-- nothing at all. Writing into a table the client created taints it besides.
+--
+-- The category is modelled the way the client builds one -- a numeric ID, a
+-- GetID that returns it, and a metatable that records writes rather than
+-- allowing them -- because a plain table would accept the overwrite and the
+-- test would pass against the bug.
+local writes, opened = {}, nil
+local realSettings = Settings
+local category = setmetatable({}, {
+  __index = { ID = 4711, GetID = function(self) return rawget(self, "ID") or 4711 end },
+  __newindex = function(_, key, value) writes[#writes + 1] = key .. "=" .. tostring(value) end,
+})
+Settings = {
+  RegisterCanvasLayoutCategory = function() return category end,
+  RegisterAddOnCategory = function() end,
+  OpenToCategory = function(id) opened = id end,
+}
+-- The harvest counter walks this one, and the stub's stand-in would hand it
+-- its own methods to count.
+WordHunterWoWCorpus = { version = 1, byLocale = {} }
+Addon.settingsPanel, Addon.settingsCategory, Addon.settingsCategoryName = nil, nil, nil
+Addon.CreateSettingsPanel()
+
+assert(#writes == 0,
+  "the page wrote " .. table.concat(writes, ", ") ..
+  " into the category the client handed back; that table is Blizzard's and its ID is a number")
+
+Addon.OpenSettings()
+assert(type(opened) == "number",
+  "OpenToCategory was handed " .. type(opened) .. " " .. tostring(opened) ..
+  "; it takes the category's number, and a string there opens nothing")
+assert(opened == 4711, "and it has to be this category's number, got " .. tostring(opened))
+
+-- The fallback the overwrite was standing in for, now kept where it belongs:
+-- a category that answers neither GetID nor ID still opens by name.
+opened = nil
+Addon.settingsCategory = setmetatable({}, { __index = function() return nil end })
+Addon.OpenSettings()
+assert(opened == Addon.settingsCategoryName and opened ~= nil,
+  "with no number to be had the page has to open by name, got " .. tostring(opened))
+Settings = realSettings
+
+print("issues: settings writers guarded, search debounced, options page opens by number")

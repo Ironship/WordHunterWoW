@@ -554,13 +554,22 @@ function Addon.CreateSettingsPanel()
   if Settings and Settings.RegisterAddOnCategory then
     if Settings.RegisterCanvasLayoutCategory then
       local category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
-      category.ID = panel.name
+      -- The category's ID is the client's, and a number. This used to overwrite
+      -- it with panel.name so that the read below had something to find -- which
+      -- broke the read it was serving: Settings.OpenToCategory takes that
+      -- number, a string opens nothing, and /whw options quietly did nothing at
+      -- all. Writing into a table Blizzard created taints it as well.
+      --
+      -- The fallback it was there for is kept, in this addon's own table where
+      -- it belongs, for a client whose category answers neither GetID nor ID.
       Settings.RegisterAddOnCategory(category)
       Addon.settingsCategory = category
+      Addon.settingsCategoryName = panel.name
     else
       local category, layout = Settings.RegisterVerticalLayoutCategory(panel.name)
       Settings.RegisterAddOnCategory(category)
       Addon.settingsCategory = category
+      Addon.settingsCategoryName = panel.name
     end
   elseif InterfaceOptions_AddCategory then
     InterfaceOptions_AddCategory(panel)
@@ -574,7 +583,9 @@ function Addon.OpenSettings()
   Addon.settingsPanel:Show()
   if Addon.settingsPanel.refresh then Addon.settingsPanel.refresh() end
   if Settings and Settings.OpenToCategory and Addon.settingsCategory then
-    local id = Addon.settingsCategory.GetID and Addon.settingsCategory:GetID() or Addon.settingsCategory.ID
+    local id = Addon.settingsCategory.GetID and Addon.settingsCategory:GetID()
+      or Addon.settingsCategory.ID
+      or Addon.settingsCategoryName
     if id then Settings.OpenToCategory(id) end
   elseif InterfaceOptionsFrame_OpenToCategory then
     InterfaceOptionsFrame_OpenToCategory(Addon.settingsPanel)
