@@ -1,5 +1,55 @@
 local Addon = WordHunterWoW_Addon
 
+-- How wide the page draws, and how much room is left under the last control.
+-- The width is a constant because the canvas this page lives in is one: no size
+-- setting may widen it, so the page's letters grow downwards and never across.
+-- The foot is there because the export button hangs off the bottom of a note
+-- that wraps, so the deepest offset the layout knows about is not the deepest
+-- thing on the page.
+local BOX_WIDTH, BOX_FOOT = 600, 108
+
+-- Why this page sizes its contents instead of scaling itself.
+--
+-- It was the one surface in the addon that no size setting reached. The others
+-- are answered two ways -- the quest panel sizes its letters, the editor, list
+-- and stats windows are SetScale'd whole -- and this page did neither, so with
+-- every slider at the same number it came up at a size of its own.
+--
+-- Scaling it whole is the obvious move and it is wrong here twice over. The
+-- frame is parented into Blizzard's options canvas, so it already carries that
+-- canvas's effective scale, and SetScale multiplies with the parent rather than
+-- replacing it: SetScale(1.5) would draw at 1.5 times whatever Blizzard is
+-- drawing at, so the figure under the slider would mean one thing on this page
+-- and another on every other, and it would move again whenever the player
+-- touched the game's own UI Scale. Dividing the wanted size by the host's
+-- GetEffectiveScale would fix the arithmetic and buy a worse fault: a frame
+-- scaled up inside a fixed canvas keeps its screen rectangle, so the same
+-- content is measured in smaller local units and the right-hand end of every
+-- slider is clipped off the page.
+--
+-- So the page does what the quest panel does. Letters come from
+-- Addon.FONT_ROLES, the one button from Addon.RoleButtonHeight, and every
+-- vertical offset is multiplied by the same number -- because an offset that
+-- stays where it was while the thing above it grows is an overlap, which is all
+-- that sizing the letters on their own would have achieved.
+--
+-- Blizzard's own composites -- a dropdown, a tick box, a slider -- are drawn
+-- from art and children this file does not own, so those are scaled rather than
+-- re-fonted. That is safe precisely where scaling the page is not: their parent
+-- is this addon's content frame, which is never scaled, so SetScale on one of
+-- them is absolute. A slider is given back the width it had so that only its
+-- height and its captions grow.
+--
+-- Which of the five sliders: the text family, "Quest panel text". This page has
+-- no window of its own to grow, the two families are deliberately not the same
+-- measurement, and a sixth slider for the options page would be a new setting
+-- invented to answer a bug.
+local function pageScale()
+  local scale = Addon.GetTextScale and Addon.GetTextScale()
+  if type(scale) ~= "number" or scale <= 0 then return 1 end
+  return scale
+end
+
 function Addon.CreateSettingsPanel()
   if Addon.settingsPanel then return Addon.settingsPanel end
 
@@ -14,34 +64,116 @@ function Addon.CreateSettingsPanel()
   scroll:SetPoint("BOTTOMRIGHT", -26, 4)
 
   local box = CreateFrame("Frame", "WordHunterWoWSettingsContent", scroll)
-  box:SetSize(600, 1160)
   scroll:SetScrollChild(box)
 
-  local title = box:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-  title:SetPoint("TOPLEFT", 16, -16)
-  title:SetText(Addon.LABELS.settingsTitle)
+  -- Where everything on the page sits at 100%, kept rather than applied once: a
+  -- size chosen later has to be able to put the whole page down again, and the
+  -- offsets are the half of that a re-font cannot do on its own.
+  --
+  -- Built as the controls are, so the two cannot drift. The alternative -- a
+  -- second list of offsets written out by hand -- is the renumbering hazard the
+  -- slider block already carries its own cursor to avoid.
+  --
+  -- `opts`: role, the font role one of this file's own strings is drawn at;
+  -- own, a Blizzard composite that carries its own scale; button, one of this
+  -- addon's own buttons, which grows in both directions; w and h, its size at
+  -- 100%; wide, anchored to both edges so a line wraps to the page.
+  local rows = {}
+  panel.rows = rows
+  local function place(frame, x, y, opts)
+    opts = opts or {}
+    opts.frame, opts.x, opts.y = frame, x, y
+    rows[#rows + 1] = opts
+    return frame
+  end
 
-  local subtitle = box:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-  subtitle:SetPoint("TOPLEFT", 16, -36)
+  local layout
+  layout = function()
+    local scale = pageScale()
+    local depth = 0
+    for _, row in ipairs(rows) do
+      local frame = row.frame
+      frame:ClearAllPoints()
+      if row.own then
+        frame:SetScale(scale)
+        -- Given back in the frame's own units, or the scale lands on the
+        -- offsets a second time and the page pulls itself apart. x is divided
+        -- for the same reason and is not scaled: it comes out where it always
+        -- was.
+        frame:SetPoint("TOPLEFT", row.x / scale, row.y)
+        if row.w then frame:SetSize(row.w / scale, row.h or 0) end
+      elseif row.button then
+        -- Both directions, unlike the strings below: a caption drawn from
+        -- Blizzard's own fixed button font needs the box around it to grow
+        -- with the letters, or the words push out through the edges.
+        frame:SetSize(180 * scale, Addon.RoleButtonHeight(scale))
+        frame:SetPoint("TOPLEFT", row.x, row.y * scale)
+        if frame.GetFontString then
+          Addon.ApplyFontRole(frame:GetFontString(), "body", scale)
+        end
+      else
+        if row.role then Addon.ApplyFontRole(frame, row.role, scale) end
+        -- Horizontal offsets are left alone throughout. The page is as wide as
+        -- Blizzard's canvas and nothing the player does can widen it, so
+        -- spending that width on bigger margins is the one thing a size setting
+        -- here must not do.
+        frame:SetPoint("TOPLEFT", row.x, row.y * scale)
+        if row.wide then frame:SetPoint("TOPRIGHT", -row.x, row.y * scale) end
+        if row.w then frame:SetSize(row.w, (row.h or 0) * scale) end
+      end
+      depth = math.max(depth, -row.y + (row.h or 0))
+    end
+
+    -- The harvest export is anchored under a note that wraps rather than at an
+    -- offset of its own, so it is placed here and not in the list above: where
+    -- that note ends is not known until it has been drawn at this size. The
+    -- difficult-word export is not in the same position -- its note is one line
+    -- by construction, so it keeps the fixed offset its own test reads it at,
+    -- and scales from the list like everything else there.
+    local button = panel.harvestExport
+    if button then
+      button:SetSize(180 * scale, Addon.RoleButtonHeight(scale))
+      button:ClearAllPoints()
+      button:SetPoint("TOPLEFT", panel.harvestNote, "BOTTOMLEFT", 0, -8 * scale)
+      if button.GetFontString then Addon.ApplyFontRole(button:GetFontString(), "body", scale) end
+    end
+
+    -- The scroll box has to be tall enough to reach the last control or it
+    -- cannot be scrolled to. Struck from where the controls actually landed
+    -- rather than written down: the page changes length whenever a window or a
+    -- note is added, and a literal height has to be corrected by hand every
+    -- time -- silently, because nothing on screen says the bottom was cut off.
+    box:SetSize(BOX_WIDTH, (depth + BOX_FOOT) * scale)
+    if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
+  end
+  panel.layout = layout
+
+  local title = place(box:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge"),
+    16, -16, { role = "heading" })
+  title:SetText(Addon.LABELS.settingsTitle)
+  panel.title = title
+
+  local subtitle = place(box:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall"),
+    16, -36, { role = "meta" })
   subtitle:SetText("Choose a frame style. Text stays on an opaque reading surface in every theme.")
   subtitle:SetTextColor(0.7, 0.74, 0.8)
 
   -- Gold, like every other caption on this page, but pulled to the label
   -- role: this was the only surface drawing its captions at 12 where the
-  -- other five draw them at 10. The page itself is never scaled, so this
-  -- is the whole of what it had to answer for.
-  local label = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  Addon.ApplyFontRole(label, "label")
-  label:SetPoint("TOPLEFT", 16, -64)
+  -- other five draw them at 10. The role is applied by the layout above now
+  -- rather than once here, so the caption follows the size setting the same
+  -- way its neighbours do.
+  local label = place(box:CreateFontString(nil, "ARTWORK", "GameFontNormal"),
+    16, -64, { role = "label" })
   label:SetText(Addon.LABELS.backgroundLabel)
 
-  local dropdown = CreateFrame("Frame", "WordHunterWoWBackgroundDropdown", box, "UIDropDownMenuTemplate")
-  dropdown:SetPoint("TOPLEFT", 12, -84)
+  local dropdown = place(
+    CreateFrame("Frame", "WordHunterWoWBackgroundDropdown", box, "UIDropDownMenuTemplate"),
+    12, -84, { own = true })
   UIDropDownMenu_SetWidth(dropdown, 220)
 
-  local preview = CreateFrame("Frame", nil, box, "BackdropTemplate")
-  preview:SetSize(460, 86)
-  preview:SetPoint("TOPLEFT", 16, -132)
+  local preview = place(CreateFrame("Frame", nil, box, "BackdropTemplate"),
+    16, -132, { own = true, w = 460, h = 86 })
   panel.preview = preview
   local previewLabel = preview:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   previewLabel:SetPoint("TOPLEFT", 12, -10)
@@ -53,14 +185,12 @@ function Addon.CreateSettingsPanel()
     .. "Matching sentence  •  " .. Addon.ColorHex("enWordHighlight") .. "Word|r")
   Addon.ApplyBackground(preview)
 
-  local opacityLabel = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  Addon.ApplyFontRole(opacityLabel, "label")
-  opacityLabel:SetPoint("TOPLEFT", 16, -232)
+  local opacityLabel = place(box:CreateFontString(nil, "ARTWORK", "GameFontNormal"),
+    16, -232, { role = "label" })
   opacityLabel:SetText(Addon.LABELS.opacityLabel)
 
-  local slider = CreateFrame("Slider", "WordHunterWoWOpacitySlider", box, "OptionsSliderTemplate")
-  slider:SetPoint("TOPLEFT", 16, -252)
-  slider:SetSize(460, 16)
+  local slider = place(CreateFrame("Slider", "WordHunterWoWOpacitySlider", box, "OptionsSliderTemplate"),
+    16, -252, { own = true, w = 460, h = 16 })
   slider:SetMinMaxValues(0, 1.0)
   slider:SetValueStep(0.05)
   slider:SetObeyStepOnDrag(true)
@@ -75,13 +205,13 @@ function Addon.CreateSettingsPanel()
     _G[self:GetName() .. "Text"]:SetText(Addon.LABELS.opacityLabel .. " (" .. math.floor(value * 100 + 0.5) .. "%)")
   end)
 
-  local markLabel = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  Addon.ApplyFontRole(markLabel, "label")
-  markLabel:SetPoint("TOPLEFT", 16, -285)
+  local markLabel = place(box:CreateFontString(nil, "ARTWORK", "GameFontNormal"),
+    16, -285, { role = "label" })
   markLabel:SetText(Addon.LABELS.wordMarkingLabel)
 
-  local markDropdown = CreateFrame("Frame", "WordHunterWoWWordMarkingDropdown", box, "UIDropDownMenuTemplate")
-  markDropdown:SetPoint("TOPLEFT", 12, -305)
+  local markDropdown = place(
+    CreateFrame("Frame", "WordHunterWoWWordMarkingDropdown", box, "UIDropDownMenuTemplate"),
+    12, -305, { own = true })
   UIDropDownMenu_SetWidth(markDropdown, 220)
 
   local function UpdateMarkText()
@@ -115,9 +245,8 @@ function Addon.CreateSettingsPanel()
   -- A wrapped line of small print under a control. Anchored on both sides so it
   -- wraps to the panel rather than running off it.
   local function note(y, text)
-    local fs = box:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-    fs:SetPoint("TOPLEFT", 16, y)
-    fs:SetPoint("TOPRIGHT", -16, y)
+    local fs = place(box:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall"),
+      16, y, { role = "meta", wide = true })
     fs:SetJustifyH("LEFT")
     fs:SetWordWrap(true)
     fs:SetTextColor(0.8, 0.82, 0.88)
@@ -130,13 +259,11 @@ function Addon.CreateSettingsPanel()
   -- two cannot be read as the same promise about what the screen will look
   -- like. Addon.SIZE_GROUPS carries the argument.
   local function sizeSlider(name, y, label, unit, get, set)
-    local caption = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    Addon.ApplyFontRole(caption, "label")
-    caption:SetPoint("TOPLEFT", 16, y)
+    local caption = place(box:CreateFontString(nil, "ARTWORK", "GameFontNormal"),
+      16, y, { role = "label" })
     caption:SetText(label)
-    local s = CreateFrame("Slider", name, box, "OptionsSliderTemplate")
-    s:SetPoint("TOPLEFT", 16, y - 20)
-    s:SetSize(460, 16)
+    local s = place(CreateFrame("Slider", name, box, "OptionsSliderTemplate"),
+      16, y - 20, { own = true, w = 460, h = 16 })
     s:SetMinMaxValues(Addon.TEXT_SCALE_MIN, Addon.TEXT_SCALE_MAX)
     s:SetValueStep(0.05)
     s:SetObeyStepOnDrag(true)
@@ -152,6 +279,12 @@ function Addon.CreateSettingsPanel()
       value = math.floor(value * 20 + 0.5) / 20
       set(value)
       _G[self:GetName() .. "Text"]:SetText(self.captionFor(value))
+      -- The page is one of the surfaces the text size governs, so it has to
+      -- answer while the slider is still under the cursor. Run for all five
+      -- rather than only the one that moves this page: the cost is one pass
+      -- over a list, and a test for "was it the right slider" is a test of
+      -- something nobody can see.
+      layout()
     end)
     return s
   end
@@ -169,8 +302,8 @@ function Addon.CreateSettingsPanel()
     -- Larger than the slider captions under it. A heading in the same font as
     -- the things it governs is not a heading, and the split only works if the
     -- eye takes in "these are two lists" before it reads any number.
-    local heading = box:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-    heading:SetPoint("TOPLEFT", 16, y)
+    local heading = place(box:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge"),
+      16, y, { role = "heading" })
     heading:SetText(Addon.LABELS[group.heading])
     note(y - 22, Addon.LABELS[group.note])
     y = y - 58
@@ -187,13 +320,13 @@ function Addon.CreateSettingsPanel()
     y = y - 14
   end
 
-  local langLabel = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  Addon.ApplyFontRole(langLabel, "label")
-  langLabel:SetPoint("TOPLEFT", 16, y)
+  local langLabel = place(box:CreateFontString(nil, "ARTWORK", "GameFontNormal"),
+    16, y, { role = "label" })
   langLabel:SetText(Addon.LABELS.languageLabel)
 
-  local langDropdown = CreateFrame("Frame", "WordHunterWoWLanguageDropdown", box, "UIDropDownMenuTemplate")
-  langDropdown:SetPoint("TOPLEFT", 12, y - 20)
+  local langDropdown = place(
+    CreateFrame("Frame", "WordHunterWoWLanguageDropdown", box, "UIDropDownMenuTemplate"),
+    12, y - 20, { own = true })
   UIDropDownMenu_SetWidth(langDropdown, 220)
 
   local function UpdateLangDropdownText()
@@ -229,8 +362,9 @@ function Addon.CreateSettingsPanel()
 
   note(y - 57, "Required — words are stored separately per language. English US/GB both export as 'en'.")
 
-  local integrated = CreateFrame("CheckButton", "WordHunterWoWIntegratedCheck", box, "UICheckButtonTemplate")
-  integrated:SetPoint("TOPLEFT", 12, y - 87)
+  local integrated = place(
+    CreateFrame("CheckButton", "WordHunterWoWIntegratedCheck", box, "UICheckButtonTemplate"),
+    12, y - 87, { own = true })
   local integratedText = _G[integrated:GetName() .. "Text"]
   if integratedText then
     integratedText:SetText(Addon.LABELS.integratedLabel)
@@ -245,8 +379,9 @@ function Addon.CreateSettingsPanel()
   -- how the panel behaves rather than what it looks like. This one is off out
   -- of the box, which is the change it exists to undo -- the panel opening
   -- itself from the quest log put it over the quest that had just been clicked.
-  local questLogAuto = CreateFrame("CheckButton", "WordHunterWoWQuestLogAutoCheck", box, "UICheckButtonTemplate")
-  questLogAuto:SetPoint("TOPLEFT", 12, y - 115)
+  local questLogAuto = place(
+    CreateFrame("CheckButton", "WordHunterWoWQuestLogAutoCheck", box, "UICheckButtonTemplate"),
+    12, y - 115, { own = true })
   local questLogAutoText = _G[questLogAuto:GetName() .. "Text"]
   if questLogAutoText then
     questLogAutoText:SetText(Addon.LABELS.questLogAutoLabel)
@@ -261,8 +396,9 @@ function Addon.CreateSettingsPanel()
   -- read, and this one changes it more visibly. Off out of the box, like the
   -- harvest, and for the same reason -- nobody who has not read about it
   -- should find their meanings behind a question.
-  local recall = CreateFrame("CheckButton", "WordHunterWoWRecallCheck", box, "UICheckButtonTemplate")
-  recall:SetPoint("TOPLEFT", 12, y - 143)
+  local recall = place(
+    CreateFrame("CheckButton", "WordHunterWoWRecallCheck", box, "UICheckButtonTemplate"),
+    12, y - 143, { own = true })
   local recallText = _G[recall:GetName() .. "Text"]
   if recallText then
     recallText:SetText(Addon.LABELS.recallLabel)
@@ -273,16 +409,17 @@ function Addon.CreateSettingsPanel()
   end)
   panel.recallCheck = recall
 
-  -- One line, filled in by refresh, so the export button under it can sit at
-  -- a fixed offset and the layout test can see where it ends.
+  -- One line, filled in by refresh. note() registers it for the layout, so the
+  -- export button below can hang off its bottom edge rather than off an offset
+  -- that would stop matching the moment the letters grew.
   local difficultNote = note(y - 169, "")
   panel.difficultNote = difficultNote
 
   -- The same shape as the harvest export below: the list goes into the copy
   -- box, and an empty list says so in a dialog with nothing to confirm.
-  local difficultExport = Addon.createActionButton(box, Addon.LABELS.difficultExport)
-  difficultExport:SetSize(180, 24)
-  difficultExport:SetPoint("TOPLEFT", 16, y - 187)
+  local difficultExport = place(
+    Addon.createActionButton(box, Addon.LABELS.difficultExport),
+    16, y - 187, { button = true, h = Addon.RoleButtonHeight(1) })
   difficultExport:SetScript("OnClick", function()
     local text = Addon.BuildDifficultExport and Addon.BuildDifficultExport() or ""
     if type(text) ~= "string" or text == "" then
@@ -293,8 +430,9 @@ function Addon.CreateSettingsPanel()
   end)
   panel.difficultExport = difficultExport
 
-  local harvest = CreateFrame("CheckButton", "WordHunterWoWHarvestCheck", box, "UICheckButtonTemplate")
-  harvest:SetPoint("TOPLEFT", 12, y - 227)
+  local harvest = place(
+    CreateFrame("CheckButton", "WordHunterWoWHarvestCheck", box, "UICheckButtonTemplate"),
+    12, y - 227, { own = true })
   local harvestText = _G[harvest:GetName() .. "Text"]
   if harvestText then
     harvestText:SetText(Addon.LABELS.harvestLabel)
@@ -311,11 +449,11 @@ function Addon.CreateSettingsPanel()
   -- The slash command did this already, but only someone who read the addon's
   -- description knew it existed. Anyone who switches the box on can now find
   -- the way to get the text back out without being told.
+  -- Sized and anchored by the layout above -- under the note rather than at a
+  -- fixed offset, so it follows however many lines the note wraps to. Its
+  -- height used to be written here as 24, which is a fourth button height in an
+  -- addon that draws one; Addon.RoleButtonHeight is the one.
   local harvestExport = Addon.createActionButton(box, Addon.LABELS.harvestExport)
-  harvestExport:SetSize(180, 24)
-  -- Anchored under the note rather than at a fixed offset, so it follows however
-  -- many lines the note wraps to.
-  harvestExport:SetPoint("TOPLEFT", harvestNote, "BOTTOMLEFT", 0, -8)
   harvestExport:SetScript("OnClick", function()
     if Addon.rebuildHarvestExport then Addon.rebuildHarvestExport() end
     local blob = WordHunterWoWCorpusExport
@@ -394,7 +532,16 @@ function Addon.CreateSettingsPanel()
       local passages = Addon.HarvestCount and (Addon.HarvestCount() - Addon.HarvestWordCount()) or 0
       panel.harvestNote:SetText(string.format(Addon.LABELS.harvestNote, passages, Addon.HarvestWordCount and Addon.HarvestWordCount() or 0))
     end
+    -- Last, and from here rather than only from the slider: Blizzard's own route
+    -- into this page never touches the controls, and /whw reset changes the size
+    -- with the page closed. Either way the page has to catch up when it opens.
+    layout()
   end
+
+  -- The page is built at whatever size is already stored, not at 100% and
+  -- corrected on the first show. A frame that has never been laid out has no
+  -- size of its own, so the scroll box would have nothing to measure.
+  layout()
 
   -- Blizzard's own route into this panel -- Esc, Options, AddOns -- never calls
   -- OpenSettings, so nothing refreshed the controls and they showed whatever
