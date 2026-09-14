@@ -149,3 +149,47 @@ assert(Compat.QuestLogFrame() == nil)
 assert(not Compat.NpcQuestFrameShown())
 
 print("compat: ok")
+
+-- ---------------------------------------------------------------------------
+-- A client older than Classic is not Retail.
+--
+-- WOW_PROJECT_ID arrived with Classic in 2019. Compat used to answer RETAIL
+-- when it was absent, on the reasoning that an addon which cannot tell where it
+-- is should behave as it did before Compat existed -- but absence is not
+-- ignorance here. It is a client that predates the global, and the one thing
+-- such a client certainly is not is Retail.
+--
+-- Found on this machine rather than reasoned about: a 1.12 build of this addon
+-- runs on a Project Legacy client carrying its own forked copy of this file,
+-- with the inversion made by hand and a comment saying why. The fix was living
+-- outside version control.
+do
+  local saved = { WOW_PROJECT_ID, WOW_PROJECT_MAINLINE, GetBuildInfo }
+
+  local function on(interface, projectId, mainline)
+    GetBuildInfo = function()
+      return "x", "y", "z", interface
+    end
+    WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = projectId, mainline
+    Addon.Compat.Refresh()
+  end
+
+  -- 1.12 and 3.3.5: no globals at all, and the build number is the only tell.
+  on(11200, nil, nil)
+  assert(Addon.Compat.IsClassic(), "a 1.12 client was called Retail")
+  on(30300, nil, nil)
+  assert(Addon.Compat.IsClassic(), "a 3.3.5 client was called Retail")
+
+  -- Classic Era states it properly, and still has to come out Classic.
+  on(11509, 2, 1)
+  assert(Addon.Compat.IsClassic(), "Classic Era was called Retail")
+
+  -- And Retail, which is the one case that may answer Retail.
+  on(120100, 1, 1)
+  assert(Addon.Compat.IsRetail(), "Retail was not called Retail")
+
+  WOW_PROJECT_ID, WOW_PROJECT_MAINLINE, GetBuildInfo = saved[1], saved[2], saved[3]
+  Addon.Compat.Refresh()
+end
+
+print("compat: an old client is Classic, not Retail")

@@ -142,7 +142,12 @@ assert(QuestMapFrame ~= nil and Addon.QuestLogButtonHost() ~= QuestMapFrame.Deta
 QuestLogFrame = nil
 assert(Addon.QuestLogButtonHost() == nil, "no quest log yet means no host")
 
-WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = nil, nil
+-- Retail said the way a Retail client says it, rather than by clearing both
+-- globals. Clearing them used to land on Retail through Compat's fallback, and
+-- that fallback was wrong: no client since 2019 lacks WOW_PROJECT_ID, so its
+-- absence means an older game, not an unknown one. Compat answers Classic for
+-- that now, and a test that leant on the old answer was pinning the bug.
+WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
 Addon.Compat.Refresh()
 assert(Addon.QuestLogButtonHost() == QuestMapFrame.DetailsFrame, "back on Retail")
 

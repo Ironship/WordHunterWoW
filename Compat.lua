@@ -25,10 +25,29 @@ local RETAIL, CLASSIC, SOD = "retail", "classic", "sod"
 local resolved
 
 local function projectFamily()
-  -- Retail defines both of these. If we cannot tell what we are on, behave
-  -- exactly as the addon did before this file existed.
-  if type(WOW_PROJECT_ID) ~= "number" then return RETAIL end
-  if type(WOW_PROJECT_MAINLINE) ~= "number" then return RETAIL end
+  -- The interface number first, because it is the only answer that does not
+  -- depend on a global existing.
+  --
+  -- This used to fall straight through to RETAIL when WOW_PROJECT_ID was not a
+  -- number, on the reasoning that an addon which cannot tell where it is should
+  -- behave as it did before this file existed. That reasoning had the case
+  -- backwards. WOW_PROJECT_ID arrived with Classic in 2019, so its absence does
+  -- not mean "some client we have not heard of" -- it means a client older than
+  -- Classic, which is the one thing it certainly is not: Retail.
+  --
+  -- It is not hypothetical. A 1.12 build of this addon is running on a Project
+  -- Legacy client, and it carries its own copy of this file for exactly this
+  -- reason, with the inversion made by hand. The same fault reaches every 3.3.5
+  -- client too, which defines neither global either.
+  local _, _, _, interface = GetBuildInfo and GetBuildInfo()
+  interface = tonumber(interface)
+  if interface and interface < 20000 and interface >= 11500 then
+    -- Classic Era proper: 11509 and its neighbours. Below that is 1.x.
+    return CLASSIC
+  end
+  if interface and interface < 11500 then return CLASSIC end
+  if type(WOW_PROJECT_ID) ~= "number" then return CLASSIC end
+  if type(WOW_PROJECT_MAINLINE) ~= "number" then return CLASSIC end
   if WOW_PROJECT_ID == WOW_PROJECT_MAINLINE then return RETAIL end
   return CLASSIC
 end
