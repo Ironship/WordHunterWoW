@@ -1,0 +1,18 @@
+## Interface: 11200
+## Title: WordHunterWoW
+## Notes: Mark quest words and import them into Word Hunter. Vanilla 1.12 build.
+## Author: Ironship
+## Version: 1.16.0-vanilla
+## SavedVariables: WordHunterWoWDB, WordHunterWoWExport, WordHunterWoWLanguage, WordHunterWoWCorpus, WordHunterWoWCorpusExport
+
+Vanilla.lua
+Core.lua
+Compat.lua
+UICommon.lua
+Editor.lua
+QuestPanel.lua
+WordList.lua
+Stats.lua
+Harvest.lua
+Settings.lua
+Init.lua

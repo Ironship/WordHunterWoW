@@ -1,0 +1,225 @@
+local Addon = WordHunterWoW_Addon
+local LABELS = Addon.LABELS
+local unpack = unpack or table.unpack
+
+function Addon.setBackdrop(frame, alpha)
+  if Addon.ApplyBackground then
+    Addon.ApplyBackground(frame, alpha)
+    return
+  end
+  frame:SetBackdrop({
+    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true,
+    tileSize = 16,
+    edgeSize = 16,
+    insets = { left = 3, right = 3, top = 3, bottom = 3 },
+  })
+  frame:SetBackdropColor(0.04, 0.06, 0.10, alpha or 0.94)
+  frame:SetToplevel(true)
+end
+
+function Addon.styleFlatButton(button, color, active)
+  if active then
+    button:SetBackdropColor(color[1] * 0.20, color[2] * 0.20, color[3] * 0.20, 1)
+    button:SetBackdropBorderColor(color[1], color[2], color[3], 1)
+  else
+    button:SetBackdropColor(0.06, 0.07, 0.09, 1)
+    button:SetBackdropBorderColor(color[1] * 0.55, color[2] * 0.55, color[3] * 0.55, 0.9)
+  end
+  -- The border is what marks the chosen one on every other client. 1.12 draws a
+  -- backdrop edge by slicing the edge file into eight pieces, and this button's
+  -- edge is a single white pixel, so that border does not appear at all -- which
+  -- left the four status buttons looking identical whichever one was picked.
+  -- The label carries it instead, and does so on any client.
+  if active then
+    button.label:SetTextColor(color[1], color[2], color[3])
+  else
+    button.label:SetTextColor(unpack(Addon.COLORS.text))
+  end
+end
+
+function Addon.createFlatButton(parent, text, color)
+  local button = WHW_CreateFrame("Button", nil, parent, "BackdropTemplate")
+  button:SetBackdrop({
+    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Buttons\\WHITE8X8",
+    edgeSize = 1,
+    insets = { left = 2, right = 2, top = 2, bottom = 2 },
+  })
+  button.label = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  button.label:SetPoint("CENTER")
+  button.label:SetText(text)
+  button.color = color
+  Addon.styleFlatButton(button, color, false)
+  button:SetScript("OnEnter", function(self)
+    self:SetBackdropBorderColor(self.color[1], self.color[2], self.color[3], 1)
+  end)
+  button:SetScript("OnLeave", function(self)
+    local active = self.status ~= nil and Addon.selected ~= nil and self.status == Addon.selected.status
+    Addon.styleFlatButton(self, self.color, active)
+  end)
+  return button
+end
+
+function Addon.createActionButton(parent, text)
+  local button = WHW_CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+  button:SetText(text)
+  return button
+end
+
+function Addon.createEditBox(parent)
+  local box = WHW_CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+  box:SetFontObject("ChatFontNormal")
+  box:SetAutoFocus(false)
+  box:SetHeight(28)
+  return box
+end
+
+local copyDialog
+
+local confirmDialog
+
+-- A themed yes/no rather than the game's StaticPopup, so it matches the window
+-- it is asked from. It exists because overwriting what someone typed is not
+-- something to do on a single click: the body says what the new value will be,
+-- and cancelling is the wider of the two buttons.
+-- `copyText`, when given, appears in a selected box under the body. A file path
+-- is no use to someone who has to retype it from a screenshot.
+function Addon.showConfirm(title, body, actionText, onConfirm, copyText)
+  if not confirmDialog then
+    confirmDialog = WHW_CreateFrame("Frame", "WordHunterWoWConfirmDialog", UIParent, "BackdropTemplate")
+    Addon.confirmDialog = confirmDialog
+    confirmDialog:SetSize(460, 260)
+    confirmDialog:SetPoint("CENTER")
+    -- Above the editor it is asked from, which already sits high.
+    confirmDialog:SetFrameStrata("TOOLTIP")
+    confirmDialog:SetFrameLevel(400)
+    confirmDialog:SetClampedToScreen(true)
+    confirmDialog:EnableMouse(true)
+    Addon.setBackdrop(confirmDialog, 1)
+
+    confirmDialog.title = confirmDialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    confirmDialog.title:SetPoint("TOPLEFT", 20, -22)
+    confirmDialog.title:SetPoint("TOPRIGHT", -20, -22)
+    confirmDialog.title:SetJustifyH("LEFT")
+
+    confirmDialog.body = confirmDialog:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    confirmDialog.body:SetPoint("TOPLEFT", 20, -56)
+    confirmDialog.body:SetPoint("TOPRIGHT", -20, -56)
+    confirmDialog.body:SetJustifyH("LEFT")
+    confirmDialog.body:SetJustifyV("TOP")
+    WHW_SetSpacing(confirmDialog.body, 3)
+
+    -- Selected on show, so Ctrl+C takes it. Read-only in practice: editing it
+    -- changes nothing, and the box exists to be copied out of.
+    confirmDialog.copy = Addon.createEditBox(confirmDialog)
+    confirmDialog.copy:SetPoint("BOTTOMLEFT", 20, 56)
+    confirmDialog.copy:SetPoint("BOTTOMRIGHT", -20, 56)
+    confirmDialog.copy:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    confirmDialog.copy:Hide()
+
+    confirmDialog.cancel = Addon.createActionButton(confirmDialog, LABELS.confirmCancel)
+    confirmDialog.cancel:SetSize(120, 26)
+    confirmDialog.cancel:SetPoint("BOTTOMRIGHT", -20, 20)
+    confirmDialog.cancel:SetScript("OnClick", function() confirmDialog:Hide() end)
+
+    confirmDialog.action = Addon.createActionButton(confirmDialog, LABELS.confirmAction)
+    confirmDialog.action:SetSize(120, 26)
+    confirmDialog.action:SetPoint("RIGHT", confirmDialog.cancel, "LEFT", -8, 0)
+    confirmDialog.action:SetScript("OnClick", function()
+      local run = confirmDialog.onConfirm
+      confirmDialog:Hide()
+      -- Cleared before running, so a handler that reopens this dialog cannot
+      -- inherit the previous one's action.
+      confirmDialog.onConfirm = nil
+      if run then run() end
+    end)
+
+    -- Escape is cancel — the safe way out should be the easy one. Uses the same
+    -- helper as every other window here, which lets every other key through
+    -- rather than swallowing the keyboard while the dialog is up.
+    Addon.SetupEscapeClose(confirmDialog)
+  end
+
+  confirmDialog.title:SetText(title or "")
+  confirmDialog.body:SetText(body or "")
+  confirmDialog.action:SetText(actionText or LABELS.confirmAction)
+  confirmDialog.onConfirm = onConfirm
+  if copyText and copyText ~= "" then
+    confirmDialog.copy:SetText(copyText)
+    confirmDialog.copy:Show()
+    confirmDialog.copy:SetCursorPosition(0)
+    confirmDialog.copy:HighlightText()
+  else
+    confirmDialog.copy:SetText("")
+    confirmDialog.copy:Hide()
+  end
+  Addon.ApplyBackground(confirmDialog)
+  confirmDialog:Show()
+  WHW_Raise(confirmDialog)
+end
+
+function Addon.showCopyText(title, value)
+  if not copyDialog then
+    copyDialog = WHW_CreateFrame("Frame", "WordHunterWoWCopyDialog", UIParent, "BackdropTemplate")
+    Addon.copyDialog = copyDialog
+    copyDialog:SetSize(520, 330)
+    copyDialog:SetPoint("CENTER")
+    copyDialog:SetFrameStrata("TOOLTIP")
+    copyDialog:SetFrameLevel(200)
+    copyDialog:SetClampedToScreen(true)
+    copyDialog:EnableMouse(true)
+    Addon.setBackdrop(copyDialog, 1)
+    Addon.SetupEscapeClose(copyDialog)
+
+    copyDialog.title = copyDialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    copyDialog.title:SetPoint("TOPLEFT", 20, -24)
+    copyDialog.title:SetPoint("TOPRIGHT", -20, -24)
+    copyDialog.title:SetHeight(24)
+    copyDialog.title:SetJustifyH("LEFT")
+    copyDialog.title:SetMaxLines(1)
+    WHW_SetWordWrap(copyDialog.title, false)
+
+    local hint = copyDialog:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    hint:SetTextColor(unpack(Addon.COLORS.muted))
+    hint:SetPoint("TOPLEFT", 20, -52)
+    hint:SetText(LABELS.copyHint)
+
+    -- 1.12 has no InputScrollFrameTemplate. WHW_MultilineEditBox builds the
+    -- same thing -- a scroll frame around a multi-line box -- from the pieces
+    -- this client does have.
+    copyDialog.scroll = WHW_MultilineEditBox(copyDialog)
+    copyDialog.scroll:SetPoint("TOPLEFT", 20, -74)
+    copyDialog.scroll:SetPoint("BOTTOMRIGHT", -20, 24)
+    copyDialog.text = copyDialog.scroll.EditBox
+    copyDialog.text:SetFontObject("ChatFontNormal")
+    copyDialog.text:SetMultiLine(true)
+    copyDialog.text:SetAutoFocus(false)
+    -- 0 means "no letters" on some clients, not "unlimited". A harvest blob is
+    -- tens of kilobytes; the default cap is 255 and the box looks empty.
+    if copyDialog.text.SetMaxLetters then copyDialog.text:SetMaxLetters(1024 * 1024) end
+    copyDialog.text:SetScript("OnEscapePressed", function()
+      Addon.CloseAll()
+    end)
+
+    local close = WHW_CreateFrame("Button", nil, copyDialog, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", -2, -2)
+    close:SetScript("OnClick", function()
+      copyDialog.text:ClearFocus()
+      copyDialog:Hide()
+    end)
+  end
+
+  copyDialog.title:SetText(title)
+  -- A lone "|" is a UI escape (colours, links). The harvest blob is full of
+  -- them, so SetText ate the string and the box came up empty. Doubling is
+  -- how every export box in the game shows a pipe; GetText/Ctrl+C give one.
+  copyDialog.text:SetText(string.gsub((value or ""), "|", "||"))
+  copyDialog:Show()
+  WHW_Raise(copyDialog)
+  copyDialog.text:SetFocus()
+  copyDialog.text:SetCursorPosition(0)
+  copyDialog.text:HighlightText()
+  copyDialog.scroll:SetVerticalScroll(0)
+end

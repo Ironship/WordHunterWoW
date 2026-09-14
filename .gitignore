@@ -1,0 +1,10 @@
+*.zip
+.luacheckcache
+/curseforge/
+/release/
+/dist/
+/3PACK_TODO.md
+/3PACK_README.md
+.DS_Store
+Thumbs.db
+desktop.ini

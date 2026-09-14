@@ -1,0 +1,21 @@
+# How the CurseForge packager should build this addon.
+#
+# It packages a tagged commit, so what ships is whatever the tag holds. The
+# manual build in Tools/build_release.ps1 copies an allow-list; the packager
+# needs the same set expressed the other way round, as everything it should
+# leave out. Sources, caches, tests and art are how the addon is made, not
+# part of it.
+package-as: WordHunterWoW
+
+enable-nolib-creation: no
+
+ignore:
+  - art
+  - curseforge
+  - dist
+  - release
+  - tests
+  # This repository's own bookkeeping. Neither is addon code and the client
+  # cannot load either, so they were 633 bytes of nothing in every download.
+  - .gitignore
+  - .pkgmeta
