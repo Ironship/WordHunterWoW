@@ -18,6 +18,18 @@ strtrim = function(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", ""
 time = os.time
 date = os.date
 GetLocale = function() return "deDE" end
+
+-- The client says which game it is, and a real Retail client says it with these
+-- two. The stub used to leave them unset, and Compat's fallback answered Retail
+-- anyway -- so every test that wanted Retail got it by saying nothing, and the
+-- fallback's correctness was never the thing being tested.
+--
+-- That fallback was wrong: WOW_PROJECT_ID arrived with Classic in 2019, so its
+-- absence means an older client, not an unknown one. Compat answers Classic for
+-- that now. Retail is stated here instead, which is what the client does, and a
+-- test wanting Classic overrides them as several already did.
+WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
+GetBuildInfo = GetBuildInfo or function() return "12.1.0", "69814", "2026-09-01", 120100 end
 UISpecialFrames = {}
 tContains = function(t, v) for _, x in ipairs(t) do if x == v then return true end end return false end
 tinsert = table.insert
