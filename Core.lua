@@ -120,13 +120,26 @@ Addon.LABELS = {
   -- click does, and nobody who has not read about it should find their
   -- meanings hidden behind a question.
   recallLabel = "Ask for a 1–5 rating when a word in Learning for over a day is opened",
-  difficultNote = "%d difficult words so far — five or more ratings with an average below 3.",
+  -- Both counts are filled in, because both are settable now. The sentence
+  -- used to spell "five" out in words, which stopped being true the moment the
+  -- slider below it moved -- and a note that contradicts the control directly
+  -- above it is worse than no note.
+  difficultNote = "%d difficult words so far — %d or more ratings with an average below 3.",
+  difficultMinLabel = "Call a word difficult after",
+  -- The unit is in the caption rather than beside the number, so the figure
+  -- the slider shows reads as a sentence: "after 20 ratings".
+  difficultMinValue = "%d ratings",
+  readyAfterLabel = "Offer Ready for Known after",
+  -- The fourteen days is named because it is the half a reader cannot see. Set
+  -- this to two and the label still will not appear on a word met yesterday,
+  -- and nothing on screen would say why.
+  readyAfterValue = "%d quests (and 14 days learning)",
   difficultExport = "Export difficult words",
   -- Like harvestExportHint: says where the block goes and what the columns
   -- are, because a wall of tab-separated text explains neither.
   difficultExportHint = "Ctrl+C copies the list — one word per line, tab-separated: word, meaning, note, example sentences, average, ratings. Paste it into a flashcard app.",
   difficultExportEmpty = "No difficult words yet.\n\n"
-    .. "A word counts as difficult after five or more ratings with an average below 3. Switch on the rating box above and keep reading quests.",
+    .. "A word counts as difficult after %d or more ratings with an average below 3. Switch on the rating box above and keep reading quests.",
   difficultWords = "Difficult words",
   recallPrompt = "Before you read it — how well did you know this word?",
   recallScale = "1 = no idea  •  5 = knew it at once  •  or press 1–5",

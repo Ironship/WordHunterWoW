@@ -59,7 +59,8 @@ Addon.SetRecallCheck(false)
 -- The count under it, filled by refresh like the harvest note.
 local note = rawget(panel, 'difficultNote')
 assert(note, 'the page has no difficult-words line')
-assert(note:GetText() == string.format(LABELS.difficultNote, 0), 'got: ' .. tostring(note:GetText()))
+assert(note:GetText() == string.format(LABELS.difficultNote, 0, Addon.GetDifficultMinRatings()),
+  'got: ' .. tostring(note:GetText()))
 
 -- Nothing difficult: a dialog with nothing to confirm, Cancel alone.
 local button = rawget(panel, 'difficultExport')
@@ -68,7 +69,8 @@ local press = button:GetScript('OnClick')
 Addon.showConfirm('t', 'b', LABELS.confirmAction, function() end)
 press()
 local confirm = Addon.confirmDialog
-assert(confirm:IsShown() and confirm.body:GetText() == LABELS.difficultExportEmpty,
+assert(confirm:IsShown() and confirm.body:GetText() ==
+    string.format(LABELS.difficultExportEmpty, Addon.GetDifficultMinRatings()),
   'with nothing difficult the export says so: ' .. tostring(confirm.body:GetText()))
 assert(not confirm.action:IsShown(), 'and offers nothing to confirm')
 confirm:Hide()
@@ -81,7 +83,8 @@ for i = 1, 5 do Addon.RecordRating('hund', 1, now + i) end
 Addon.RecordExample('hund', 'Der Hund bellt.', 1, 'Q', now)
 Addon.RecordExample('hund', 'Der Hund schläft.', 2, 'Q', now)
 panel.refresh()
-assert(note:GetText() == string.format(LABELS.difficultNote, 1), 'the count follows the rows: ' .. tostring(note:GetText()))
+assert(note:GetText() == string.format(LABELS.difficultNote, 1, Addon.GetDifficultMinRatings()),
+  'the count follows the rows: ' .. tostring(note:GetText()))
 panel:SetScale(1.3)
 press()
 local copy = Addon.copyDialog
