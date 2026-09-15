@@ -6,7 +6,17 @@ test("slash command opens a filterable word list", () => {
   assert.match(source, /command == "words"/);
   assert.match(source, /WordHunterWoWDB\.settings\.hideIgnored/);
   assert.match(source, /function Addon\.toggleWordList\(\)/);
-  assert.match(source, /listFrame\.search:SetScript\("OnTextChanged", function\(\) refreshWordList\(\) end\)/);
+  // The box refreshes the list as it is typed in. It used to call
+  // refreshWordList straight from OnTextChanged, and this line pinned that
+  // literal shape -- so when the call was put behind a timer, to stop a
+  // seventy-thousand-word list being rebuilt once per keystroke, the assertion
+  // went on failing for a change that was correct. Pinned to the behaviour
+  // instead: typing schedules a refresh, and a new keystroke cancels the one
+  // already waiting.
+  assert.match(source, /listFrame\.search:SetScript\("OnTextChanged"/);
+  assert.match(source, /if debounce then debounce:Cancel\(\) end/);
+  assert.match(source, /debounce = C_Timer\.NewTimer\([\d.]+, function\(\)/);
+  assert.match(source, /if listFrame:IsShown\(\) then refreshWordList\(\) end/);
 });
 
 test("word list shows all words without forms count", () => {
@@ -37,7 +47,8 @@ test("statistics count all words without linked forms", () => {
 test("statistics respect ready-for-known thresholds", () => {
   const statsSource = source;
   const computeBlock = statsSource.slice(statsSource.indexOf("local function computeStats("));
-  assert.ok(computeBlock.includes("(entry.encounterCount or 0) >= 5"));
+  assert.ok(computeBlock.includes("Addon.GetReadyAfter and Addon.GetReadyAfter()"),
+    "the stats page has to read the setting, not a copy of its default");
   assert.ok(computeBlock.includes("14 * 24 * 60 * 60"));
 });
 

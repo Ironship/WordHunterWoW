@@ -34,7 +34,7 @@ local function updateEditorHistory()
     and (selected.statusChangedAt or selected.firstSeenAt)
     or time()
   local ready = selected.status == "learning"
-    and (selected.encounterCount or 0) >= 5
+    and (selected.encounterCount or 0) >= (Addon.GetReadyAfter and Addon.GetReadyAfter() or 5)
     and time() - learningSince >= 14 * 24 * 60 * 60
   editor.history:SetText(ready and (history .. "  •  " .. LABELS.readyForKnown) or history)
   editor.history:SetTextColor(unpack(ready and COLORS.known or COLORS.muted))

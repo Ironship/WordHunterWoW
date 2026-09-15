@@ -17,7 +17,13 @@ local function computeStats(now)
     byStatus[status] = (byStatus[status] or 0) + 1
     if status == "learning" then
       local learningSince = entry.statusChangedAt or entry.firstSeenAt or now
-      if (entry.encounterCount or 0) >= 5 and now - learningSince >= 14 * 24 * 60 * 60 then
+      -- The same two conditions the editor uses, and they have to stay the same
+      -- two: this count is the header of a page whose rows the editor labels
+      -- one at a time, so a stats page saying "3 ready" over a list where the
+      -- editor offers Known on eleven of them is a bug with no error attached.
+      -- Both now read the setting rather than a five written twice.
+      local readyAfter = Addon.GetReadyAfter and Addon.GetReadyAfter() or 5
+      if (entry.encounterCount or 0) >= readyAfter and now - learningSince >= 14 * 24 * 60 * 60 then
         readyForKnown = readyForKnown + 1
       end
     end

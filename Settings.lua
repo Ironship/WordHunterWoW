@@ -409,21 +409,83 @@ function Addon.CreateSettingsPanel()
   end)
   panel.recallCheck = recall
 
+  -- The two thresholds the rating box feeds, under the box that switches it on.
+  --
+  -- Whole numbers of events, not a scale, so the slider steps by one and the
+  -- caption carries the unit: a bare "20" beside "Call a word difficult after"
+  -- could be read as a percentage, a score or a number of days. Both figures
+  -- live in the caption for the same reason the size sliders put theirs there
+  -- -- OptionsSliderTemplate's own Low/High labels are the bounds, and the
+  -- current value has nowhere else to go.
+  local function countSlider(name, y, label, format, get, set, low, high)
+    local caption = place(box:CreateFontString(nil, "ARTWORK", "GameFontNormal"),
+      16, y, { role = "label" })
+    caption:SetText(label)
+    local s = place(CreateFrame("Slider", name, box, "OptionsSliderTemplate"),
+      16, y - 20, { own = true, w = 460, h = 16 })
+    s:SetMinMaxValues(low, high)
+    s:SetValueStep(1)
+    s:SetObeyStepOnDrag(true)
+    s:SetValue(get())
+    _G[s:GetName() .. "Low"]:SetText(tostring(low))
+    _G[s:GetName() .. "High"]:SetText(tostring(high))
+    -- Kept on the slider so refresh can redraw the figure: SetValue fires
+    -- OnValueChanged only when the value moves, so a panel reopened on an
+    -- unchanged setting would keep the caption it was built with.
+    function s.captionFor(v)
+      return label .. " " .. string.format(format, math.floor((tonumber(v) or low) + 0.5))
+    end
+    _G[s:GetName() .. "Text"]:SetText(s.captionFor(get()))
+    s:SetScript("OnValueChanged", function(self, value)
+      value = math.floor((tonumber(value) or low) + 0.5)
+      set(value)
+      _G[self:GetName() .. "Text"]:SetText(self.captionFor(value))
+      -- The note under these counts difficult words, and the count is exactly
+      -- what this slider changes. Left to the next panel refresh it read as a
+      -- stale number for as long as the page stayed open.
+      if panel.refreshDifficultNote then panel.refreshDifficultNote() end
+    end)
+    return s
+  end
+
+  panel.readySlider = countSlider("WordHunterWoWReadyAfterSlider", y - 169,
+    Addon.LABELS.readyAfterLabel, Addon.LABELS.readyAfterValue,
+    function() return Addon.GetReadyAfter and Addon.GetReadyAfter() or 5 end,
+    function(v) if Addon.SetReadyAfter then Addon.SetReadyAfter(v) end end,
+    Addon.RECALL_READY_MIN or 1, Addon.RECALL_READY_MAX or 40)
+
+  panel.difficultSlider = countSlider("WordHunterWoWDifficultMinSlider", y - 215,
+    Addon.LABELS.difficultMinLabel, Addon.LABELS.difficultMinValue,
+    function() return Addon.GetDifficultMinRatings and Addon.GetDifficultMinRatings() or 5 end,
+    function(v) if Addon.SetDifficultMinRatings then Addon.SetDifficultMinRatings(v) end end,
+    Addon.RECALL_DIFFICULT_MIN or 3, Addon.RECALL_DIFFICULT_MAX or 40)
+
   -- One line, filled in by refresh. note() registers it for the layout, so the
   -- export button below can hang off its bottom edge rather than off an offset
   -- that would stop matching the moment the letters grew.
-  local difficultNote = note(y - 169, "")
+  local difficultNote = note(y - 261, "")
   panel.difficultNote = difficultNote
+
+  -- Named so the sliders above can redraw just this line without running the
+  -- whole page refresh, which would reset every slider under the cursor.
+  panel.refreshDifficultNote = function()
+    difficultNote:SetText(string.format(Addon.LABELS.difficultNote,
+      Addon.CountDifficult and Addon.CountDifficult() or 0,
+      Addon.GetDifficultMinRatings and Addon.GetDifficultMinRatings() or 5))
+  end
 
   -- The same shape as the harvest export below: the list goes into the copy
   -- box, and an empty list says so in a dialog with nothing to confirm.
   local difficultExport = place(
     Addon.createActionButton(box, Addon.LABELS.difficultExport),
-    16, y - 187, { button = true, h = Addon.RoleButtonHeight(1) })
+    16, y - 279, { button = true, h = Addon.RoleButtonHeight(1) })
   difficultExport:SetScript("OnClick", function()
     local text = Addon.BuildDifficultExport and Addon.BuildDifficultExport() or ""
     if type(text) ~= "string" or text == "" then
-      Addon.showConfirm(Addon.LABELS.difficultExport, Addon.LABELS.difficultExportEmpty, nil, nil, panel)
+      Addon.showConfirm(Addon.LABELS.difficultExport,
+        string.format(Addon.LABELS.difficultExportEmpty,
+          Addon.GetDifficultMinRatings and Addon.GetDifficultMinRatings() or 5),
+        nil, nil, panel)
       return
     end
     Addon.showCopyText(Addon.LABELS.difficultExport, text, Addon.LABELS.difficultExportHint, panel)
@@ -432,7 +494,7 @@ function Addon.CreateSettingsPanel()
 
   local harvest = place(
     CreateFrame("CheckButton", "WordHunterWoWHarvestCheck", box, "UICheckButtonTemplate"),
-    12, y - 227, { own = true })
+    12, y - 319, { own = true })
   local harvestText = _G[harvest:GetName() .. "Text"]
   if harvestText then
     harvestText:SetText(Addon.LABELS.harvestLabel)
@@ -443,7 +505,7 @@ function Addon.CreateSettingsPanel()
   end)
   panel.harvestCheck = harvest
 
-  local harvestNote = note(y - 251, "")
+  local harvestNote = note(y - 343, "")
   panel.harvestNote = harvestNote
 
   -- The slash command did this already, but only someone who read the addon's
@@ -525,9 +587,14 @@ function Addon.CreateSettingsPanel()
     if panel.questLogAutoCheck then panel.questLogAutoCheck:SetChecked(Addon.GetQuestLogAutoOpen()) end
     if panel.harvestCheck then panel.harvestCheck:SetChecked(Addon.GetHarvestEnabled()) end
     if panel.recallCheck then panel.recallCheck:SetChecked(Addon.GetRecallCheck and Addon.GetRecallCheck() or false) end
-    if panel.difficultNote then
-      panel.difficultNote:SetText(string.format(Addon.LABELS.difficultNote, Addon.CountDifficult and Addon.CountDifficult() or 0))
+    for _, s in ipairs({ panel.readySlider, panel.difficultSlider }) do
+      local get = s == panel.readySlider and Addon.GetReadyAfter or Addon.GetDifficultMinRatings
+      if get then
+        s:SetValue(get())
+        _G[s:GetName() .. "Text"]:SetText(s.captionFor(get()))
+      end
     end
+    if panel.refreshDifficultNote then panel.refreshDifficultNote() end
     if panel.harvestNote then
       local passages = Addon.HarvestCount and (Addon.HarvestCount() - Addon.HarvestWordCount()) or 0
       panel.harvestNote:SetText(string.format(Addon.LABELS.harvestNote, passages, Addon.HarvestWordCount and Addon.HarvestWordCount() or 0))

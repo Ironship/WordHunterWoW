@@ -45,14 +45,82 @@ local EXAMPLE_MAX = 400
 -- Difficult: enough ratings to mean something, and the recent ones low.
 -- Five, not ten or twenty, because a word turns up in quests a handful of
 -- times a month, and a threshold that takes a season to reach never fires.
-local DIFFICULT_MIN_RATINGS = 5
+--
+-- That reasoning holds for the default and not for everybody. A reader who
+-- meets a word several times an evening reaches five ratings in one sitting,
+-- and a list built on five says "difficult" about words they simply had not
+-- looked at twice yet. The number is theirs to set now; five is only where it
+-- starts.
+local DIFFICULT_MIN_DEFAULT = 5
 local DIFFICULT_WINDOW = 10
 local DIFFICULT_BELOW = 3.0
 local SCORE_MIN, SCORE_MAX = 1, 5
 
+-- How many quests a word has to turn up in before the editor offers to move it
+-- to Known. There is a second condition beside this one -- fourteen days since
+-- it was marked Learning -- and it is not settable: the point of it is that a
+-- word met eight times in one evening has been recognised, not learned, and a
+-- count alone cannot tell those apart. Raising this past a handful makes the
+-- count the binding half anyway, which is what a reader raising it wants.
+local READY_AFTER_DEFAULT = 5
+
+-- Both are whole numbers of events, so the bounds are the range over which the
+-- setting means anything: below the low end the label fires on noise, and above
+-- the high end it never fires at all for a word met a few times a month.
+Addon.RECALL_DIFFICULT_MIN, Addon.RECALL_DIFFICULT_MAX = 3, 40
+Addon.RECALL_READY_MIN, Addon.RECALL_READY_MAX = 1, 40
+
 Addon.RECALL_SCORE_MIN, Addon.RECALL_SCORE_MAX = SCORE_MIN, SCORE_MAX
 Addon.RECALL_ASK_AFTER, Addon.RECALL_ASK_AGAIN_AFTER = ASK_AFTER, ASK_AGAIN_AFTER
-Addon.RECALL_DIFFICULT_MIN_RATINGS = DIFFICULT_MIN_RATINGS
+Addon.RECALL_DIFFICULT_MIN_RATINGS = DIFFICULT_MIN_DEFAULT
+Addon.RECALL_READY_AFTER_DEFAULT = READY_AFTER_DEFAULT
+
+-- A stored setting that has to come back a whole number inside its bounds. A
+-- saved variable is a file a player can edit, and every caller here uses the
+-- answer as a comparison threshold, so a string or a nil from a hand-edited
+-- profile would turn "is this word difficult" into a Lua error at the moment
+-- the list is drawn.
+local function storedCount(key, default, low, high)
+  local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings[key]
+  v = tonumber(v)
+  if not v then return default end
+  v = math.floor(v + 0.5)
+  if v < low then return low end
+  if v > high then return high end
+  return v
+end
+
+local function storeCount(key, value, low, high)
+  if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
+  if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
+  value = tonumber(value)
+  if not value then return end
+  value = math.floor(value + 0.5)
+  if value < low then value = low elseif value > high then value = high end
+  WordHunterWoWDB.settings[key] = value
+  if Addon.settingsPanel and Addon.settingsPanel.refresh then Addon.settingsPanel.refresh() end
+end
+
+-- How many ratings a word needs before it can be called difficult.
+function Addon.GetDifficultMinRatings()
+  return storedCount("difficultMinRatings", DIFFICULT_MIN_DEFAULT,
+    Addon.RECALL_DIFFICULT_MIN, Addon.RECALL_DIFFICULT_MAX)
+end
+
+function Addon.SetDifficultMinRatings(value)
+  storeCount("difficultMinRatings", value,
+    Addon.RECALL_DIFFICULT_MIN, Addon.RECALL_DIFFICULT_MAX)
+end
+
+-- How many quests a word turns up in before Ready for Known is offered.
+function Addon.GetReadyAfter()
+  return storedCount("readyAfter", READY_AFTER_DEFAULT,
+    Addon.RECALL_READY_MIN, Addon.RECALL_READY_MAX)
+end
+
+function Addon.SetReadyAfter(value)
+  storeCount("readyAfter", value, Addon.RECALL_READY_MIN, Addon.RECALL_READY_MAX)
+end
 
 -- On unless the player switched it off, and still never seeded: nil reads as
 -- on, and only an explicit false turns it off. Seeding would make an existing
@@ -216,7 +284,7 @@ end
 -- caller's to check: a word since marked Known is not difficult whatever it
 -- was rated while it was being learned.
 function Addon.IsDifficult(row)
-  if type(row) ~= "table" or (tonumber(row.ratingCount) or 0) < DIFFICULT_MIN_RATINGS then return false end
+  if type(row) ~= "table" or (tonumber(row.ratingCount) or 0) < Addon.GetDifficultMinRatings() then return false end
   local mean = Addon.RecallAverage(row)
   return mean ~= nil and mean < DIFFICULT_BELOW
 end
