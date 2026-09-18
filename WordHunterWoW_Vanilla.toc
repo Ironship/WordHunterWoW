@@ -8,6 +8,7 @@
 
 Core.lua
 Compat.lua
+Gamepad.lua
 Recall.lua
 UICommon.lua
 Editor.lua

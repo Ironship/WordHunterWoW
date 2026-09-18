@@ -120,6 +120,11 @@ Addon.LABELS = {
     .. "Switch on the box above and read a few quests, then come back.",
   integratedLabel = "Integrated quest window",
   harvestLabel = "Collect quest and NPC text for the dictionary project",
+  gamepadLabel = "Controller — the pad drives the panel while it is open",
+  gamepadNote = "Needs the game's own controller support (Options → Controls). "
+    .. "D-pad: move between words · A: open the word · B: close · X: word list · "
+    .. "Y: reading mode · LB/RB: scroll. In the editor: D-pad picks a status or a "
+    .. "rating · A: save, or rate · B: cancel, or later. The sticks are never taken.",
   harvestNote = "Off by default. Records objectives, progress and hand-in text plus NPC dialogue you actually see — the passages Blizzard's quest API does not publish. Stored locally; %d passages and %d words no dictionary covers. Turning it off keeps what was collected until you export or /whw harvest clear.",
   -- The recall check. Off by default like the harvest box: it changes what a
   -- click does, and nobody who has not read about it should find their
@@ -1777,6 +1782,9 @@ function Addon.SetupEscapeClose(frame)
   end
   frame:EnableKeyboard(true)
   SafePropagate(frame, true)
+  -- A window that takes Escape takes the controller too, and for the same
+  -- reason: it is the window in front. Gamepad.lua decides what a press means.
+  if Addon.AttachGamePad then Addon.AttachGamePad(frame) end
   frame:HookScript("OnKeyDown", function(self, key)
     if key == "ESCAPE" then
       SafePropagate(self, false)
