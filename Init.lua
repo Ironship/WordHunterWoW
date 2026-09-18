@@ -14,6 +14,30 @@ events:RegisterEvent("GOSSIP_CLOSED")
 events:SetScript("OnEvent", function(_, event, loadedAddon)
   if event == "ADDON_LOADED" then
     if loadedAddon == addonName then
+      -- What the saved variables held the instant this addon was told it had
+      -- loaded, recorded before anything here has had a chance to touch them.
+      --
+      -- On the Forever client words marked in one session are gone after a
+      -- reload, and the file on disk is provably correct at the moment it is
+      -- written: seven entries, the right keys, status "known". Feeding that
+      -- same file through this addon's real load path outside the game keeps
+      -- all seven. So the question is no longer what the code does with the
+      -- table -- it is whether the table is there at all when the code runs,
+      -- and that is a thing only the client can answer. /whw diag reads it back.
+      Addon.loadSnapshot = {
+        dbType = type(WordHunterWoWDB),
+        words = 0,
+        locales = {},
+        version = type(WordHunterWoWDB) == "table" and WordHunterWoWDB.version or nil,
+      }
+      if type(WordHunterWoWDB) == "table" and type(WordHunterWoWDB.wordsByLocale) == "table" then
+        for locale, words in pairs(WordHunterWoWDB.wordsByLocale) do
+          local n = 0
+          if type(words) == "table" then for _ in pairs(words) do n = n + 1 end end
+          Addon.loadSnapshot.locales[locale] = n
+          Addon.loadSnapshot.words = Addon.loadSnapshot.words + n
+        end
+      end
       Addon.initializeDatabase()
       Addon.createPanel()
       Addon.createEditor()
@@ -121,6 +145,67 @@ SlashCmdList.WORDHUNTERWOW = function(message)
     Addon.toggleWordList()
   elseif command == "stats" then
     Addon.toggleStats()
+  -- Three numbers that together say where a word went: what the client handed
+  -- over at load, what the table holds now, and what the addon can reach
+  -- through the locale it is actually using. A word that is on disk, absent at
+  -- load and absent now was never given to the addon; one present at load and
+  -- absent now was dropped in this session; one present in the table but not
+  -- through GetWordsTable is filed under a locale nobody is reading.
+  elseif command == "diag" then
+    local snap = Addon.loadSnapshot
+    local live, byLocale = 0, {}
+    if type(WordHunterWoWDB) == "table" and type(WordHunterWoWDB.wordsByLocale) == "table" then
+      for locale, words in pairs(WordHunterWoWDB.wordsByLocale) do
+        local n = 0
+        if type(words) == "table" then for _ in pairs(words) do n = n + 1 end end
+        byLocale[#byLocale + 1] = locale .. "=" .. n
+        live = live + n
+      end
+    end
+    local reachable = 0
+    for _ in pairs(Addon.GetWordsTable()) do reachable = reachable + 1 end
+    print("|cff59aefaWordHunterWoW diag:|r")
+    print(string.format("  at load:    %s, %d words%s",
+      snap and snap.dbType or "(never fired)",
+      snap and snap.words or 0,
+      snap and snap.version and (", db v" .. tostring(snap.version)) or ""))
+    print(string.format("  now:        %d words  [%s]", live,
+      table.concat(byLocale, " ")))
+    print(string.format("  reachable:  %d  via locale %s",
+      reachable, tostring(Addon.GetTargetLocale())))
+    print(string.format("  game:       %s", tostring(Addon.Compat and Addon.Compat.GameFlavor())))
+    -- Where the flavour comes from, because on the Forever client it answered
+    -- "retail" with this file's own fix installed. The manifest reader is the
+    -- half that can fail quietly: a client with neither C_AddOns nor the global
+    -- returns nothing, and a name that is not the folder's returns nothing
+    -- either, and both look identical from outside.
+    local reader = (type(C_AddOns) == "table" and C_AddOns.GetAddOnMetadata and "C_AddOns")
+      or (type(GetAddOnMetadata) == "function" and "global") or "NONE"
+    local get = (type(C_AddOns) == "table" and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+    local iface, title
+    if type(get) == "function" then
+      local ok1, v1 = pcall(get, addonName, "Interface")
+      local ok2, v2 = pcall(get, addonName, "Title")
+      iface = ok1 and tostring(v1) or ("pcall failed: " .. tostring(v1))
+      title = ok2 and tostring(v2) or "?"
+    end
+    print(string.format("  manifest:   reader=%s  name=%s", reader, tostring(addonName)))
+    print(string.format("              Interface=%s  Title=%s", tostring(iface), tostring(title)))
+    local _, _, _, build = GetBuildInfo and GetBuildInfo()
+    print(string.format("              GetBuildInfo=%s  PROJECT_ID=%s",
+      tostring(build), tostring(WOW_PROJECT_ID)))
+  -- Reading mode has a slash command as well as a settings box because it is
+  -- the one setting here somebody turns on and off inside a single session:
+  -- read a quest, take the quest, go back to playing. A trip through the
+  -- options panel for that is a trip nobody makes twice.
+  elseif command == "read" or command == "reading" then
+    if Addon.ToggleReadingMode then
+      local on = Addon.ToggleReadingMode()
+      if print then
+        print("|cff59aefaWordHunterWoW:|r " ..
+          (on and Addon.LABELS.readingOn or Addon.LABELS.readingOff))
+      end
+    end
   elseif command == "settings" or command == "config" or command == "options" then
     if Addon.OpenSettings then Addon.OpenSettings() end
   elseif command:match("^bg%s+") then

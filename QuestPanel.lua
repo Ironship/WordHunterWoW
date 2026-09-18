@@ -1099,6 +1099,16 @@ function Addon.createPanel()
   end)
   Addon.setBackdrop(panel)
   Addon.SetupEscapeClose(panel)
+  -- The dimmer follows the panel rather than the setting, so it is hung on the
+  -- frame's own events. Five places call Show or Hide on this panel and a sixth
+  -- will be added the week after anybody patches them one at a time; hooked
+  -- once here, every path is covered including the ones not written yet.
+  panel:HookScript("OnShow", function()
+    if Addon.ApplyReadingDim then Addon.ApplyReadingDim() end
+  end)
+  panel:HookScript("OnHide", function()
+    if Addon.ApplyReadingDim then Addon.ApplyReadingDim() end
+  end)
   local panelDef = Addon.LAYOUT_DEFAULTS.npc.panel
   panel:SetSize(panelDef.w, panelDef.h)
   panel:SetPoint("CENTER", UIParent, "CENTER", -200, 0)
@@ -1254,4 +1264,17 @@ function Addon.createPanel()
   end
 
   Addon.ApplyIntegratedLayout()
+end
+
+-- Lay the panel out again after something outside this file has changed what it
+-- should look like. Reading mode is the caller: it moves the panel to a
+-- different layout context, and the words inside have to be re-flowed against
+-- the new width or they stay wrapped for the old one.
+--
+-- Both halves of the idiom, because a panel that is not on screen must not be
+-- refreshed -- refreshPanel measures the text against a frame with no size yet
+-- and lays every token at zero.
+function Addon.RelayoutPanel()
+  if not panel then return end
+  if panel:IsShown() then refreshPanel() else layoutChrome() end
 end

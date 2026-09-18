@@ -45,7 +45,11 @@ for _, client in ipairs({'retail', 'classic', 'sod'}) do
   C_Seasons = { GetActiveSeason = function() return client == 'sod' and 2 or 0 end }
   Addon.Compat.Refresh()
   WordHunterWoWDB = { settings = {} }
-  assert(Addon.GetBackgroundStyle() == (client == 'retail' and 'midnight' or 'tooltip'))
+  -- One default on every game now. The contrast of parchment itself is not
+  -- taken on trust here: the loop below walks BACKGROUND_ORDER, so every
+  -- style is measured on every client whatever the default happens to be.
+  assert(Addon.GetBackgroundStyle() == 'dialog',
+    client .. ' should default to parchment, got ' .. Addon.GetBackgroundStyle())
   assert(Addon.Compat.GameFlavor() == client)
   local window = frame()
   Addon.panel, Addon.confirmDialog = window, frame()

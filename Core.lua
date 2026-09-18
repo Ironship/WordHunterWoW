@@ -67,6 +67,11 @@ Addon.LABELS = {
   progressNew = "%d%% new",
   progressNothing = "no words to score",
   readyForKnown = "Ready for Known",
+  -- Reading mode. The label says what it does rather than naming it, because
+  -- "reading mode" alone reads as a synonym for the addon itself.
+  readingLabel = "Reading mode — a large centred panel with the game dimmed behind it",
+  readingOn = "reading mode on  (/whw read to leave)",
+  readingOff = "reading mode off",
   listTitle = "WORD LIST",
   search = "Search",
   all = "All",
@@ -201,17 +206,33 @@ Addon.BACKGROUNDS = {
 
 Addon.BACKGROUND_ORDER = { "tooltip", "dialog", "solid", "midnight" }
 
--- What the panel wears before the player has chosen anything. Classic's whole
--- interface is the old tooltip frame, so a panel in the same skin reads as part
--- of the game next to a German quest rather than as something bolted on.
+-- What the panel wears before the player has chosen anything: the parchment the
+-- game's own quest dialog is drawn on.
 --
--- This is one function because it is needed in two places -- here, and where
--- the database seeds its defaults -- and the two must not drift apart. They did
--- once: the read side learned about Classic while the write side kept stamping
--- "midnight" into the settings on first run, which made this branch unreachable.
+-- One answer for both games now, where there used to be two. The split existed
+-- because Classic's whole interface is the old tooltip frame and the midnight
+-- style looked bolted on beside it -- a real problem, answered by matching the
+-- tooltip on one game and not on the other. Parchment answers it on both:
+-- UI-DialogBox-Background is the frame a quest giver's text appears on in every
+-- version of the game, so a panel of German quest text in the same skin reads
+-- as part of the quest on Classic and on Retail alike.
+--
+-- It is also the only style here whose text is dark on light. That is not a
+-- side effect to live with, it is most of the point for an addon somebody reads
+-- paragraphs in, and the style already carries its own readingColor so nothing
+-- else has to know.
+--
+-- This is one function because it is needed in three places -- here, where the
+-- database seeds its defaults, and in the version 10 migration -- and they must
+-- not drift apart. They did once: the read side learned about Classic while the
+-- write side kept stamping "midnight" on first run, which made that branch
+-- unreachable.
+--
+-- A stored choice still wins everywhere. Changing this moves what a fresh
+-- install opens on; it does not reach a profile that already has a style in it,
+-- deliberate or stamped.
 function Addon.DefaultBackgroundStyle()
-  if Addon.Compat and Addon.Compat.IsClassic() then return "tooltip" end
-  return "midnight"
+  return "dialog"
 end
 
 function Addon.GetBackgroundStyle()
@@ -1402,15 +1423,124 @@ Addon.LAYOUT_DEFAULTS = {
     stats = { point = "BOTTOMRIGHT", relPoint = "BOTTOMRIGHT", x = -16, y = 90, w = 340, h = 420 },
     editor = { point = "CENTER", relPoint = "CENTER", x = 180, y = 50, w = 430, h = 400 },
   },
+  -- Reading mode. Centred and much larger, because the point of it is the text.
+  --
+  -- 980 wide is not "as wide as it fits": a line of prose past about ninety
+  -- characters is measurably harder to come back to at the start of, which is
+  -- the one thing a learner does constantly. At the panel's own font that
+  -- lands near this, and the English column takes half of it when it is on.
+  --
+  -- The other windows keep sizes close to their ordinary ones and move out of
+  -- the middle. They are still reachable -- reading mode dims the game, it does
+  -- not take the addon away -- but nothing about reading wants them centred.
+  reading = {
+    panel = { point = "CENTER", relPoint = "CENTER", x = 0, y = 20, w = 980, h = 660 },
+    list = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -16, y = -36, w = 420, h = 520 },
+    stats = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 16, y = -36, w = 340, h = 420 },
+    editor = { point = "BOTTOMRIGHT", relPoint = "BOTTOMRIGHT", x = -16, y = 16, w = 430, h = 400 },
+  },
 }
 
 function Addon.GetLayoutContext()
+  -- Reading mode first, because it is a choice and the others are observations.
+  -- It is a layout context rather than a size the panel is pushed to, so the
+  -- big geometry is remembered under its own key and the panel a player dragged
+  -- to the corner of their screen is still there when they come back out. The
+  -- alternative -- resizing the existing frame -- walks into the fault
+  -- SaveFramePosition already has a name for: the size is stored on the way
+  -- past, so every session would hand the player a slightly larger window than
+  -- the last one.
+  if Addon.GetReadingMode and Addon.GetReadingMode() then return "reading" end
   local Compat = Addon.Compat
   if Compat and Compat.NpcQuestFrameShown and Compat.NpcQuestFrameShown() then return "npc" end
   if Compat and Compat.QuestLogShown and Compat.QuestLogShown() then return "questlog" end
   if QuestFrame and QuestFrame:IsShown() then return "npc" end
   if WorldMapFrame and WorldMapFrame:IsShown() then return "questlog" end
   return "npc"
+end
+
+-- Reading mode: the panel large and centred, the game behind it dimmed, and
+-- nothing else moved.
+--
+-- For somebody reading a foreign language rather than scanning an objective.
+-- The quest panel's ordinary size is chosen to sit beside the game; a learner
+-- reading three paragraphs wants the paragraphs and not the game, and turning
+-- the text size up does not give that -- it gives the same narrow column with
+-- bigger letters in it, which is worse.
+--
+-- What it does NOT do is hide the interface. UIParent:Hide() is how this is
+-- usually done and it takes every other addon down with it, cannot be undone
+-- while a dialog is open, and on Classic leaves the player unable to reach the
+-- quest's own accept button. A dimmer behind the panel gets the same attention
+-- for none of that, and anything the player still needs is one dimmed pixel
+-- away rather than gone.
+function Addon.GetReadingMode()
+  local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.readingMode
+  return v and true or false
+end
+
+function Addon.SetReadingMode(value)
+  if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
+  if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
+  value = not not value
+  if WordHunterWoWDB.settings.readingMode == value then return end
+  WordHunterWoWDB.settings.readingMode = value
+  -- The context has changed under every window, so each one is put back where
+  -- that context remembers it. Only the panel actually moves today; the others
+  -- are placed so a later default for them lands without a second code path.
+  if Addon.panel then Addon.PlaceFrame(Addon.panel, "panel") end
+  if Addon.ApplyReadingDim then Addon.ApplyReadingDim() end
+  -- After the move, not before: the words are laid out against the panel's
+  -- width, and re-flowing them at the old one would wrap every line twice.
+  if Addon.RelayoutPanel then Addon.RelayoutPanel() end
+  if Addon.settingsPanel and Addon.settingsPanel.refresh then Addon.settingsPanel.refresh() end
+end
+
+function Addon.ToggleReadingMode()
+  Addon.SetReadingMode(not Addon.GetReadingMode())
+  return Addon.GetReadingMode()
+end
+
+-- How dark the game goes behind the panel. Not black: the quest giver, the
+-- accept button and the player's own bars stay legible, which is the whole
+-- difference between dimming the game and hiding it.
+local READING_DIM = 0.55
+
+-- The dimmer itself, made on first use and kept.
+--
+-- Parented to UIParent and left at a strata below the panel's, so it covers the
+-- game and never the addon. It takes no mouse input at all -- EnableMouse is
+-- never switched on -- because a full-screen frame that swallowed clicks would
+-- make the quest's own accept button unreachable, and a reading mode that stops
+-- the player taking the quest is a reading mode nobody uses twice.
+function Addon.ApplyReadingDim()
+  -- Both, not just the setting. Reading mode says how a quest should be shown
+  -- when there is one; on its own it is not a thing to look at. Dimming the
+  -- moment it was switched on -- before the player had spoken to anybody --
+  -- darkened the whole game for a panel that was not there, which is what it
+  -- did first and is not what "reading mode" means to somebody standing in a
+  -- town.
+  local on = Addon.GetReadingMode and Addon.GetReadingMode()
+    and Addon.panel and Addon.panel:IsShown() and true or false
+  local dim = Addon.readingDim
+  if not dim then
+    if not on then return end
+    dim = CreateFrame("Frame", "WordHunterWoWReadingDim", UIParent)
+    Addon.readingDim = dim
+    dim:SetFrameStrata("FULLSCREEN")
+    dim:SetAllPoints(UIParent)
+    dim:EnableMouse(false)
+    local wash = dim:CreateTexture(nil, "BACKGROUND")
+    wash:SetAllPoints(dim)
+    if wash.SetColorTexture then
+      wash:SetColorTexture(0, 0, 0, READING_DIM)
+    else
+      -- Classic Era's name for the same call.
+      wash:SetTexture(0, 0, 0, READING_DIM)
+    end
+    dim.wash = wash
+  end
+  if on then dim:Show() else dim:Hide() end
 end
 
 function Addon.LayoutKey(base)

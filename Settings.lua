@@ -258,10 +258,13 @@ function Addon.CreateSettingsPanel()
   -- the split: a text size reads "18pt" and a window size reads "150%", so the
   -- two cannot be read as the same promise about what the screen will look
   -- like. Addon.SIZE_GROUPS carries the argument.
+  -- One caption, the slider's own. There used to be a second FontString of this
+  -- file's drawn twenty pixels above the bar as well, which is where the
+  -- template already draws its label -- so every one of these read "Quest panel
+  -- text" in yellow with "Quest panel text (18pt)" in white across it. The
+  -- template's label is the one that has to stay, because it is the one
+  -- captionFor and refresh redraw; the other only ever repeated it.
   local function sizeSlider(name, y, label, unit, get, set)
-    local caption = place(box:CreateFontString(nil, "ARTWORK", "GameFontNormal"),
-      16, y, { role = "label" })
-    caption:SetText(label)
     local s = place(CreateFrame("Slider", name, box, "OptionsSliderTemplate"),
       16, y - 20, { own = true, w = 460, h = 16 })
     s:SetMinMaxValues(Addon.TEXT_SCALE_MIN, Addon.TEXT_SCALE_MAX)
@@ -392,13 +395,30 @@ function Addon.CreateSettingsPanel()
   end)
   panel.questLogAutoCheck = questLogAuto
 
+  -- Reading mode, beside the two boxes above: all three are about how the panel
+  -- behaves rather than what it looks like. It also has a slash command, which
+  -- is the one a player will actually use -- this box is here so somebody who
+  -- has never read the command list can find out it exists.
+  local reading = place(
+    CreateFrame("CheckButton", "WordHunterWoWReadingCheck", box, "UICheckButtonTemplate"),
+    12, y - 143, { own = true })
+  local readingText = _G[reading:GetName() .. "Text"]
+  if readingText then
+    readingText:SetText(Addon.LABELS.readingLabel)
+  end
+  reading:SetChecked(Addon.GetReadingMode and Addon.GetReadingMode() or false)
+  reading:SetScript("OnClick", function(self)
+    if Addon.SetReadingMode then Addon.SetReadingMode(self:GetChecked()) end
+  end)
+  panel.readingCheck = reading
+
   -- The recall check, above the harvest box: both change what happens as you
   -- read, and this one changes it more visibly. Off out of the box, like the
   -- harvest, and for the same reason -- nobody who has not read about it
   -- should find their meanings behind a question.
   local recall = place(
     CreateFrame("CheckButton", "WordHunterWoWRecallCheck", box, "UICheckButtonTemplate"),
-    12, y - 143, { own = true })
+    12, y - 171, { own = true })
   local recallText = _G[recall:GetName() .. "Text"]
   if recallText then
     recallText:SetText(Addon.LABELS.recallLabel)
@@ -413,14 +433,16 @@ function Addon.CreateSettingsPanel()
   --
   -- Whole numbers of events, not a scale, so the slider steps by one and the
   -- caption carries the unit: a bare "20" beside "Call a word difficult after"
-  -- could be read as a percentage, a score or a number of days. Both figures
-  -- live in the caption for the same reason the size sliders put theirs there
-  -- -- OptionsSliderTemplate's own Low/High labels are the bounds, and the
-  -- current value has nowhere else to go.
+  -- could be read as a percentage, a score or a number of days.
+  --
+  -- One caption, and it is the slider's own. These first shipped with a second
+  -- FontString of this file's above the bar as well, which put "Offer Ready for
+  -- Known after" and "Offer Ready for Known after 5 quests" on top of each
+  -- other -- OptionsSliderTemplate already draws a label above the bar, and it
+  -- is the one that has to carry the figure, because it is the one refresh
+  -- redraws. The extra line said the same thing, in a different colour, a few
+  -- pixels away.
   local function countSlider(name, y, label, format, get, set, low, high)
-    local caption = place(box:CreateFontString(nil, "ARTWORK", "GameFontNormal"),
-      16, y, { role = "label" })
-    caption:SetText(label)
     local s = place(CreateFrame("Slider", name, box, "OptionsSliderTemplate"),
       16, y - 20, { own = true, w = 460, h = 16 })
     s:SetMinMaxValues(low, high)
@@ -448,13 +470,13 @@ function Addon.CreateSettingsPanel()
     return s
   end
 
-  panel.readySlider = countSlider("WordHunterWoWReadyAfterSlider", y - 169,
+  panel.readySlider = countSlider("WordHunterWoWReadyAfterSlider", y - 197,
     Addon.LABELS.readyAfterLabel, Addon.LABELS.readyAfterValue,
     function() return Addon.GetReadyAfter and Addon.GetReadyAfter() or 5 end,
     function(v) if Addon.SetReadyAfter then Addon.SetReadyAfter(v) end end,
     Addon.RECALL_READY_MIN or 1, Addon.RECALL_READY_MAX or 40)
 
-  panel.difficultSlider = countSlider("WordHunterWoWDifficultMinSlider", y - 215,
+  panel.difficultSlider = countSlider("WordHunterWoWDifficultMinSlider", y - 243,
     Addon.LABELS.difficultMinLabel, Addon.LABELS.difficultMinValue,
     function() return Addon.GetDifficultMinRatings and Addon.GetDifficultMinRatings() or 5 end,
     function(v) if Addon.SetDifficultMinRatings then Addon.SetDifficultMinRatings(v) end end,
@@ -463,7 +485,7 @@ function Addon.CreateSettingsPanel()
   -- One line, filled in by refresh. note() registers it for the layout, so the
   -- export button below can hang off its bottom edge rather than off an offset
   -- that would stop matching the moment the letters grew.
-  local difficultNote = note(y - 261, "")
+  local difficultNote = note(y - 289, "")
   panel.difficultNote = difficultNote
 
   -- Named so the sliders above can redraw just this line without running the
@@ -478,7 +500,7 @@ function Addon.CreateSettingsPanel()
   -- box, and an empty list says so in a dialog with nothing to confirm.
   local difficultExport = place(
     Addon.createActionButton(box, Addon.LABELS.difficultExport),
-    16, y - 279, { button = true, h = Addon.RoleButtonHeight(1) })
+    16, y - 307, { button = true, h = Addon.RoleButtonHeight(1) })
   difficultExport:SetScript("OnClick", function()
     local text = Addon.BuildDifficultExport and Addon.BuildDifficultExport() or ""
     if type(text) ~= "string" or text == "" then
@@ -494,7 +516,7 @@ function Addon.CreateSettingsPanel()
 
   local harvest = place(
     CreateFrame("CheckButton", "WordHunterWoWHarvestCheck", box, "UICheckButtonTemplate"),
-    12, y - 319, { own = true })
+    12, y - 347, { own = true })
   local harvestText = _G[harvest:GetName() .. "Text"]
   if harvestText then
     harvestText:SetText(Addon.LABELS.harvestLabel)
@@ -505,7 +527,7 @@ function Addon.CreateSettingsPanel()
   end)
   panel.harvestCheck = harvest
 
-  local harvestNote = note(y - 343, "")
+  local harvestNote = note(y - 371, "")
   panel.harvestNote = harvestNote
 
   -- The slash command did this already, but only someone who read the addon's
@@ -587,6 +609,7 @@ function Addon.CreateSettingsPanel()
     if panel.questLogAutoCheck then panel.questLogAutoCheck:SetChecked(Addon.GetQuestLogAutoOpen()) end
     if panel.harvestCheck then panel.harvestCheck:SetChecked(Addon.GetHarvestEnabled()) end
     if panel.recallCheck then panel.recallCheck:SetChecked(Addon.GetRecallCheck and Addon.GetRecallCheck() or false) end
+    if panel.readingCheck then panel.readingCheck:SetChecked(Addon.GetReadingMode and Addon.GetReadingMode() or false) end
     for _, s in ipairs({ panel.readySlider, panel.difficultSlider }) do
       local get = s == panel.readySlider and Addon.GetReadyAfter or Addon.GetDifficultMinRatings
       if get then
