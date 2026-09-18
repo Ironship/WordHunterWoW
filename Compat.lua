@@ -1,3 +1,4 @@
+local ADDON_NAME = ...
 local Addon = WordHunterWoW_Addon
 
 -- Retail, Classic Era and Season of Discovery run the same addon, but they do
@@ -20,11 +21,48 @@ local Addon = WordHunterWoW_Addon
 local Compat = {}
 Addon.Compat = Compat
 
-local RETAIL, CLASSIC, SOD = "retail", "classic", "sod"
+local RETAIL, CLASSIC, SOD, FOREVER = "retail", "classic", "sod", "forever"
 
 local resolved
 
+-- World of Warcraft: Forever, and why it cannot be recognised the way the
+-- others are.
+--
+-- It is a Classic-line game running on a client built from Retail's code. Asked
+-- the usual questions it gives Retail's answers: GetBuildInfo returns a
+-- Retail-family interface number, and WOW_PROJECT_ID equals
+-- WOW_PROJECT_MAINLINE. Every branch below therefore reached RETAIL, and on
+-- 2026-09-18 that was not a theory -- thirteen passages of Forever's own quests
+-- came out of the harvester stamped "retail" and were merged into the Retail
+-- corpus beside Blizzard's, which is the one thing import_harvest's own comment
+-- says must never happen: the same quest id is different text on a different
+-- game, and one file holding both corrupts both.
+--
+-- So it is recognised by the only thing here that does not come from the
+-- client: this addon's own manifest. Forever requires interface 16001 and the
+-- build for it ships a _Camelot.toc saying so, while the Retail build says
+-- 120100 and the Classic one 11509. The question this answers is "which build
+-- of this addon am I", which is the honest one -- the Forever build exists for
+-- exactly one game, and no other build can be mistaken for it.
+local FOREVER_INTERFACE = 16001
+
+local function manifestInterface()
+  local get = (type(C_AddOns) == "table" and C_AddOns.GetAddOnMetadata)
+    or GetAddOnMetadata
+  if type(get) ~= "function" then return nil end
+  -- Probed, like everything else here: this runs on clients whose oldest
+  -- members have neither the namespace nor the global, and a missing manifest
+  -- has to read as "not Forever" rather than as an error at load time.
+  local ok, value = pcall(get, ADDON_NAME or "WordHunterWoW", "Interface")
+  if not ok then return nil end
+  return tonumber(value)
+end
+
 local function projectFamily()
+  -- Asked before anything else, because the client's own answers are the ones
+  -- that are wrong on Forever.
+  if manifestInterface() == FOREVER_INTERFACE then return FOREVER end
+
   -- The interface number first, because it is the only answer that does not
   -- depend on a global existing.
   --
@@ -76,6 +114,12 @@ function Compat.Refresh()
   local family = projectFamily()
   if family == RETAIL then
     resolved = RETAIL
+  elseif family == FOREVER then
+    -- Not put through the season check: C_Seasons exists on this client and
+    -- answers for a season Forever is not in, and a Forever corpus filed as
+    -- Season of Discovery is the same mistake as filing it as Retail, one
+    -- folder further along.
+    resolved = FOREVER
   elseif seasonIsDiscovery() then
     resolved = SOD
   else
@@ -90,8 +134,13 @@ function Compat.GameFlavor()
 end
 
 function Compat.IsRetail() return Compat.GameFlavor() == RETAIL end
+-- Everything that is not Retail, Forever included. That is deliberate and not
+-- an oversight of the new value: Forever is a Classic-line game and wants the
+-- Classic quest log calls, the Classic frame names and the Classic defaults.
+-- What it must not share is the corpus, and that is keyed on GameFlavor.
 function Compat.IsClassic() return Compat.GameFlavor() ~= RETAIL end
 function Compat.IsSeasonOfDiscovery() return Compat.GameFlavor() == SOD end
+function Compat.IsForever() return Compat.GameFlavor() == FOREVER end
 
 -- Recorded alongside harvested text so a corpus built on one game is never
 -- mistaken for one built on another.
