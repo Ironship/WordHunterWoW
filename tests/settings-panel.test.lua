@@ -53,6 +53,7 @@ end
 WordHunterWoW_Addon = {}
 dofile('Core.lua')
 dofile('Compat.lua')
+dofile('Gamepad.lua')
 dofile('UICommon.lua')
 dofile('Harvest.lua')
 -- Loaded in the order the .toc loads it, and before Settings, because the panel
@@ -120,6 +121,20 @@ assert(Addon.GetQuestLogAutoOpen() == true, 'ticking the switch did not store th
 Addon.SetQuestLogAutoOpen(false)
 panel.refresh()
 assert(questLogAuto:GetChecked() == false, 'refresh did not resync the quest log switch')
+
+-- The controller switch: on for a player who has never opened this panel. A
+-- pad that is on in the game and ignored by the panel would be the surprise,
+-- so the switch exists to turn the panel's share off, not on.
+local pad = _G.WordHunterWoWGamepadCheck
+assert(pad:GetChecked() == true, 'the controller switch must come up ticked')
+assert(_G.WordHunterWoWGamepadCheckText:GetText() == Addon.LABELS.gamepadLabel,
+  'the controller switch is unlabelled, so nobody can tell what it does')
+pad:SetChecked(false)
+pad:GetScript('OnClick')(pad)
+assert(Addon.GetGamePadEnabled() == false, 'unticking the switch did not store the setting')
+Addon.SetGamePadEnabled(true)
+panel.refresh()
+assert(pad:GetChecked() == true, 'refresh did not resync the controller switch')
 
 -- The size sliders, which are the reason this panel has headings at all. The
 -- complaint was that the word editor came up visibly bigger than the quest

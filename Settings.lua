@@ -80,6 +80,9 @@ function Addon.CreateSettingsPanel()
   -- 100%; wide, anchored to both edges so a line wraps to the page.
   local rows = {}
   panel.rows = rows
+  -- Room for the controller box and its note, which layout() anchors under
+  -- the harvest export rather than placing from this list.
+  local GAMEPAD_DEPTH = 96
   local function place(frame, x, y, opts)
     opts = opts or {}
     opts.frame, opts.x, opts.y = frame, x, y
@@ -136,6 +139,23 @@ function Addon.CreateSettingsPanel()
       button:ClearAllPoints()
       button:SetPoint("TOPLEFT", panel.harvestNote, "BOTTOMLEFT", 0, -8 * scale)
       if button.GetFontString then Addon.ApplyFontRole(button:GetFontString(), "body", scale) end
+    end
+    -- The controller box hangs under that button for the same reason, and its
+    -- note under the box. Neither is in the list above, so the depth is told
+    -- about them by hand: a box and four lines of small print at 100%.
+    local pad = panel.gamepadCheck
+    if pad and button then
+      pad:SetScale(scale)
+      pad:ClearAllPoints()
+      pad:SetPoint("TOPLEFT", button, "BOTTOMLEFT", -4 / scale, -10 / scale)
+      local padNote = panel.gamepadNote
+      if padNote then
+        Addon.ApplyFontRole(padNote, "meta", scale)
+        padNote:ClearAllPoints()
+        padNote:SetPoint("TOPLEFT", pad, "BOTTOMLEFT", 4 * scale, -2 * scale)
+        padNote:SetPoint("RIGHT", box, "RIGHT", -16, 0)
+      end
+      depth = depth + GAMEPAD_DEPTH
     end
 
     -- The scroll box has to be tall enough to reach the last control or it
@@ -554,6 +574,27 @@ function Addon.CreateSettingsPanel()
   end)
   panel.harvestExport = harvestExport
 
+  -- The controller. Anchored in layout() rather than placed at an offset, for
+  -- the same reason the export above is: where the export lands depends on how
+  -- the harvest note wrapped, and that is not known until it has been drawn.
+  local gamepad = CreateFrame("CheckButton", "WordHunterWoWGamepadCheck", box, "UICheckButtonTemplate")
+  local gamepadText = _G[gamepad:GetName() .. "Text"]
+  if gamepadText then
+    gamepadText:SetText(Addon.LABELS.gamepadLabel)
+  end
+  gamepad:SetChecked(Addon.GetGamePadEnabled and Addon.GetGamePadEnabled() or false)
+  gamepad:SetScript("OnClick", function(self)
+    if Addon.SetGamePadEnabled then Addon.SetGamePadEnabled(self:GetChecked()) end
+  end)
+  panel.gamepadCheck = gamepad
+
+  local gamepadNote = box:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+  gamepadNote:SetJustifyH("LEFT")
+  gamepadNote:SetWordWrap(true)
+  gamepadNote:SetTextColor(0.8, 0.82, 0.88)
+  gamepadNote:SetText(Addon.LABELS.gamepadNote)
+  panel.gamepadNote = gamepadNote
+
   local function UpdateDropdownText()
     local key = Addon.GetBackgroundStyle()
     local style = Addon.BACKGROUNDS[key] or Addon.BACKGROUNDS.tooltip
@@ -608,6 +649,9 @@ function Addon.CreateSettingsPanel()
     if panel.integratedCheck then panel.integratedCheck:SetChecked(Addon.GetIntegratedLayout()) end
     if panel.questLogAutoCheck then panel.questLogAutoCheck:SetChecked(Addon.GetQuestLogAutoOpen()) end
     if panel.harvestCheck then panel.harvestCheck:SetChecked(Addon.GetHarvestEnabled()) end
+    if panel.gamepadCheck then
+      panel.gamepadCheck:SetChecked(Addon.GetGamePadEnabled and Addon.GetGamePadEnabled() or false)
+    end
     if panel.recallCheck then panel.recallCheck:SetChecked(Addon.GetRecallCheck and Addon.GetRecallCheck() or false) end
     if panel.readingCheck then panel.readingCheck:SetChecked(Addon.GetReadingMode and Addon.GetReadingMode() or false) end
     for _, s in ipairs({ panel.readySlider, panel.difficultSlider }) do

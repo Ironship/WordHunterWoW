@@ -643,6 +643,10 @@ local function refreshPanel()
       button:ClearAllPoints()
       button:SetPoint("TOPLEFT", x, y)
       button:SetWidth(width)
+      -- Where the word sits in the flow, kept on the button: the controller
+      -- moves a cursor by line and by column, and GetPoint is not modelled
+      -- where this file is tested.
+      button.gridX, button.gridY, button.gridW = x, y, width
       x = x + width + 2
 
       local word = Addon.cleanWord(token)
@@ -740,6 +744,12 @@ local function refreshPanel()
     panel.scroll:SetVerticalScroll(0)
     if panel.enScroll then panel.enScroll:SetVerticalScroll(0) end
   end
+  -- The buttons in reading order and how many of them this layout used, for
+  -- the controller (Gamepad.lua), which walks them. The serial says which
+  -- layout they belong to: the pool is reused, so an index remembered across a
+  -- re-flow would name whatever word landed there.
+  panel.wordButtons, panel.wordCount = wordButtons, used
+  panel.layoutSerial = (type(panel.layoutSerial) == "number" and panel.layoutSerial or 0) + 1
   -- Anything that draws on top of the laid-out text gets its turn here, once the
   -- tokens are where they are going to be. The German voiceover uses it to put a
   -- play button beside each paragraph it has a recording for; nothing else

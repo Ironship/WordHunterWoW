@@ -18,6 +18,7 @@ QuestWordHunter keeps the quest on screen as clickable text. See a word you don'
 - A quiet **Ready for Known** hint after five different quests and two weeks. It never promotes anything by itself
 - Separate lists per language, so German and French don't mix
 - Windows you can move, resize and theme — `/whw settings`
+- A **controller** works too: the D-pad moves between words, A opens one, B closes, Y is reading mode. Needs the game's own controller support; the full map is under Settings
 
 Buttons stay in English. Quest text stays in the language you set in WoW.
 
