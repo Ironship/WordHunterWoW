@@ -55,13 +55,30 @@ local function manifestInterface()
   -- has to read as "not Forever" rather than as an error at load time.
   local ok, value = pcall(get, ADDON_NAME or "WordHunterWoW", "Interface")
   if not ok then return nil end
+  -- A single number, or nothing. The Forever bundle ships one manifest that
+  -- lists every interface it runs under, and on 2026-09-19 tonumber() of that
+  -- list was nil, so the bundle read as Retail with this very check in place.
+  -- A list decides nothing here; the client's version below decides for it.
   return tonumber(value)
 end
 
+-- The one answer the Forever client gives that is not Retail's: its version.
+-- Retail is 12.x, Classic Era 1.15.x, and Forever 1.60.x -- the numbering the
+-- CurseForge packager keys its "forever" game type on as well. Read from the
+-- first value GetBuildInfo returns, because the fourth, the interface number,
+-- came back nil on that client.
+local function clientIsForever()
+  if type(GetBuildInfo) ~= "function" then return false end
+  local ok, version = pcall(GetBuildInfo)
+  if not ok or type(version) ~= "string" then return false end
+  local major, minor = version:match("^(%d+)%.(%d+)")
+  return tonumber(major) == 1 and (tonumber(minor) or 0) >= 60
+end
+
 local function projectFamily()
-  -- Asked before anything else, because the client's own answers are the ones
-  -- that are wrong on Forever.
-  if manifestInterface() == FOREVER_INTERFACE then return FOREVER end
+  -- Asked before anything else, because the client's other answers are the
+  -- ones that are wrong on Forever.
+  if clientIsForever() or manifestInterface() == FOREVER_INTERFACE then return FOREVER end
 
   -- The interface number first, because it is the only answer that does not
   -- depend on a global existing.

@@ -13,6 +13,7 @@ QuestWordHunter keeps the quest on screen as clickable text. See a word you don'
 - Quest text you can click instead of retyping into a notes app
 - Colours and underlines for **New**, **Learning**, **Known** and **Ignored**, so you see progress in the paragraph itself — keep both or pick one
 - A meaning, a personal note, and the sentence the word came from
+- Previous / Next on the quest panel (also the arrow keys in the word editor when no box has focus, and LB/RB on a controller), so a quest can be read word by word without the mouse
 - An optional **recall check**: a word you have been learning for a day asks how well you knew it, 1 to 5, before it shows its meaning. Words that keep scoring low are **difficult**, and you can export them for a flashcard app
 - A word list and simple stats — `/whw words`, `/whw stats`
 - A quiet **Ready for Known** hint after five different quests and two weeks. It never promotes anything by itself

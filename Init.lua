@@ -191,9 +191,9 @@ SlashCmdList.WORDHUNTERWOW = function(message)
     end
     print(string.format("  manifest:   reader=%s  name=%s", reader, tostring(addonName)))
     print(string.format("              Interface=%s  Title=%s", tostring(iface), tostring(title)))
-    local _, _, _, build = GetBuildInfo and GetBuildInfo()
-    print(string.format("              GetBuildInfo=%s  PROJECT_ID=%s",
-      tostring(build), tostring(WOW_PROJECT_ID)))
+    local version, _, _, build = GetBuildInfo and GetBuildInfo()
+    print(string.format("              GetBuildInfo=%s (%s)  PROJECT_ID=%s",
+      tostring(version), tostring(build), tostring(WOW_PROJECT_ID)))
   -- Reading mode has a slash command as well as a settings box because it is
   -- the one setting here somebody turns on and off inside a single session:
   -- read a quest, take the quest, go back to playing. A trip through the

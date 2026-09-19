@@ -56,6 +56,8 @@ Addon.LABELS = {
   copyHint = "Press Ctrl+C to copy",
   save = "Save",
   cancel = "Cancel",
+  prevWord = "< Previous",
+  nextWord = "Next >",
   status = "Status",
   empty = "Open a quest to mark words.",
   german = "For %s quest text, set the WoW text language to %s.",
@@ -124,7 +126,8 @@ Addon.LABELS = {
   gamepadNote = "Needs the game's own controller support (Options → Controls). "
     .. "D-pad: move between words · A: open the word · B: close · X: word list · "
     .. "Y: reading mode · LB/RB: scroll. In the editor: D-pad picks a status or a "
-    .. "rating · A: save, or rate · B: cancel, or later. The sticks are never taken.",
+    .. "rating · A: save, or rate · B: cancel, or later · LB/RB: previous or next word. "
+    .. "The sticks are never taken.",
   harvestNote = "Off by default. Records objectives, progress and hand-in text plus NPC dialogue you actually see — the passages Blizzard's quest API does not publish. Stored locally; %d passages and %d words no dictionary covers. Turning it off keeps what was collected until you export or /whw harvest clear.",
   -- The recall check. Off by default like the harvest box: it changes what a
   -- click does, and nobody who has not read about it should find their
@@ -1774,23 +1777,30 @@ end
 -- the same combat rule to respect.
 Addon.SafePropagate = SafePropagate
 
-function Addon.SetupEscapeClose(frame)
+-- onKey, optional: a function(frame, key) that answers true when it took the
+-- key. Escape is this file's; everything else is offered to onKey first and
+-- otherwise let through to the game. The editor's arrow keys come in this way.
+function Addon.SetupEscapeClose(frame, onKey)
   if not frame or not frame.GetName then return end
   local name = frame:GetName()
   if name and not tContains(UISpecialFrames, name) then
     tinsert(UISpecialFrames, name)
   end
   frame:EnableKeyboard(true)
-  SafePropagate(frame, true)
+  Addon.SafePropagate(frame, true)
   -- A window that takes Escape takes the controller too, and for the same
   -- reason: it is the window in front. Gamepad.lua decides what a press means.
   if Addon.AttachGamePad then Addon.AttachGamePad(frame) end
   frame:HookScript("OnKeyDown", function(self, key)
     if key == "ESCAPE" then
-      SafePropagate(self, false)
+      Addon.SafePropagate(self, false)
       Addon.CloseAll()
     else
-      SafePropagate(self, true)
+      if onKey and onKey(self, key) then
+        Addon.SafePropagate(self, false)
+      else
+        Addon.SafePropagate(self, true)
+      end
     end
   end)
 end

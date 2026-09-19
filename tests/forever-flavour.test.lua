@@ -28,12 +28,24 @@ assert(loadfile("Compat.lua"))("WordHunterWoW")
 local Addon = WordHunterWoW_Addon
 local Compat = Addon.Compat
 
--- The client Forever actually is: Retail's build numbers, Retail's globals.
+-- The client Forever actually is: Retail's globals, and a version of its own.
+-- Measured on 2026-09-19 with /whw diag: WOW_PROJECT_ID is Retail's, the
+-- interface number GetBuildInfo returns is nil, and the build is 1.60.x.
 local function onForeverClient()
+  GetBuildInfo = function() return "1.60.1", "69893", "2026-09-01", nil end
+  WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
+  C_Seasons, Enum = nil, nil
+end
+
+-- A Retail client proper, for the cases that must not read as Forever.
+local function onRetailClient()
   GetBuildInfo = function() return "12.1.0", "69814", "2026-09-01", 120100 end
   WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
   C_Seasons, Enum = nil, nil
 end
+
+-- The manifest the Forever bundle actually ships: one file, every interface.
+local BUNDLE_LIST = "11509, 16001, 20506, 30405, 40402, 50504, 120100"
 
 local function manifest(interface)
   C_AddOns = { GetAddOnMetadata = function(name, field)
@@ -52,7 +64,30 @@ assert(Compat.GameFlavor() == "forever",
 assert(Compat.IsForever(), "IsForever has to agree")
 assert(not Compat.IsRetail(), "and it is certainly not Retail")
 
--- The same client, the Retail build of the addon: Retail, as it always was.
+-- The bundle's list manifest on the Forever client: the list is not a number,
+-- and on 2026-09-19 that read as Retail in the game. The version decides.
+manifest(BUNDLE_LIST)
+Compat.Refresh()
+assert(Compat.GameFlavor() == "forever",
+  "the bundle on the Forever client must read as Forever, got " .. Compat.GameFlavor())
+
+-- The same list manifest on a Retail client: Retail. A list decides nothing.
+onRetailClient()
+manifest(BUNDLE_LIST)
+Compat.Refresh()
+assert(Compat.GameFlavor() == "retail",
+  "a list manifest on Retail is still Retail, got " .. Compat.GameFlavor())
+
+-- Classic Era is 1.15.x: a 1.x version alone is not Forever.
+GetBuildInfo = function() return "1.15.9", "62222", "2026-09-01", 11509 end
+WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 2, 1
+manifest(BUNDLE_LIST)
+Compat.Refresh()
+assert(Compat.GameFlavor() == "classic",
+  "Classic Era 1.15 must not read as Forever, got " .. Compat.GameFlavor())
+
+-- The Retail client, the Retail build of the addon: Retail, as it always was.
+onRetailClient()
 manifest("120100")
 Compat.Refresh()
 assert(Compat.GameFlavor() == "retail",
@@ -93,11 +128,19 @@ C_Seasons, Enum = nil, nil
 -- The oldest clients this addon claims to support have neither C_AddOns nor the
 -- global, and a missing manifest has to read as "not Forever" rather than as an
 -- error while the TOC is still running.
-onForeverClient()
+onRetailClient()
 C_AddOns, GetAddOnMetadata = nil, nil
 Compat.Refresh()
 assert(Compat.GameFlavor() == "retail",
   "with no way to read the manifest the old answer must stand, got " .. Compat.GameFlavor())
+
+-- The Forever client with no manifest API: its version is enough on its own,
+-- and the missing reader is not an error.
+onForeverClient()
+C_AddOns, GetAddOnMetadata = nil, nil
+Compat.Refresh()
+assert(Compat.GameFlavor() == "forever",
+  "the version says Forever even with no manifest to read, got " .. Compat.GameFlavor())
 
 -- And one that has only the old global form.
 GetAddOnMetadata = function(_, field) return field == "Interface" and "16001" or nil end
@@ -105,10 +148,17 @@ Compat.Refresh()
 assert(Compat.GameFlavor() == "forever",
   "the pre-C_AddOns global has to work too, got " .. Compat.GameFlavor())
 
--- A manifest call that throws must not take the addon down with it.
+-- A manifest call that throws must not take the addon down with it -- on
+-- either client. On Retail the old answer stands; on Forever the version
+-- still answers.
+onRetailClient()
 GetAddOnMetadata = function() error("no such addon") end
 Compat.Refresh()
 assert(Compat.GameFlavor() == "retail",
   "a throwing manifest call has to be survivable, got " .. Compat.GameFlavor())
+onForeverClient()
+Compat.Refresh()
+assert(Compat.GameFlavor() == "forever",
+  "and on Forever it still answers by version, got " .. Compat.GameFlavor())
 
 print("forever-flavour: ok")

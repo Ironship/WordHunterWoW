@@ -218,6 +218,12 @@ function Addon.openEditor(word, context, questId, questTitle, opts)
   editor.word:SetText(selected.word)
   editor.context:SetText(context)
   updateStatusButtons()
+  -- Previous and Next step through the quest the word was clicked in. A word
+  -- opened from the list has no quest around it, so the click the panel
+  -- recorded is forgotten: Next then starts the panel's quest from its first
+  -- word, rather than walking on from a word the editor is no longer showing.
+  if not fromPanel then Addon.lastOpened = nil end
+  if Addon.RefreshWordArrows then Addon.RefreshWordArrows() end
   if gated then
     -- Nothing of the meaning reaches a box, and no box has focus: a focused
     -- box would take the number keys as typing.
@@ -345,7 +351,17 @@ function Addon.createEditor()
     Addon.SaveFramePosition(self, Addon.LayoutKey("editor"))
   end)
   Addon.setBackdrop(editor, 1)
-  Addon.SetupEscapeClose(editor)
+  -- The arrow keys are Previous and Next while no box holds the keyboard; with
+  -- a box focused they move its caret and never reach this frame. Kept from
+  -- the game whether or not there was a word to go to: an arrow pressed at the
+  -- end of a quest is still meant for the editor, not for turning the player.
+  local function arrowKeys(self, key)
+    if key ~= "LEFT" and key ~= "RIGHT" then return false end
+    if GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus() then return false end
+    if Addon.OpenNeighbourWord then Addon.OpenNeighbourWord(key == "LEFT" and -1 or 1) end
+    return true
+  end
+  Addon.SetupEscapeClose(editor, arrowKeys)
   Addon.MakeResizable(editor, "editor", 420, 380, 650, 750)
   Addon.PlaceFrame(editor, "editor")
   Addon.ApplyWindowScale("editorScale")
@@ -356,6 +372,7 @@ function Addon.createEditor()
   editor.word:SetPoint("TOPRIGHT", -20, -40)
   editor.word:SetHeight(22)
   editor.word:SetJustifyH("LEFT")
+
 
   editor.context = editor:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   editor.context:SetTextColor(unpack(COLORS.muted))
@@ -435,6 +452,7 @@ function Addon.createEditor()
   cancel:SetPoint("RIGHT", save, "LEFT", -8, 0)
   cancel:SetScript("OnClick", function() editor:Hide() end)
   editor.cancel = cancel
+
   local copyWord = Addon.createActionButton(editor, LABELS.copyWord)
   copyWord:SetSize(110, Addon.RoleButtonHeight())
   copyWord:SetPoint("BOTTOMLEFT", 20, 20)
@@ -579,3 +597,4 @@ function Addon.updateResetDictionary()
     editor.resetDictionary:Disable()
   end
 end
+
