@@ -443,26 +443,44 @@ function Addon.createEditor()
   end
 
   local save = Addon.createActionButton(editor, LABELS.save)
-  save:SetSize(112, Addon.RoleButtonHeight())
+  save:SetSize(94, Addon.RoleButtonHeight())
   save:SetPoint("BOTTOMRIGHT", -20, 20)
   save:SetScript("OnClick", saveSelected)
   editor.save = save
   local cancel = Addon.createActionButton(editor, LABELS.cancel)
-  cancel:SetSize(112, Addon.RoleButtonHeight())
+  cancel:SetSize(94, Addon.RoleButtonHeight())
   cancel:SetPoint("RIGHT", save, "LEFT", -8, 0)
   cancel:SetScript("OnClick", function() editor:Hide() end)
   editor.cancel = cancel
 
+  -- Previous and Next, on the bottom row with Cancel and Save and at their
+  -- height: the reading controls belong in this window, where the word is.
+  -- Four buttons across the row is what made Cancel and Save 94 wide and sent
+  -- Copy word up beside Reset to dictionary; at the editor's narrowest, 420,
+  -- the row has two pixels to spare.
+  editor.prevWord = Addon.createActionButton(editor, LABELS.prevWord)
+  editor.prevWord:SetSize(88, Addon.RoleButtonHeight())
+  editor.prevWord:SetPoint("BOTTOMLEFT", 20, 20)
+  editor.prevWord:SetScript("OnClick", function()
+    if Addon.OpenNeighbourWord then Addon.OpenNeighbourWord(-1) end
+  end)
+  editor.nextWord = Addon.createActionButton(editor, LABELS.nextWord)
+  editor.nextWord:SetSize(88, Addon.RoleButtonHeight())
+  editor.nextWord:SetPoint("LEFT", editor.prevWord, "RIGHT", 6, 0)
+  editor.nextWord:SetScript("OnClick", function()
+    if Addon.OpenNeighbourWord then Addon.OpenNeighbourWord(1) end
+  end)
+
   local copyWord = Addon.createActionButton(editor, LABELS.copyWord)
   copyWord:SetSize(110, Addon.RoleButtonHeight())
-  copyWord:SetPoint("BOTTOMLEFT", 20, 20)
   copyWord:SetScript("OnClick", function()
     if Addon.selected then Addon.showCopyText(LABELS.copyWord, Addon.selected.word, nil, editor) end
   end)
 
   editor.resetDictionary = Addon.createActionButton(editor, LABELS.resetDictionary)
   editor.resetDictionary:SetSize(145, Addon.RoleButtonHeight())
-  editor.resetDictionary:SetPoint("BOTTOMLEFT", copyWord, "TOPLEFT", 0, 6)
+  editor.resetDictionary:SetPoint("BOTTOMLEFT", editor.prevWord, "TOPLEFT", 0, 6)
+  copyWord:SetPoint("LEFT", editor.resetDictionary, "RIGHT", 8, 0)
   editor.resetDictionary:SetScript("OnClick", function()
     local dict = Addon.selected and Addon.selected.dictionaryEntry
     if not dict or not Addon.editorDiffersFromDictionary() then return end
@@ -598,3 +616,13 @@ function Addon.updateResetDictionary()
   end
 end
 
+-- Previous and Next go grey at the ends of the quest, and both go grey with no
+-- quest on the panel. The walk lives with the controller (Gamepad.lua), which
+-- is loaded before this file; asked for rather than assumed, so an editor built
+-- without it -- as several tests build one -- has grey buttons and no error.
+function Addon.RefreshWordArrows()
+  if not editor or not editor.prevWord then return end
+  local available = Addon.NeighbourWordAvailable
+  editor.prevWord:SetEnabled(available ~= nil and available(-1) or false)
+  editor.nextWord:SetEnabled(available ~= nil and available(1) or false)
+end
