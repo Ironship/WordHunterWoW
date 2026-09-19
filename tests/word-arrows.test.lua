@@ -56,16 +56,14 @@ Addon.createEditor()
 local panel, editor = Addon.panel, Addon.editor
 
 -- --- buttons exist with correct labels ----------------------------------------
-assert(panel.prevWord, "prevWord button exists")
-assert(panel.nextWord, "nextWord button exists")
-local inRow = 0
-for _, action in ipairs(panel.actions) do
-  if action == panel.prevWord or action == panel.nextWord then inRow = inRow + 1 end
-end
-assert(inRow == 2, "both sit in the panel's own button row, sized with it")
+assert(editor.prevWord, "prevWord button exists")
+assert(editor.nextWord, "nextWord button exists")
+assert(editor.prevWord.h == editor.save.h and editor.nextWord.h == editor.save.h,
+  "both stand on the bottom row at the height of Cancel and Save")
+assert(#panel.actions == 3, "and the panel's own row is the panel's own again")
 local LABELS = Addon.LABELS
-assert(panel.prevWord._text == LABELS.prevWord, "prevWord has correct label")
-assert(panel.nextWord._text == LABELS.nextWord, "nextWord has correct label")
+assert(editor.prevWord._text == LABELS.prevWord, "prevWord has correct label")
+assert(editor.nextWord._text == LABELS.nextWord, "nextWord has correct label")
 
 -- --- open a word and navigate ------------------------------------------------
 panel:Show()
@@ -93,23 +91,23 @@ assert(Addon.lastOpened and Addon.lastOpened.index == word2Index, "lastOpened is
 
 -- Next opens word 3
 local origWord2 = Addon.selected.word
-panel.nextWord:GetScript("OnClick")()
+editor.nextWord:GetScript("OnClick")()
 assert(Addon.selected.word == word3.word, "Next opens the next word")
 assert(Addon.selected.word ~= origWord2, "moved forward")
 
 -- Previous returns to word 2
-panel.prevWord:GetScript("OnClick")()
+editor.prevWord:GetScript("OnClick")()
 assert(Addon.selected.word == origWord2, "Previous opens the previous word")
 
 -- --- edge cases: no word to move to ------------------------------------------
 -- Go back to word 2 and move to word 1
-panel.nextWord:GetScript("OnClick")()
+editor.nextWord:GetScript("OnClick")()
 assert(Addon.selected.word == word3.word, "at word 3")
 
 -- Move through all words to get to the first one
 local firstWord = words[1]
-while Addon.selected.word ~= firstWord.word and panel.prevWord:IsEnabled() do
-  panel.prevWord:GetScript("OnClick")()
+while Addon.selected.word ~= firstWord.word and editor.prevWord:IsEnabled() do
+  editor.prevWord:GetScript("OnClick")()
 end
 
 -- Now at or past the first word; try to go back further
@@ -122,15 +120,15 @@ assert(Addon.selected.word == beforeAttempt, "Addon.selected unchanged")
 -- Open word 1 directly
 words[1]:GetScript("OnClick")(words[1])
 assert(Addon.selected.word == words[1].word, "opened word 1")
-assert(not panel.prevWord:IsEnabled(), "prevWord disabled at first word")
-assert(panel.nextWord:IsEnabled(), "nextWord enabled at first word")
+assert(not editor.prevWord:IsEnabled(), "prevWord disabled at first word")
+assert(editor.nextWord:IsEnabled(), "nextWord enabled at first word")
 
 -- Move to the last word
 local lastWord = words[count]
 lastWord:GetScript("OnClick")(lastWord)
 assert(Addon.selected.word == lastWord.word, "opened last word")
-assert(panel.prevWord:IsEnabled(), "prevWord enabled at last word")
-assert(not panel.nextWord:IsEnabled(), "nextWord disabled at last word")
+assert(editor.prevWord:IsEnabled(), "prevWord enabled at last word")
+assert(not editor.nextWord:IsEnabled(), "nextWord disabled at last word")
 
 -- --- keyboard navigation without focused box --------------------------------
 words[2]:GetScript("OnClick")(words[2])
@@ -217,8 +215,8 @@ assert(Addon.selected.word == words[2].word, "PADLSHOULDER opens previous word")
 Addon.refreshPanel()
 Addon.openEditor(words[2].word, "context", 1, "title", { origin = "list" })
 assert(editor:IsShown() and Addon.selected.word == words[2].word, "opened from word list")
-assert(not panel.prevWord:IsEnabled(), "nothing to go back to")
-assert(panel.nextWord:IsEnabled(), "Next starts the quest over")
+assert(not editor.prevWord:IsEnabled(), "nothing to go back to")
+assert(editor.nextWord:IsEnabled(), "Next starts the quest over")
 assert(Addon.OpenNeighbourWord(1) == true, "Next opens the first word")
 assert(Addon.selected.word == words[1].word, "the first word, got " .. tostring(Addon.selected.word))
 
@@ -230,7 +228,7 @@ assert(Addon.selected.word == words[3].word, "opened word 3")
 local oldSerial = panel.layoutSerial
 Addon.refreshPanel()
 assert(panel.layoutSerial ~= oldSerial, "refreshPanel numbers the new layout")
-assert(not panel.prevWord:IsEnabled() and panel.nextWord:IsEnabled(),
+assert(not editor.prevWord:IsEnabled() and editor.nextWord:IsEnabled(),
   "after a re-flow the buttons read as a fresh quest")
 assert(Addon.OpenNeighbourWord(1) == true)
 assert(Addon.selected.word == words[1].word,

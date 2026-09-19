@@ -752,7 +752,8 @@ local function refreshPanel()
   -- re-flow would name whatever word landed there.
   panel.wordButtons, panel.wordCount = wordButtons, used
   panel.layoutSerial = (type(panel.layoutSerial) == "number" and panel.layoutSerial or 0) + 1
-  Addon.RefreshWordArrows()
+  -- The editor's Previous and Next read this pool; a new layout is a new answer.
+  if Addon.RefreshWordArrows then Addon.RefreshWordArrows() end
   -- Anything that draws on top of the laid-out text gets its turn here, once the
   -- tokens are where they are going to be. The German voiceover uses it to put a
   -- play button beside each paragraph it has a recording for; nothing else
@@ -766,17 +767,6 @@ local function refreshPanel()
   end
 end
 Addon.refreshPanel = refreshPanel
-
--- Previous and Next go grey at the ends of the quest, and both go grey with no
--- quest on the panel. The walk lives with the controller (Gamepad.lua), which
--- is loaded before this file; asked for rather than assumed, so a panel built
--- without it -- as some tests build one -- has grey buttons and no error.
-function Addon.RefreshWordArrows()
-  if not panel or not panel.prevWord then return end
-  local available = Addon.NeighbourWordAvailable
-  panel.prevWord:SetEnabled(available ~= nil and available(-1) or false)
-  panel.nextWord:SetEnabled(available ~= nil and available(1) or false)
-end
 
 local function trackQuestEncounters(quest)
   local now = time()
@@ -1242,28 +1232,9 @@ function Addon.createPanel()
     end
   end)
 
-  -- Previous and Next: the word before or after the one last opened from this
-  -- quest, opened the way a click opens it. On this row and sized with it,
-  -- because they walk this panel's words -- the editor only shows where the
-  -- walk has got to. Nothing opened yet, Next starts at the first word; at
-  -- either end the button goes grey.
-  local nextWord = Addon.createActionButton(panel, LABELS.nextWord)
-  nextWord.baseWidth = 66
-  nextWord:SetScript("OnClick", function()
-    if Addon.OpenNeighbourWord then Addon.OpenNeighbourWord(1) end
-  end)
-  local prevWord = Addon.createActionButton(panel, LABELS.prevWord)
-  prevWord.baseWidth = 86
-  prevWord:SetScript("OnClick", function()
-    if Addon.OpenNeighbourWord then Addon.OpenNeighbourWord(-1) end
-  end)
-  panel.prevWord, panel.nextWord = prevWord, nextWord
-
   -- In the order they are laid out, which is right to left from the corner. The
   -- last of them is the leftmost, and that is what the progress line stops at.
-  -- The window's own buttons keep the corner; the two that walk the text sit
-  -- to their left, as a pair.
-  panel.actions = { copyQuest, wordsBtn, statsBtn, nextWord, prevWord }
+  panel.actions = { copyQuest, wordsBtn, statsBtn }
 
   function Addon.ApplyIntegratedLayout()
     if not panel then return end
