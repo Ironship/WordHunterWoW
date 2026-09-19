@@ -24,6 +24,7 @@ local Addon = WordHunterWoW_Addon
 --                  PAD2: close                     PAD3: word list
 --                  PAD4: reading mode              shoulders: scroll a page
 --   editor         D-pad left/right: status        PAD1: save    PAD2: cancel
+--                  shoulders: previous / next word
 --   the question   D-pad left/right: rating 1-5    PAD1: rate    PAD2: later
 --
 -- Only presses this file answers are kept from the game; every other one is let
@@ -261,6 +262,55 @@ local function openFocused(panel)
   return true
 end
 
+-- Where a step from the word last opened in this quest would land, or nil.
+--
+-- The starting point is the word last opened from the panel -- Addon.lastOpened,
+-- which the panel's word button records on every click -- while it is still
+-- current: the same layout serial, and the same key at that index, because the
+-- pool is reused across layouts. Failing that, the controller's own focus,
+-- when it is current. With neither -- a fresh quest, or a word opened from the
+-- list -- Next starts at the first word and Previous has nowhere to go.
+local function neighbourOf(direction)
+  local panel = Addon.panel
+  if not panel or not panel:IsShown() then return nil end
+  local list, count = wordsOf(panel)
+  local from
+  local last = Addon.lastOpened
+  if last and last.serial == panel.layoutSerial then
+    local button = list[last.index]
+    if button and button.key == last.key then from = last.index end
+  end
+  if not from then from = currentFocus(panel) end
+  if not from then
+    if direction < 0 then return nil end
+    from = 0
+  end
+  local index = from + direction
+  while index >= 1 and index <= count do
+    if usable(list[index]) then return index end
+    index = index + direction
+  end
+  return nil
+end
+
+-- Whether Previous or Next has anywhere to go: the panel buttons' enabled state.
+function Addon.NeighbourWordAvailable(direction)
+  return neighbourOf(direction) ~= nil
+end
+
+-- Previous and Next: the word before or after the one last opened, opened
+-- the way a click opens it -- the cursor moves there, the button's own OnClick
+-- runs, and everything that hangs off a click (the English lighting up, the
+-- voiceover, the recall question) follows. Returns whether a word was opened;
+-- at either end nothing is, and a key or a pad press is kept anyway.
+function Addon.OpenNeighbourWord(direction)
+  local index = neighbourOf(direction)
+  if not index or not setFocus(Addon.panel, index) then return false end
+  openFocused(Addon.panel)
+  if Addon.RefreshWordArrows then Addon.RefreshWordArrows() end
+  return true
+end
+
 local function click(button, ...)
   local handler = button and button:GetScript("OnClick")
   if handler then handler(button, ...) end
@@ -304,6 +354,12 @@ local function inEditor(editor, button)
     local next = statusIndex(current) + (button == "PADDLEFT" and -1 or 1)
     next = math.max(1, math.min(#STATUS_ORDER, next))
     click(editor.statusButtons and editor.statusButtons[STATUS_ORDER[next]])
+    return true
+  elseif button == "PADLSHOULDER" then
+    Addon.OpenNeighbourWord(-1)
+    return true
+  elseif button == "PADRSHOULDER" then
+    Addon.OpenNeighbourWord(1)
     return true
   elseif button == "PAD1" then
     click(editor.save)

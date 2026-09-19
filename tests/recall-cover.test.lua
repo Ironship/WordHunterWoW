@@ -12,6 +12,7 @@ local node = dofile("tests/wowstub.lua")
 
 dofile("Core.lua")
 dofile("Compat.lua")
+dofile("Gamepad.lua")
 dofile("Recall.lua")
 dofile("UICommon.lua")
 dofile("Editor.lua")
