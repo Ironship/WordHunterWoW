@@ -115,9 +115,16 @@ for _, status in ipairs({'new', 'learning', 'known', 'ignored'}) do
   assert(contrast(on.label, off.label) >= 1.6,
     status .. ': the label is the same brightness whether chosen or not, so the'
     .. ' clearest thing on the button says nothing')
-  local dimmer = 0
-  for i = 1, 3 do if off.border[i] < on.border[i] - 0.001 then dimmer = dimmer + 1 end end
-  assert(dimmer == 3, status .. ': the unchosen border is not dimmer than the chosen one')
+  -- Measured against the button it is drawn on, not as three channel values.
+  -- "Dimmer" used to mean lower numbers, which is only true on a dark panel: on
+  -- the parchment theme a border recedes by moving towards the paper, which is
+  -- upwards. The thing that has to hold on both is that the unchosen border
+  -- stands out less than the chosen one against the button behind it.
+  local onEdge = contrast(on.border, on.background)
+  local offEdge = contrast(off.border, off.background)
+  assert(offEdge < onEdge - 0.05, status ..
+    ': the unchosen border stands out as much as the chosen one (' ..
+    string.format('%.2f vs %.2f', offEdge, onEdge) .. ')')
 end
 Addon.panel, Addon.confirmDialog = nil, nil
 WordHunterWoWDB = { version = 11, settings = { targetLocale = 'deDE' } }
@@ -134,4 +141,4 @@ for _, locale in ipairs({'deDE', 'frFR', 'esES', 'itIT', 'ptBR'}) do
   assert(Addon.GetEffectiveWord('test').translation == 'my meaning', 'theme overwrote user entry')
   assert(words.test.translation == 'meaning' and words.test.status == 'known', 'theme changed dictionary')
 end
-print(string.format('readability: 4 themes x 3 clients x 3 opacity levels; minimum text contrast %.2f:1', minimum))
+print(string.format('readability: %d themes x 3 clients x 3 opacity levels; minimum text contrast %.2f:1', #Addon.BACKGROUND_ORDER, minimum))

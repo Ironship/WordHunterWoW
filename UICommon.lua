@@ -41,16 +41,41 @@ end
 -- the tint is what threatens it: the brighter the chosen background, the closer
 -- the white label gets to it. 0.38 measures 7.64:1 at worst -- that is `known`,
 -- the palest of the four -- and the dimmed label measures 6.05:1 on black.
+-- The numbers above are for a panel that is nearly black. On a light theme
+-- they invert: tinting the chosen button to 38% of its colour makes it darker
+-- than the paper, and the label -- which is dark ink there -- disappears into
+-- it. So the same three signals are drawn the other way up, and the contrast
+-- floor is the same either way.
 function Addon.styleFlatButton(button, color, active)
+  local style = Addon.BACKGROUNDS and Addon.BACKGROUNDS[Addon.GetBackgroundStyle()]
+  local light = (style and style.parchment) and true or false
   if active then
-    button:SetBackdropColor(color[1] * 0.38, color[2] * 0.38, color[3] * 0.38, 1)
+    if light then
+      -- Toward white rather than toward black, and the border carries the hue.
+      button:SetBackdropColor(color[1] + (1 - color[1]) * 0.40,
+                              color[2] + (1 - color[2]) * 0.40,
+                              color[3] + (1 - color[3]) * 0.40, 1)
+    else
+      button:SetBackdropColor(color[1] * 0.38, color[2] * 0.38, color[3] * 0.38, 1)
+    end
     button:SetBackdropBorderColor(color[1], color[2], color[3], 1)
     button.label:SetTextColor(unpack(Addon.COLORS.text))
   else
-    button:SetBackdropColor(0.06, 0.07, 0.09, 1)
-    button:SetBackdropBorderColor(color[1] * 0.30, color[2] * 0.30, color[3] * 0.30, 0.6)
-    local muted = Addon.COLORS.muted
-    button.label:SetTextColor(muted[1] * 0.72, muted[2] * 0.72, muted[3] * 0.72)
+    if light then
+      button:SetBackdropColor(0.880, 0.854, 0.792, 1)
+      -- Paler, not darker. On paper a border recedes by moving towards the
+      -- page; the full colour here would stand out more than the chosen one.
+      button:SetBackdropBorderColor(color[1] + (1 - color[1]) * 0.50,
+                                    color[2] + (1 - color[2]) * 0.50,
+                                    color[3] + (1 - color[3]) * 0.50, 1)
+      local muted = Addon.COLORS.muted
+      button.label:SetTextColor(muted[1], muted[2], muted[3])
+    else
+      button:SetBackdropColor(0.06, 0.07, 0.09, 1)
+      button:SetBackdropBorderColor(color[1] * 0.30, color[2] * 0.30, color[3] * 0.30, 0.6)
+      local muted = Addon.COLORS.muted
+      button.label:SetTextColor(muted[1] * 0.72, muted[2] * 0.72, muted[3] * 0.72)
+    end
   end
 end
 
