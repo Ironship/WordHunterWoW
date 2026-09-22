@@ -1,6 +1,6 @@
 -- Run from the addon root:  lua tests/every-file.test.lua
 --
--- Load the twelve files the .toc names, in the order it names them, and run
+-- Load the thirteen files the .toc names, in the order it names them, and run
 -- the surfaces the rest of the suite never reaches.
 --
 -- Two of the eleven could not be loaded here at all until now. Init.lua indexes
@@ -24,8 +24,25 @@ local function manifest(path)
   end
   return files
 end
+-- A watchdog, because this is the one test that runs the addon rather than
+-- reading it, and it runs it against a stub that fabricates whatever it is
+-- asked for. A loop over one of those fabrications never ends: ipairs walks a
+-- table whose every index answers truthfully-shaped nonsense, and the test
+-- spins instead of failing. Twenty seconds of CPU is far more than the whole
+-- file needs and far less than a person will sit through.
+do
+  local started = os.clock()
+  debug.sethook(function()
+    if os.clock() - started > 20 then
+      debug.sethook()
+      error(debug.traceback("this test has been running for 20s of CPU -- something is looping, "
+        .. "most likely over a fabricated stub object", 2), 2)
+    end
+  end, "", 200000)
+end
+
 local TOC = manifest("WordHunterWoW_Mainline.toc")
-assert(#TOC == 12, "the manifest names " .. #TOC .. " lua files, expected 12")
+assert(#TOC == 13, "the manifest names " .. #TOC .. " lua files, expected 13")
 -- The Classic manifest is a second copy of the same list. A file added to one
 -- and not the other loads on Retail and is nil on Classic Era, and nothing
 -- else here reads the second file at all.

@@ -200,6 +200,21 @@ Addon.BACKGROUNDS = {
     bgColor = { 0.06, 0.07, 0.09, 0.96 },
     readingColor = { 0.06, 0.07, 0.09 },
   },
+  dialogueui = {
+    -- Its parchment, drawn by DialogueUISkin.lua when that addon is installed.
+    -- The backdrop below is what a player without it gets, so choosing this
+    -- style never leaves an empty window.
+    name = "DialogueUI Parchment (needs DialogueUI)",
+    parchment = true,
+    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+    edgeSize = 32,
+    tile = true,
+    tileSize = 32,
+    insets = { left = 11, right = 12, top = 12, bottom = 11 },
+    bgColor = { 1, 1, 1, 1 },
+    readingColor = { 0.10, 0.08, 0.06 },
+  },
   midnight = {
     name = "Midnight (Modern)",
     bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -212,7 +227,7 @@ Addon.BACKGROUNDS = {
   },
 }
 
-Addon.BACKGROUND_ORDER = { "tooltip", "dialog", "solid", "midnight" }
+Addon.BACKGROUND_ORDER = { "tooltip", "dialog", "solid", "midnight", "dialogueui" }
 
 -- What the panel wears before the player has chosen anything: the parchment the
 -- game's own quest dialog is drawn on.
@@ -567,6 +582,15 @@ function Addon.UnderlineThickness(scale)
 end
 
 function Addon.GetIntegratedLayout()
+  -- DialogueUI puts the English inside its own window, so a second copy of it
+  -- down the side of this panel is the same text twice. While that skin is on,
+  -- the panel drops to the single column it already knows how to draw and the
+  -- German -- the half with the clickable words, which its window has no
+  -- answer for -- gets the whole width. The player's own setting is untouched
+  -- and comes back the moment the skin does not apply.
+  if Addon.EnglishShownElsewhere and Addon.EnglishShownElsewhere() then
+    return false
+  end
   local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.integratedLayout
   if v == nil then return true end
   return v and true or false
@@ -860,6 +884,14 @@ function Addon.ApplyBackground(frame, alphaOverride)
   surface:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(inset.right or 0), inset.bottom or 0)
   local reading = style.readingColor or Addon.BACKGROUNDS.midnight.readingColor
   surface:SetColorTexture(reading[1], reading[2], reading[3], 1)
+  -- A parchment style paints the whole window itself, so the flat backdrop and
+  -- the reading surface get out of its way. When the addon it needs is absent
+  -- this does nothing and the backdrop above stands as written.
+  if Addon.ApplyParchment and Addon.ApplyParchment(frame, style) then
+    frame:SetBackdropColor(0, 0, 0, 0)
+    frame:SetBackdropBorderColor(0, 0, 0, 0)
+    surface:SetColorTexture(0, 0, 0, 0)
+  end
   frame:SetToplevel(true)
 end
 
@@ -878,6 +910,12 @@ function Addon.RefreshAllBackdrops()
   for _, f in pairs({ Addon.panel, Addon.editor, Addon.listFrame, Addon.statsFrame, Addon.copyDialog, Addon.confirmDialog, Addon.enPanel, Addon.settingsPanel and Addon.settingsPanel.preview }) do
     if f and f.SetBackdrop then Addon.ApplyBackground(f) end
   end
+  -- The buttons are not backdrop frames, so the loop above never reaches them.
+  if Addon.RefreshActionButtons then Addon.RefreshActionButtons() end
+  if Addon.RefreshChrome then Addon.RefreshChrome() end
+  -- Choosing the parchment drops the English column, and choosing anything
+  -- else brings it back, so the columns have to be re-laid out here too.
+  if Addon.ApplyIntegratedLayout then Addon.ApplyIntegratedLayout() end
 end
 
 function Addon.trim(value)
