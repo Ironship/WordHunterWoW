@@ -81,6 +81,13 @@ events:SetScript("OnEvent", function(_, event, loadedAddon)
     else
       Addon.lastPassage = "offer"
     end
+    -- A replacement dialogue window may not be up yet on this frame. The hook
+    -- costs nothing when none is installed and goes on only once.
+    if Addon.Compat and Addon.Compat.HookReplacementDialogue then
+      Addon.Compat.HookReplacementDialogue(function()
+        C_Timer.After(0, Addon.readCurrentQuest)
+      end)
+    end
     C_Timer.After(0, Addon.readCurrentQuest)
   end
 end)
@@ -194,6 +201,29 @@ SlashCmdList.WORDHUNTERWOW = function(message)
     local version, _, _, build = GetBuildInfo and GetBuildInfo()
     print(string.format("              GetBuildInfo=%s (%s)  PROJECT_ID=%s",
       tostring(version), tostring(build), tostring(WOW_PROJECT_ID)))
+    -- Lorewalker puts its own window in front of the quest dialogue and
+    -- silences Blizzard's, so the panel has to recognise it instead. Run this
+    -- with a quest window open: every line below is what the code sees at that
+    -- moment, not what it is supposed to see.
+    local function look(frame)
+      if type(frame) ~= "table" then return "absent" end
+      if type(frame.IsShown) ~= "function" then return "no IsShown" end
+      local ok, isShown = pcall(frame.IsShown, frame)
+      if not ok then return "IsShown errored" end
+      return isShown and "|cff80ff80shown|r" or "hidden"
+    end
+    local lw = _G.LWDialogFrame
+    local compat = Addon.Compat
+    print(string.format("  dialogue:   this file=%s  standing in now=%s",
+      (compat and compat.ReplacementQuestFrame) and "patched" or "|cffff8080OLD COPY|r",
+      tostring(compat and compat.ReplacementQuestFrame() ~= nil)))
+    print(string.format("              DUIQuestFrame=%s  LWDialogFrame=%s  .QuestFrame=%s",
+      look(_G.DUIQuestFrame), look(lw),
+      look(type(lw) == "table" and lw.QuestFrame)))
+    print(string.format("              QuestFrame=%s  NpcQuestFrameShown=%s  panel=%s",
+      look(_G.QuestFrame),
+      tostring(compat and compat.NpcQuestFrameShown()),
+      look(Addon.panel)))
   -- Reading mode has a slash command as well as a settings box because it is
   -- the one setting here somebody turns on and off inside a single session:
   -- read a quest, take the quest, go back to playing. A trip through the

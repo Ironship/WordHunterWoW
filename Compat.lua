@@ -263,10 +263,57 @@ local function shown(frame)
   return type(frame) == "table" and type(frame.IsShown) == "function" and frame:IsShown()
 end
 
+-- Addons that replace the quest dialogue with a window of their own. Each one
+-- leaves Blizzard's QuestFrame hidden for the rest of the session, so a panel
+-- that waits for QuestFrame to appear waits forever once any of them is
+-- installed. They are listed by the global each publishes; `child` is for the
+-- ones whose window serves gossip as well and says which field is the quest
+-- half. The windows are built on first use, so they are looked up on every
+-- call rather than remembered.
+local DIALOGUE_REPLACEMENTS = {
+  { global = "DUIQuestFrame" },                        -- DialogueUI, Peterodox
+  { global = "LWDialogFrame", child = "QuestFrame" },  -- Lorewalker, AdaptiveX
+}
+
+-- The replacement window standing in for the quest dialogue right now, if any.
+function Compat.ReplacementQuestFrame()
+  for _, entry in ipairs(DIALOGUE_REPLACEMENTS) do
+    local frame = _G[entry.global]
+    if shown(frame) and (not entry.child or shown(frame[entry.child])) then
+      return frame
+    end
+  end
+  return nil
+end
+
+-- A replacement window is built the first time somebody speaks to an NPC, and
+-- it may go up a frame later than the quest event that caused it -- in which
+-- case asking "is it shown?" on that event answers no and the panel stays
+-- closed. Hooking the window's own OnShow asks again once it is really up, so
+-- the order of the two stops mattering. A hook cannot be undone, hence the
+-- once-per-window guard.
+local dialogueHooked = {}
+
+function Compat.HookReplacementDialogue(handler)
+  local any = false
+  for _, entry in ipairs(DIALOGUE_REPLACEMENTS) do
+    local frame = _G[entry.global]
+    if type(frame) == "table" and type(frame.HookScript) == "function" then
+      if not dialogueHooked[entry.global] then
+        dialogueHooked[entry.global] = true
+        frame:HookScript("OnShow", handler)
+      end
+      any = true
+    end
+  end
+  return any
+end
+
 -- The window an NPC opens when offering or handing in a quest. Named the same
 -- in both games, which is why it is not probed by flavour.
 function Compat.NpcQuestFrameShown()
-  return shown(QuestFrame) and true or false
+  if shown(QuestFrame) then return true end
+  return Compat.ReplacementQuestFrame() ~= nil
 end
 
 -- Retail keeps the quest log inside the world map; Classic has its own window.
