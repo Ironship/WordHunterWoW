@@ -19,6 +19,16 @@ Addon.COLORS = {
   enHighlightBackground = { 0.18, 0.27, 0.36, 0.55 },
 }
 
+-- The palette above, kept as it was written so the switch can go back.
+Addon.COLORS_DARK = {}
+for key, colour in pairs(Addon.COLORS) do
+  if type(colour) == "table" then
+    local copy = {}
+    for i = 1, #colour do copy[i] = colour[i] end
+    Addon.COLORS_DARK[key] = copy
+  end
+end
+
 Addon.STATUS_LABELS = {
   new = "New",
   learning = "Learning",
@@ -167,6 +177,55 @@ Addon.LABELS = {
   enNoOffer = "[No English opening text exists for this quest. Showing its objective.]",
 }
 
+-- The same nine roles again, for a light background.
+--
+-- The palette above is built for a panel that is nearly black: `text` is
+-- 0.93 and the status four are bright. Put those on DialogueUI's parchment --
+-- measured at RGB 206,166,118 in the middle of the sheet -- and every one of
+-- them falls through the floor this addon holds itself to. `text` manages
+-- 1.96:1 against the 4.5 it needs, and `new`, which is 94% of the words in a
+-- fresh quest, manages 1.05:1. That is not a typeface problem, which is what
+-- it looks like on screen; it is ink the colour of the paper.
+--
+-- These are the same hues taken down in value until each clears 4.5:1 on both
+-- the lightest and the darkest part of that texture, which is what keeps them
+-- legible over the whole sheet rather than on average. For comparison
+-- DialogueUI's own paragraph ink, 0.19/0.17/0.13, measures 6.23:1 there.
+Addon.COLORS_PARCHMENT = {
+  text = { 0.015, 0.015, 0.016 },
+  muted = { 0.225, 0.207, 0.180 },
+  new = { 0.057, 0.160, 0.260 },
+  learning = { 0.230, 0.136, 0.004 },
+  known = { 0.037, 0.176, 0.080 },
+  ignored = { 0.144, 0.155, 0.175 },
+  neutral = { 0.120, 0.156, 0.210 },
+  caveat = { 0.225, 0.207, 0.180 },
+  enHighlight = { 0.129, 0.152, 0.170 },
+  enWordHighlight = { 0.220, 0.130, 0.117 },
+  -- A cream rather than the dark blue wash: a highlight on light paper has to
+  -- be lighter than the paper, or the ink on it loses the contrast the ink
+  -- beside it has.
+  enHighlightBackground = { 0.80, 0.75, 0.67, 0.55 },
+}
+
+-- Written into the tables that are already there rather than over the top of
+-- them. Buttons take their colour by reference when they are built -- see
+-- createFlatButton -- so replacing Addon.COLORS with another table would leave
+-- every one of them painted for the theme that was on when it was made.
+local function applyPalette(source)
+  for key, colour in pairs(source) do
+    local live = Addon.COLORS[key]
+    if type(live) == "table" then
+      for i = 1, #colour do live[i] = colour[i] end
+    end
+  end
+end
+
+function Addon.ApplyPalette()
+  local style = Addon.BACKGROUNDS[Addon.GetBackgroundStyle()]
+  applyPalette((style and style.parchment) and Addon.COLORS_PARCHMENT or Addon.COLORS_DARK)
+end
+
 Addon.BACKGROUNDS = {
   tooltip = {
     name = "Tooltip (Classic Dark)",
@@ -213,7 +272,10 @@ Addon.BACKGROUNDS = {
     tileSize = 32,
     insets = { left = 11, right = 12, top = 12, bottom = 11 },
     bgColor = { 1, 1, 1, 1 },
-    readingColor = { 0.10, 0.08, 0.06 },
+    -- Sampled from the middle of DialogueUI's own GenericFrame-Tiled-Large.png:
+    -- RGB 206,166,118. It has to be the real colour of the paper, or the
+    -- contrast test measures the ink against a background nobody sees.
+    readingColor = { 0.808, 0.651, 0.463 },
   },
   midnight = {
     name = "Midnight (Modern)",
@@ -904,6 +966,9 @@ function Addon.SetBackgroundStyle(key)
 end
 
 function Addon.RefreshAllBackdrops()
+  -- The ink first: a light theme needs dark letters, and everything below
+  -- repaints with whatever is in Addon.COLORS at the time.
+  if Addon.ApplyPalette then Addon.ApplyPalette() end
   -- pairs, not ipairs: most of these are created the first time they are opened,
   -- so the list has holes. ipairs stops at the first one, and the English panel
   -- sits behind three lazily-created windows -- it never got its backdrop.
