@@ -5,6 +5,7 @@ local addonName = ...
 local events = CreateFrame("Frame")
 events:RegisterEvent("ADDON_LOADED")
 events:RegisterEvent("PLAYER_LOGIN")
+events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("QUEST_DETAIL")
 events:RegisterEvent("QUEST_PROGRESS")
 events:RegisterEvent("QUEST_COMPLETE")
@@ -60,6 +61,13 @@ events:SetScript("OnEvent", function(_, event, loadedAddon)
     -- Classic's quest log may have loaded since ADDON_LOADED.
     Addon.Compat.Refresh()
     Addon.hookQuestUi()
+    -- Remembered now, while the client is sure to answer it, so the collector
+    -- still has it at a later moment that answers nothing or a secret value.
+    if Addon.PlayerName then Addon.PlayerName() end
+  elseif event == "PLAYER_ENTERING_WORLD" then
+    -- Its own branch: the last one below treats any event it is handed as a
+    -- quest window opening.
+    if Addon.PlayerName then Addon.PlayerName() end
   elseif event == "GOSSIP_SHOW" then
     Addon.lastPassage = "gossip"
     if Addon.HarvestGossip then Addon.HarvestGossip() end
@@ -194,6 +202,29 @@ SlashCmdList.WORDHUNTERWOW = function(message)
     local version, _, _, build = GetBuildInfo and GetBuildInfo()
     print(string.format("              GetBuildInfo=%s (%s)  PROJECT_ID=%s",
       tostring(version), tostring(build), tostring(WOW_PROJECT_ID)))
+    -- What the client answers for the player's own name right now, because on
+    -- the Forever client the name got past both harvest guards and nobody knows
+    -- what UnitName gave them. A secret value is described, never printed or
+    -- compared: touching one is what the check is there to avoid.
+    local raw, rawType, secret, shown = nil, "no UnitName", "n/a", "-"
+    if type(UnitName) == "function" then
+      local ok, value = pcall(UnitName, "player")
+      if not ok then
+        rawType = "error: " .. tostring(value)
+      else
+        raw = value
+        rawType = type(raw)
+        if type(issecretvalue) ~= "function" then
+          secret = "no issecretvalue"
+        else
+          secret = Addon.IsSecretValue and Addon.IsSecretValue(raw) and "yes" or "no"
+        end
+        if secret ~= "yes" and rawType == "string" then shown = "\"" .. raw .. "\"" end
+      end
+    end
+    local cached = Addon.CachedPlayerName and Addon.CachedPlayerName()
+    print(string.format("  name:       UnitName type=%s secret=%s value=%s  cached=%s",
+      rawType, secret, shown, cached and ("\"" .. cached .. "\"") or "none"))
   -- Reading mode has a slash command as well as a settings box because it is
   -- the one setting here somebody turns on and off inside a single session:
   -- read a quest, take the quest, go back to playing. A trip through the
