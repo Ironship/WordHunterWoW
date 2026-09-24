@@ -89,12 +89,123 @@ end
 --
 -- Substituted before the text is stored and before the hash that keys it, so the
 -- same gossip met on two characters is one entry rather than two.
+--
+-- Both guards used to read UnitName("player") at the moment of collecting, and on
+-- the Forever client that was not enough: a session there stored the character's
+-- name as the words "Aryo" and "ARYO" and verbatim inside a gossip line, with
+-- this file installed unchanged. Whatever UnitName answered at that moment, it
+-- was not the plain name. The candidates are a "Name-Realm" form, nothing at all
+-- while gossip is open, and one of Retail's secret values, which cannot be
+-- compared or matched. So the name is now taken from whichever reader gives a
+-- plain string, with any realm suffix cut off, and remembered from the first
+-- moment it is available -- login, entering the world, or any earlier call --
+-- so a later moment that answers badly still has it. /whw diag shows what the
+-- client answers right now.
+local cachedPlayerName
+
+local function isSecret(value)
+  if type(issecretvalue) ~= "function" then return false end
+  local ok, secret = pcall(issecretvalue, value)
+  -- A check that fails is treated as a yes: the value is not touched either way.
+  return not ok or secret and true or false
+end
+Addon.IsSecretValue = isSecret
+
+local function plainName(value)
+  -- Secret first, and nothing else touched before it: even comparing one raises.
+  if isSecret(value) or type(value) ~= "string" then return nil end
+  -- "Aryo-Realm" is the form the client uses for a player on another realm, and
+  -- some readers use it for everyone. Text addresses the player by the name alone.
+  local name = Addon.trim(value:match("^([^%-]*)") or "")
+  if name == "" then return nil end
+  -- Very early in loading the client answers the placeholder for an unknown unit.
+  if type(UNKNOWNOBJECT) == "string" and name == UNKNOWNOBJECT then return nil end
+  return name
+end
+
+local function readPlayerName()
+  local readers = {
+    UnitName,
+    UnitNameUnmodified,
+    GetUnitName and function(unit) return GetUnitName(unit, false) end,
+  }
+  for i = 1, 3 do
+    local reader = readers[i]
+    if type(reader) == "function" then
+      local ok, value = pcall(reader, "player")
+      local name = ok and plainName(value) or nil
+      if name then return name end
+    end
+  end
+  return nil
+end
+
+-- The player's own name as a plain string, or nil if no reader has ever given
+-- one this session. Never a secret value, so it is always safe to compare.
+function Addon.PlayerName()
+  local name = readPlayerName()
+  if name then cachedPlayerName = name end
+  return cachedPlayerName
+end
+
+function Addon.CachedPlayerName()
+  return cachedPlayerName
+end
+
+-- A pattern matching the name in any letter case. Lua patterns have no flag for
+-- that, so each ASCII letter becomes a class of both cases and each accented
+-- Latin-1 letter a class of its two second bytes; anything magic is escaped, and
+-- the other bytes of a multibyte character stay as they are.
+local function caselessPattern(name)
+  local out, i = {}, 1
+  while i <= #name do
+    local c = name:sub(i, i)
+    local b = string.byte(c)
+    local nextByte = string.byte(name, i + 1)
+    if c:match("%a") then
+      out[#out + 1] = "[" .. c:upper() .. c:lower() .. "]"
+    elseif b == 195 and nextByte and nextByte ~= 0x97 and nextByte ~= 0xB7
+        and ((nextByte >= 0x80 and nextByte <= 0x9E) or (nextByte >= 0xA0 and nextByte <= 0xBE)) then
+      local upper = nextByte >= 0xA0 and nextByte - 0x20 or nextByte
+      out[#out + 1] = "\195[" .. string.char(upper) .. string.char(upper + 0x20) .. "]"
+      i = i + 1
+    elseif b < 128 and c:match("%W") then
+      out[#out + 1] = "%" .. c
+    else
+      out[#out + 1] = c
+    end
+    i = i + 1
+  end
+  return table.concat(out)
+end
+
+-- Whether the byte at a position belongs to a letter, so the name is only
+-- replaced where it stands as a word of its own. Accented Latin letters are
+-- two bytes led by C3..C9; the quotes and dashes around a name are led by C2
+-- or E2 and count as the edge of a word.
+local function letterAt(text, pos, backwards)
+  local b = string.byte(text, pos)
+  if not b then return false end
+  if b < 128 then return string.char(b):match("%w") ~= nil end
+  if backwards then
+    -- Step back over continuation bytes to the byte that leads the character.
+    while b and b >= 0x80 and b <= 0xBF and pos > 1 do
+      pos = pos - 1
+      b = string.byte(text, pos)
+    end
+  end
+  return b ~= nil and b >= 0xC3 and b <= 0xC9
+end
+
 local function withoutPlayerName(text)
-  local player = UnitName and UnitName("player")
-  if not player or player == "" then return text end
-  -- The name goes into a pattern, so anything magic in it has to be escaped.
+  local player = Addon.PlayerName()
+  if not player then return text end
   -- %1, not %0: WoW is Lua 5.1 and %0 is not a valid replacement.
-  return (text:gsub((player:gsub("(%W)", "%%%1")), "<name>"))
+  local pattern = "()(" .. caselessPattern(player) .. ")()"
+  return (text:gsub(pattern, function(first, found, after)
+    if letterAt(text, first - 1, true) or letterAt(text, after, false) then return found end
+    return "<name>"
+  end))
 end
 
 function Addon.HarvestText(kind, questId, text)
@@ -165,8 +276,8 @@ function Addon.HarvestUnknownWord(word, questId)
   -- them, and no dictionary covers it, so it was offered as vocabulary. It is
   -- not: collecting it would put one player's character name into the next
   -- dictionary release for everyone. A real session collected exactly this.
-  local player = UnitName and UnitName("player")
-  if player and player ~= "" and Addon.wordKey(word) == Addon.wordKey(player) then
+  local player = Addon.PlayerName()
+  if player and Addon.wordKey(word) == Addon.wordKey(player) then
     return false
   end
   return Addon.HarvestText("word", questId, word)

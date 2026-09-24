@@ -78,7 +78,7 @@ print = function(...) said[#said + 1] = table.concat({ ... }, " ") end
 local commands = {
   "", "settings", "words", "stats", "reset", "bg", "opacity",
   "lang", "harvest", "harvest on", "harvest off", "harvest clear", "export",
-  "difficult", "difficult export", "recall", "recall on", "recall off",
+  "difficult", "difficult export", "recall", "recall on", "recall off", "diag",
 }
 for _, command in ipairs(commands) do
   local ok, err = pcall(run, command)
