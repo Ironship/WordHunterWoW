@@ -7,7 +7,6 @@
 ## SavedVariables: WordHunterWoWDB, WordHunterWoWExport, WordHunterWoWLanguage, WordHunterWoWCorpus, WordHunterWoWCorpusExport
 
 Core.lua
-DialogueUISkin.lua
 Compat.lua
 Gamepad.lua
 Recall.lua

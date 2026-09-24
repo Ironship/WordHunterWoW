@@ -1,6 +1,6 @@
 -- Run from the addon root:  lua tests/every-file.test.lua
 --
--- Load the thirteen files the .toc names, in the order it names them, and run
+-- Load the twelve files the .toc names, in the order it names them, and run
 -- the surfaces the rest of the suite never reaches.
 --
 -- Two of the eleven could not be loaded here at all until now. Init.lua indexes
@@ -42,7 +42,7 @@ do
 end
 
 local TOC = manifest("WordHunterWoW_Mainline.toc")
-assert(#TOC == 13, "the manifest names " .. #TOC .. " lua files, expected 13")
+assert(#TOC == 12, "the manifest names " .. #TOC .. " lua files, expected 12")
 -- The Classic manifest is a second copy of the same list. A file added to one
 -- and not the other loads on Retail and is nil on Classic Era, and nothing
 -- else here reads the second file at all.

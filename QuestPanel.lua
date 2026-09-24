@@ -1164,10 +1164,6 @@ function Addon.createPanel()
     panel:Hide()
     if Addon.editor then Addon.editor:Hide() end
   end)
-  -- Blizzard's cross has no counterpart on DialogueUI's parchment, so it steps
-  -- aside while that skin is on. The panel still closes with the quest window
-  -- and with /whw.
-  if Addon.HideUnderParchment then Addon.HideUnderParchment(close) end
 
   panel.enTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   panel.enTitle:SetJustifyH("LEFT")
@@ -1180,9 +1176,6 @@ function Addon.createPanel()
   panel.enContent:SetWidth(360)
   panel.enContent:SetHeight(1)
   panel.enScroll:SetScrollChild(panel.enContent)
-  -- The scrollbar's little square arrows are the most Blizzard-looking thing
-  -- on the window. Hidden with the skin; the wheel still scrolls.
-  if Addon.HideUnderParchment then Addon.HideUnderParchment(panel.enScroll.ScrollBar) end
 
   panel.divider = panel:CreateTexture(nil, "ARTWORK")
   panel.divider:SetColorTexture(0.20, 0.30, 0.43, 0.55)
@@ -1193,7 +1186,6 @@ function Addon.createPanel()
   panel.content:SetWidth(382)
   panel.content:SetHeight(1)
   panel.scroll:SetScrollChild(panel.content)
-  if Addon.HideUnderParchment then Addon.HideUnderParchment(panel.scroll.ScrollBar) end
 
   panel.footerLine = panel:CreateTexture(nil, "ARTWORK")
   panel.footerLine:SetColorTexture(0.20, 0.30, 0.43, 0.55)
@@ -1243,14 +1235,6 @@ function Addon.createPanel()
   -- In the order they are laid out, which is right to left from the corner. The
   -- last of them is the leftmost, and that is what the progress line stops at.
   panel.actions = { copyQuest, wordsBtn, statsBtn }
-  -- Only this row. These three are the quest panel's own furniture and
-  -- DialogueUI's window has nothing like them, so they step aside with the
-  -- skin; they are still on /whw words, /whw stats and /whw export. Every
-  -- other window's buttons are left alone -- hiding those took the Save button
-  -- off the word editor, which is not furniture.
-  if Addon.HideUnderParchment then
-    for _, action in ipairs(panel.actions) do Addon.HideUnderParchment(action) end
-  end
 
   function Addon.ApplyIntegratedLayout()
     if not panel then return end
