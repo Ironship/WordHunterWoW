@@ -436,7 +436,7 @@ function Addon.GamePadButton(frame, button)
   return handled
 end
 
--- For a test, and for /whw diag: where the cursor is.
+-- For a test: where the cursor is.
 function Addon.GamePadFocus()
   local panel = Addon.panel
   if not panel then return nil end
