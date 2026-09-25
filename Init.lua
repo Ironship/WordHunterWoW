@@ -168,6 +168,14 @@ function Addon.PrintDiagnostics()
   local cached = Addon.CachedPlayerName and Addon.CachedPlayerName()
   print(string.format("  name:       UnitName type=%s secret=%s value=%s  cached=%s",
     rawType, secret, shown, cached and ("\"" .. cached .. "\"") or "none"))
+  -- Settings window menu state, to debug dropdown visibility issues.
+  local menu = Addon.settingsMenu
+  local window = Addon.settingsPanel
+  if menu or window then
+    local menuState = menu and ("shown=" .. (menu:IsShown() and "yes" or "no") .. " strata=" .. menu:GetFrameStrata() .. " level=" .. menu:GetFrameLevel()) or "none"
+    local windowState = window and ("shown=" .. (window:IsShown() and "yes" or "no") .. " strata=" .. window:GetFrameStrata() .. " level=" .. window:GetFrameLevel()) or "none"
+    print(string.format("  settings:   menu=<%s>  window=<%s>", menuState, windowState))
+  end
 end
 
 SLASH_WORDHUNTERWOW1 = "/whw"

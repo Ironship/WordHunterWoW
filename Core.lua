@@ -883,6 +883,8 @@ function Addon.ApplyBackground(frame, alphaOverride)
   -- Keep the skin and its opacity on the frame, but never let scenery or a
   -- bright texture compete with letters. BACKGROUND sublevel 1 is above the
   -- backdrop center and below text on both Retail and Classic.
+  -- The reading surface takes the same opacity as the backdrop, so the
+  -- effective opacity equals the slider for the player.
   if not frame.whwReadingBackground then
     frame.whwReadingBackground = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
   end
@@ -892,7 +894,7 @@ function Addon.ApplyBackground(frame, alphaOverride)
   surface:SetPoint("TOPLEFT", frame, "TOPLEFT", inset.left or 0, -(inset.top or 0))
   surface:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(inset.right or 0), inset.bottom or 0)
   local reading = style.readingColor or Addon.BACKGROUNDS.midnight.readingColor
-  surface:SetColorTexture(reading[1], reading[2], reading[3], 1)
+  surface:SetColorTexture(reading[1], reading[2], reading[3], alpha)
   frame:SetToplevel(true)
 end
 

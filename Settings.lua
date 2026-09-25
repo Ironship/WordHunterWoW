@@ -46,7 +46,7 @@ LABELS.tabAbout = "About"
 LABELS.resetTab = "Reset this tab"
 LABELS.previewTitle = "Preview"
 LABELS.previewEnglishOff = "The English opens in its own window while the integrated quest window is off."
-LABELS.backgroundNote = "Choose a frame style. Text stays on an opaque reading surface in every theme."
+LABELS.backgroundNote = "Choose a frame style; the reading surface opacity follows the slider below."
 LABELS.languageNote = "Required — words are stored separately per language. English US/GB both export as 'en'."
 LABELS.resetLayoutButton = "Reset window positions"
 LABELS.resetLayoutNote = "Puts every window back where it started, this one included. The same as /whw reset."
@@ -320,7 +320,9 @@ local function openMenu(owner, entries, current, pick)
     menu = CreateFrame("Frame", "WordHunterWoWSettingsMenu", UIParent, "BackdropTemplate")
     Addon.settingsMenu = menu
     menu:Hide()
-    menu:SetFrameStrata("FULLSCREEN_DIALOG")
+    -- TOOLTIP strata is strictly above FULLSCREEN_DIALOG, so the menu stays visible
+    -- even when the window raises itself in response to a click.
+    menu:SetFrameStrata("TOOLTIP")
     menu:SetFrameLevel(MENU_LEVEL)
     menu:SetClampedToScreen(true)
     menu:EnableMouse(true)
@@ -984,6 +986,23 @@ function Addon.CreateSettingsPanel()
   if preview.SetClipsChildren then preview:SetClipsChildren(true) end
   Addon.ApplyBackground(preview)
 
+  -- Transparency backdrop: a subtle two-grey checkerboard to show the opacity
+  -- slider's effect. Placed at BACKGROUND sublevel 0, below the reading surface
+  -- (sublevel 1) so it shows through when the surface's alpha is less than 1.
+  local checker = preview:CreateTexture(nil, "BACKGROUND", nil, 0)
+  window.previewChecker = checker
+  local function setChecker()
+    -- The checkerboard is tiled at 24x24 pixels (the CHECK constant) with
+    -- a fallback to a solid light grey if SetHorizTile is not available.
+    if checker.SetHorizTile and checker.SetVertTile then
+      checker:SetColorTexture(0.35, 0.35, 0.35, 1)
+      checker:SetHorizTile(true)
+      checker:SetVertTile(true)
+    else
+      checker:SetColorTexture(0.40, 0.40, 0.40, 1)
+    end
+  end
+  setChecker()
   local previewTitle = preview:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   window.previewTitle = previewTitle
   local words = {}
@@ -1088,12 +1107,14 @@ function Addon.CreateSettingsPanel()
     end
     y = y - rowH - 6 * scale
 
-    -- The rating question's cue, on the word it would ask about.
+    -- The rating question's cue. Positioned on its own line below the words
+    -- rather than overlapping the next line.
     Addon.ApplyFontRole(badge, "meta", scale)
     badge:ClearAllPoints()
     if learningWord and Addon.GetRecallCheck and Addon.GetRecallCheck() then
-      badge:SetPoint("BOTTOMLEFT", learningWord, "TOPRIGHT", -4, -6 * scale)
+      badge:SetPoint("TOPLEFT", preview, "TOPLEFT", PREVIEW_PAD, y)
       badge:Show()
+      y = y - lineHeight("meta", scale) - 2 * scale
     else
       badge:Hide()
     end
@@ -1137,6 +1158,17 @@ function Addon.CreateSettingsPanel()
       enText:Hide()
       enOff:Show()
     end
+
+    -- The mock's height follows its content, clamped to the pane. The content
+    -- extends from PREVIEW_PAD at the top to y at the bottom; the margin at
+    -- the bottom adds PREVIEW_PAD more. The layout function uses this to
+    -- constrain the preview frame.
+    local contentHeight = PREVIEW_PAD - y + PREVIEW_PAD
+    window.previewContentHeight = contentHeight
+
+    -- Position and size the checkerboard background to fill the preview.
+    checker:ClearAllPoints()
+    checker:SetAllPoints(preview)
   end
 
   -- --- layout, tabs and refresh --------------------------------------------------
@@ -1169,7 +1201,14 @@ function Addon.CreateSettingsPanel()
     previewCaption:SetPoint("TOPLEFT", pane, "TOPLEFT", 4, 0)
     preview:ClearAllPoints()
     preview:SetPoint("TOPLEFT", pane, "TOPLEFT", MOCK_INSET, -(lineHeight("label", scale) + 4 + MOCK_INSET))
-    preview:SetPoint("BOTTOMRIGHT", pane, "BOTTOMRIGHT", -MOCK_INSET, MOCK_INSET)
+    -- The mock's height follows its content, clamped to the pane's height. If
+    -- no content height was calculated yet (first layout before refreshPreview),
+    -- use the pane's height as a fallback so the mock does not disappear.
+    local paneHeight = tonumber(pane:GetHeight()) or 240
+    local contentHeight = tonumber(window.previewContentHeight) or paneHeight
+    local maxPreviewHeight = math.max(50, paneHeight - (lineHeight("label", scale) + 4 + 2 * MOCK_INSET))
+    local previewHeight = math.min(contentHeight, maxPreviewHeight)
+    preview:SetSize(MOCK_W, previewHeight)
     area:ClearAllPoints()
     area:SetPoint("TOPLEFT", window, "TOPLEFT", PREVIEW_W + 2 * MARGIN, -top)
     area:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -MARGIN, MARGIN)

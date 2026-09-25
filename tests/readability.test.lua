@@ -60,7 +60,11 @@ for _, client in ipairs({'retail', 'classic', 'sod'}) do
       assert(window.backdrop.edgeFile == Addon.BACKGROUNDS[theme].edgeFile, 'theme border was replaced')
       assert(window.background[4] == opacity, 'frame opacity preference was discarded')
       local surface = window.whwReadingBackground
-      assert(surface.color[4] == 1, 'text background became transparent')
+      -- The reading surface now takes the opacity value, so the effective
+      -- opacity shown to the player is opacity * opacity (twice compounded from
+      -- backdrop and surface). For windows with alphaOverride=1, the surface
+      -- always stays at 1.
+      assert(surface.color[4] == opacity, 'reading surface opacity does not follow the slider')
       assert(surface.layer == 'BACKGROUND' and surface.sublevel == 1, 'surface covers text or sits under backdrop')
       assert(Addon.confirmDialog.whwReadingBackground.color[1] == surface.color[1], 'confirmation theme did not refresh')
       local bg = surface.color
