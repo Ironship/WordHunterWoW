@@ -402,23 +402,50 @@ end
 -- A window lying over the panel -- the word list, the statistics -- is not
 -- driven from the pad; it is put away from it. PAD3 still toggles the list, so
 -- the button that opened it closes it.
-local function overlying()
-  for _, key in ipairs({ "listFrame", "statsFrame", "copyDialog", "confirmDialog" }) do
+local function firstShown(keys)
+  for _, key in ipairs(keys) do
     local frame = Addon[key]
     if frame and frame.IsShown and frame:IsShown() then return frame end
   end
   return nil
 end
 
+local function putAway(over, button)
+  if button == "PAD2" then over:Hide() return true end
+  if button == "PAD3" then return toggleWordList() end
+  return false
+end
+
+-- The settings window: B closes an open choice first, then the window; the
+-- shoulders step through the tabs. Nothing on a tab is pressed from the pad
+-- yet, and Reset is deliberately never bound to a button.
+local function inSettings(window, button)
+  if button == "PAD2" then
+    local menu = Addon.settingsMenu
+    if menu and menu:IsShown() then
+      menu:Hide()
+    else
+      window:Hide()
+    end
+    return true
+  elseif button == "PADLSHOULDER" or button == "PADRSHOULDER" then
+    if window.stepTab then window.stepTab(button == "PADLSHOULDER" and -1 or 1) end
+    return true
+  end
+  return false
+end
+
 local function dispatch(button)
   local editor = Addon.editor
   if editor and editor:IsShown() then return inEditor(editor, button) end
-  local over = overlying()
-  if over then
-    if button == "PAD2" then over:Hide() return true end
-    if button == "PAD3" then return toggleWordList() end
-    return false
-  end
+  -- The copy and confirm dialogs before the settings window: the window opens
+  -- them, and B has to close the dialog rather than the window behind it.
+  local dialog = firstShown({ "copyDialog", "confirmDialog" })
+  if dialog then return putAway(dialog, button) end
+  local settings = Addon.settingsPanel
+  if settings and settings.IsShown and settings:IsShown() then return inSettings(settings, button) end
+  local over = firstShown({ "listFrame", "statsFrame" })
+  if over then return putAway(over, button) end
   local panel = Addon.panel
   if panel and panel:IsShown() then return inPanel(panel, button) end
   if button == "PAD2" then return Addon.CloseAll() and true or false end
