@@ -34,12 +34,20 @@ Addon.createEditor()
 -- The tick, modelled on every check box the window builds: unmodelled it
 -- answers with a manufactured frame, which is truthy, and every box would read
 -- ticked whatever the addon did.
+--
+-- And the mouse on every slider, recorded because the stub answers EnableMouse
+-- with a manufactured call that remembers nothing.
 local realCreateFrame = CreateFrame
+local sliders = {}
 CreateFrame = function(kind, name, parent, template)
   local f = realCreateFrame(kind, name, parent, template)
   if kind == "CheckButton" then
     function f:SetChecked(value) self.checked = not not value end
     function f:GetChecked() return self.checked and true or false end
+  elseif kind == "Slider" then
+    sliders[#sliders + 1] = f
+    function f:EnableMouse(on) self.mouseOn = not not on end
+    function f:EnableMouseWheel(on) self.wheelOn = not not on end
   end
   return f
 end
@@ -114,6 +122,19 @@ for key in pairs(WordHunterWoWDB.settings) do
   assert(byKey[key], "the saved settings hold " .. key .. ", which the settings list does not know")
 end
 print("  every setting has exactly one control, on one tab")
+
+-- A slider built without OptionsSliderTemplate takes no clicks unless it is
+-- told to, so a bar that was never given the mouse cannot be dragged in the
+-- game while every test here drives its script directly and passes. And none
+-- takes the wheel: on the Sizes tab, nearly all sliders, scrolling would
+-- otherwise change the text size under the cursor.
+assert(#sliders >= 8, "only " .. #sliders .. " sliders were built")
+for _, s in ipairs(sliders) do
+  local name = s:GetName()
+  assert(rawget(s, "mouseOn") == true, tostring(name) .. " was never given the mouse, so it cannot be dragged")
+  assert(rawget(s, "wheelOn") ~= true, tostring(name) .. " takes the wheel away from the tab's scroll box")
+end
+print("  every slider takes the mouse and leaves the wheel to the scroll box")
 
 -- Back to a fresh profile for what follows.
 WordHunterWoWDB = { settings = { targetLocale = "deDE", frames = {} }, wordsByLocale = {} }

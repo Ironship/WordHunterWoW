@@ -564,7 +564,14 @@ function Addon.CreateSettingsPanel()
     if s.SetOrientation then s:SetOrientation("HORIZONTAL") end
     s:SetValueStep(opts.step)
     if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
-    if s.EnableMouseWheel then s:EnableMouseWheel(true) end
+    -- A slider made without a template takes no clicks until it is told to.
+    -- OptionsSliderTemplate carried enableMouse="true", and DoesItDie makes the
+    -- same call from its enable pass, which this window does not have.
+    s:EnableMouse(true)
+    -- The wheel is left to the tab's scroll box. The Sizes tab is almost all
+    -- sliders, and a wheel that moved whichever one passed under the cursor
+    -- would change the text size while the player was only scrolling -- and
+    -- re-lay the tab out under the cursor as it did.
     local track = s:CreateTexture(nil, "BACKGROUND")
     setColor(track, 0.3, 0.31, 0.34, 1)
     track:SetPoint("LEFT", s, "LEFT", 0, 0)
@@ -590,9 +597,6 @@ function Addon.CreateSettingsPanel()
       caption:SetText(self.captionFor(opts.get()))
       if opts.after then opts.after() end
       if window.refreshPreview then window.refreshPreview() end
-    end)
-    s:SetScript("OnMouseWheel", function(self, delta)
-      self:SetValue(self:GetValue() + delta * opts.step)
     end)
     row.control = s
     s.settingsRow = row
