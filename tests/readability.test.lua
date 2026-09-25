@@ -58,13 +58,13 @@ for _, client in ipairs({'retail', 'classic', 'sod'}) do
       WordHunterWoWDB.settings.opacity = opacity
       Addon.SetBackgroundStyle(theme)
       assert(window.backdrop.edgeFile == Addon.BACKGROUNDS[theme].edgeFile, 'theme border was replaced')
-      assert(window.background[4] == opacity, 'frame opacity preference was discarded')
       local surface = window.whwReadingBackground
-      -- The reading surface now takes the opacity value, so the effective
-      -- opacity shown to the player is opacity * opacity (twice compounded from
-      -- backdrop and surface). For windows with alphaOverride=1, the surface
-      -- always stays at 1.
+      -- The reading surface is the only fill and carries the slider's value;
+      -- the backdrop's own centre under it stays empty. Both at the slider's
+      -- value stacked into more than the slider said: 50% drew a 75% panel.
       assert(surface.color[4] == opacity, 'reading surface opacity does not follow the slider')
+      assert(window.background[4] == 0, 'the backdrop centre under the surface must stay empty, got '
+        .. tostring(window.background[4]))
       assert(surface.layer == 'BACKGROUND' and surface.sublevel == 1, 'surface covers text or sits under backdrop')
       assert(Addon.confirmDialog.whwReadingBackground.color[1] == surface.color[1], 'confirmation theme did not refresh')
       local bg = surface.color

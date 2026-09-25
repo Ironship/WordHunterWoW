@@ -46,7 +46,7 @@ LABELS.tabAbout = "About"
 LABELS.resetTab = "Reset this tab"
 LABELS.previewTitle = "Preview"
 LABELS.previewEnglishOff = "The English opens in its own window while the integrated quest window is off."
-LABELS.backgroundNote = "Choose a frame style; the reading surface opacity follows the slider below."
+LABELS.backgroundNote = "Choose a frame style. Frame opacity sets how much of the game shows through behind the text."
 LABELS.languageNote = "Required — words are stored separately per language. English US/GB both export as 'en'."
 LABELS.resetLayoutButton = "Reset window positions"
 LABELS.resetLayoutNote = "Puts every window back where it started, this one included. The same as /whw reset."
@@ -69,7 +69,7 @@ LABELS.aboutCommands = "/whw — open or close the quest panel\n"
   .. "/whw reset — put every window back\n"
   .. "/whw diag — diagnostics in chat"
 LABELS.aboutDiagnostics = "Print diagnostics to chat"
-LABELS.recallBadge = "1–5"
+LABELS.recallBadge = "A click on %s asks for a 1–5 rating first."
 
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 local WINDOW_W, WINDOW_H = 860, 580
@@ -739,6 +739,10 @@ function Addon.CreateSettingsPanel()
       "UIPanelScrollFrameTemplate")
     tab.content = CreateFrame("Frame", "WordHunterWoWSettings" .. suffix .. "Content", tab.scroll)
     tab.scroll:SetScrollChild(tab.content)
+    -- Without this the template keeps a disabled bar -- an arrow and a grey
+    -- thumb -- beside a tab that has nothing to scroll. Read by the template's
+    -- own range handler, which hides the bar while the content fits.
+    tab.scroll.scrollBarHideable = true
     tab.scroll:Hide()
     local button = CreateFrame("Button", "WordHunterWoWSettings" .. suffix .. "Tab", window)
     button.text = button:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -986,24 +990,21 @@ function Addon.CreateSettingsPanel()
   if preview.SetClipsChildren then preview:SetClipsChildren(true) end
   Addon.ApplyBackground(preview)
 
-  -- Transparency backdrop: a two-grey checkerboard to show the opacity
-  -- slider's effect. Placed at BACKGROUND sublevel 0, below the reading surface
-  -- (sublevel 1) so it shows through when the surface's alpha is less than 1.
+  -- What is behind the panel in the game, stood in for by a checkerboard: at
+  -- BACKGROUND sublevel 0, under the reading surface (sublevel 1), so it shows
+  -- through exactly as far as the opacity slider lets the game show through.
+  -- Tiled from a 64-pixel texture (tools/generate_checkerboard.py); the wrap
+  -- modes are what let the tile flags repeat it rather than stretch it.
+  local CHECKER_TILE = 64
   local checker = preview:CreateTexture(nil, "BACKGROUND", nil, 0)
   window.previewChecker = checker
-  local function setChecker()
-    -- Load the checkerboard texture (64x64 pixels with 8x8 squares) and tile it.
-    checker:SetTexture("Interface\\AddOns\\WordHunterWoW\\Textures\\checker")
-    if checker.SetHorizTile and checker.SetVertTile then
-      checker:SetHorizTile(true)
-      checker:SetVertTile(true)
-    else
-      -- Fallback: if SetHorizTile is not available, use texcoords to tile manually.
-      -- Scale the texture to repeat every 64 pixels (one tile size).
-      checker:SetTexCoord(0, 1, 0, 1)
-    end
+  checker:SetTexture("Interface\\AddOns\\WordHunterWoW\\Textures\\checker", "REPEAT", "REPEAT")
+  checker:SetAllPoints(preview)
+  local tileFlags = checker.SetHorizTile and checker.SetVertTile and true or false
+  if tileFlags then
+    checker:SetHorizTile(true)
+    checker:SetVertTile(true)
   end
-  setChecker()
   local previewTitle = preview:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   window.previewTitle = previewTitle
   local words = {}
@@ -1038,7 +1039,8 @@ function Addon.CreateSettingsPanel()
     words[index] = word
   end
   local badge = preview:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  badge:SetText(LABELS.recallBadge)
+  badge:SetJustifyH("LEFT")
+  badge:SetWordWrap(true)
   window.previewBadge = badge
   local progress = preview:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   progress:SetJustifyH("LEFT")
@@ -1108,14 +1110,19 @@ function Addon.CreateSettingsPanel()
     end
     y = y - rowH - 6 * scale
 
-    -- The rating question's cue. Positioned on its own line below the words
-    -- rather than overlapping the next line.
+    -- The recall check's cue: a line under the words saying what a click on
+    -- the learning word does now. The panel itself shows nothing until the
+    -- click, and a bare "1–5" pinned to the word -- the first version -- sat
+    -- across the line below it and explained nothing.
     Addon.ApplyFontRole(badge, "meta", scale)
     badge:ClearAllPoints()
     if learningWord and Addon.GetRecallCheck and Addon.GetRecallCheck() then
+      badge:SetText(Addon.ColorHex("learning") .. string.format(LABELS.recallBadge,
+        tostring(learningWord.text:GetText() or "")) .. "|r")
       badge:SetPoint("TOPLEFT", preview, "TOPLEFT", PREVIEW_PAD, y)
+      badge:SetWidth(inner)
       badge:Show()
-      y = y - lineHeight("meta", scale) - 2 * scale
+      y = y - math.max(badge:GetStringHeight() or 0, lineHeight("meta", scale)) - 4 * scale
     else
       badge:Hide()
     end
@@ -1159,17 +1166,25 @@ function Addon.CreateSettingsPanel()
       enText:Hide()
       enOff:Show()
     end
+    -- Down past whichever of the two is showing, so the height below counts it.
+    local last = enText:IsShown() and enText or enOff
+    y = y - math.max(last:GetStringHeight() or 0, lineHeight("meta", scale))
 
-    -- The mock's height follows its content, clamped to the pane. The content
-    -- extends from PREVIEW_PAD at the top to y at the bottom; the margin at
-    -- the bottom adds PREVIEW_PAD more. The layout function uses this to
-    -- constrain the preview frame.
-    local contentHeight = PREVIEW_PAD - y + PREVIEW_PAD
-    window.previewContentHeight = contentHeight
-
-    -- Position and size the checkerboard background to fill the preview.
-    checker:ClearAllPoints()
-    checker:SetAllPoints(preview)
+    -- The mock is as tall as what is on it, not as tall as the pane: a third of
+    -- a panel left empty under the English was most of what made the preview
+    -- look unfinished. Set here, where the content has just been measured; the
+    -- window's refresh lays the pane out first, so its height is known.
+    local height = -y + PREVIEW_PAD
+    local room = (tonumber(pane:GetHeight()) or 0) - (lineHeight("label", pageScale()) + 4 + 2 * MOCK_INSET)
+    if room > 0 then height = math.min(height, room) end
+    height = math.max(50, height)
+    window.previewContentHeight = height
+    preview:SetSize(MOCK_W, height)
+    if not tileFlags then
+      -- Clients without the tile flags repeat the texture through texture
+      -- coordinates past 1, which the REPEAT wrap mode allows.
+      checker:SetTexCoord(0, MOCK_W / CHECKER_TILE, 0, height / CHECKER_TILE)
+    end
   end
 
   -- --- layout, tabs and refresh --------------------------------------------------
@@ -1202,14 +1217,8 @@ function Addon.CreateSettingsPanel()
     previewCaption:SetPoint("TOPLEFT", pane, "TOPLEFT", 4, 0)
     preview:ClearAllPoints()
     preview:SetPoint("TOPLEFT", pane, "TOPLEFT", MOCK_INSET, -(lineHeight("label", scale) + 4 + MOCK_INSET))
-    -- The mock's height follows its content, clamped to the pane's height. If
-    -- no content height was calculated yet (first layout before refreshPreview),
-    -- use the pane's height as a fallback so the mock does not disappear.
-    local paneHeight = tonumber(pane:GetHeight()) or 240
-    local contentHeight = tonumber(window.previewContentHeight) or paneHeight
-    local maxPreviewHeight = math.max(50, paneHeight - (lineHeight("label", scale) + 4 + 2 * MOCK_INSET))
-    local previewHeight = math.min(contentHeight, maxPreviewHeight)
-    preview:SetSize(MOCK_W, previewHeight)
+    -- Only the width here: refreshPreview sets the height, from the content.
+    preview:SetWidth(MOCK_W)
     area:ClearAllPoints()
     area:SetPoint("TOPLEFT", window, "TOPLEFT", PREVIEW_W + 2 * MARGIN, -top)
     area:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -MARGIN, MARGIN)
