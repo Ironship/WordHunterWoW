@@ -43,10 +43,28 @@ cvars.textLocale, client = "ruRU", "frFR"
 target = fresh()
 assert(target == "frFR", "an unsupported text language falls back to the client, got " .. tostring(target))
 
--- A language the player chose is kept whatever the client says.
+local function stored(target)
+  WordHunterWoWDB = { settings = { targetLocale = target } }
+  Addon.initializeDatabase()
+  return Addon.GetTargetLocale()
+end
+
+-- The Forever profile: English stored by the old default over German text. It
+-- can never match a word, so it is corrected to the text language.
 cvars.textLocale, client = "deDE", "enUS"
-WordHunterWoWDB = { settings = { targetLocale = "esES" } }
-Addon.initializeDatabase()
-assert(Addon.GetTargetLocale() == "esES", "a stored choice must survive, got " .. tostring(Addon.GetTargetLocale()))
+assert(stored("enUS") == "deDE", "English stored over German text has to become German, got " .. tostring(Addon.GetTargetLocale()))
+
+-- The same language in another variant is the player's to keep.
+cvars.textLocale, client = "esES", "esES"
+assert(stored("esMX") == "esMX", "esMX over esES text is the same language and must stay")
+cvars.textLocale = "enGB"
+assert(stored("enUS") == "enUS", "enUS over enGB text is the same language and must stay")
+
+-- Without a named text language nothing stored is second-guessed: GetLocale()
+-- is the very answer that was wrong.
+cvars.textLocale, client = nil, "enUS"
+assert(stored("frFR") == "frFR", "with no textLocale a stored language must survive, got " .. tostring(Addon.GetTargetLocale()))
+cvars.textLocale = "ruRU"
+assert(stored("frFR") == "frFR", "an unsupported text language corrects nothing")
 
 print("target-locale: a fresh profile learns the language the quest text is in")
