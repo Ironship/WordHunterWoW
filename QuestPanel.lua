@@ -67,6 +67,32 @@ local function fitToPane(scroll, width)
   return math.min(width, pane)
 end
 
+-- How one word is marked: its colour and its underline, from its status and
+-- the player's marking choice. `status` is nil for a word nothing knows, which
+-- is drawn plain. Shared with the settings window's preview, so the picture of
+-- the panel there cannot drift from the panel itself.
+function Addon.StyleWordButton(button, status, marking, underlineHeight)
+  button.text:SetTextColor(unpack(COLORS.text))
+  if not status then
+    button.underline:Hide()
+    return
+  end
+  local color = COLORS[status] or COLORS.new
+  if marking ~= "underline" then
+    button.text:SetTextColor(color[1], color[2], color[3])
+  end
+  if marking ~= "color" then
+    -- Opaque, and thick enough to survive the player's text size. Drawn
+    -- faint and one pixel high, the mark was there without being legible,
+    -- which is the worst of both.
+    button.underline:SetHeight(underlineHeight)
+    button.underline:SetColorTexture(color[1], color[2], color[3], 1)
+    button.underline:Show()
+  else
+    button.underline:Hide()
+  end
+end
+
 local function tokenFont(fs, scale)
   -- GameFontHighlight for the family and the white; the body role for the
   -- size. They are the same number here -- body is anchored to this very
@@ -79,6 +105,8 @@ local function tokenFont(fs, scale)
   fs:SetShadowColor(0, 0, 0, 0.9)
   fs:SetShadowOffset(1, -1)
 end
+-- The settings preview draws its sample words with this too.
+Addon.TokenFont = tokenFont
 
 -- The panel's own furniture -- the title, the progress line, the legend under
 -- the text and the buttons beside it -- measured at 100%. Every one of these is
@@ -662,24 +690,8 @@ local function refreshPanel()
         local status = entry and Addon.EffectiveStatus(entry) or "new"
         if progress[status] ~= nil then progress[status] = progress[status] + 1 end
       end
-      button.text:SetTextColor(unpack(COLORS.text))
-      if entry then
-        local color = COLORS[entry.status] or COLORS.new
-        if marking ~= "underline" then
-          button.text:SetTextColor(color[1], color[2], color[3])
-        end
-        if marking ~= "color" then
-          -- Opaque, and thick enough to survive the player's text size. Drawn
-          -- faint and one pixel high, the mark was there without being legible,
-          -- which is the worst of both.
-          button.underline:SetHeight(underlineHeight)
-          button.underline:SetColorTexture(color[1], color[2], color[3], 1)
-          button.underline:Show()
-        else
-          button.underline:Hide()
-        end
-      else
-        button.underline:Hide()
+      Addon.StyleWordButton(button, entry and (entry.status or "new") or nil, marking, underlineHeight)
+      if not entry then
         -- Nothing knows this word: no dictionary entry and the player has not
         -- saved it. That is the 5% a new patch brings, and the only vocabulary
         -- the project cannot already gloss, so it is worth collecting.
