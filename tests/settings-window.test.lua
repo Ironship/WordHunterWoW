@@ -377,6 +377,12 @@ assert(Addon.panel:GetFrameStrata() == "FULLSCREEN_DIALOG" and Addon.editor:GetF
 assert(window:GetFrameLevel() > questLevel and window:GetFrameLevel() > editorLevel,
   ("the window (%d) opens behind the quest panel (%d) or the editor (%d)"):format(
     window:GetFrameLevel(), questLevel, editorLevel))
+-- The menu's strata (TOOLTIP) is strictly above the window's (FULLSCREEN_DIALOG),
+-- so the menu stays visible even when the window raises itself on a click.
+-- Within the same strata, the frame level must also be higher.
+local menuStrata, windowStrata = Addon.settingsMenu:GetFrameStrata(), window:GetFrameStrata()
+assert(menuStrata == "TOOLTIP" and windowStrata == "FULLSCREEN_DIALOG",
+  "menu strata=" .. tostring(menuStrata) .. " should be TOOLTIP, window strata=" .. tostring(windowStrata) .. " should be FULLSCREEN_DIALOG")
 assert(Addon.settingsMenu:GetFrameLevel() > window:GetFrameLevel(), "the choice menu opens behind the window")
 assert(tContains(UISpecialFrames, "WordHunterWoWSettingsWindow"), "Escape does not close the window")
 -- The keyboard is never taken: a window with the keyboard can swallow keys in
