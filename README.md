@@ -118,4 +118,4 @@ Supported languages: English, German, French, Spanish, Italian, Portuguese (Braz
 
 Everything stays on your machine. No uploads.
 
-All rights reserved. Issues: [github.com/Ironship/WordHunterWoW](https://github.com/Ironship/WordHunterWoW)
+MIT licence, see [LICENSE](LICENSE). Issues: [github.com/Ironship/WordHunterWoW](https://github.com/Ironship/WordHunterWoW)

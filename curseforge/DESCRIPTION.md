@@ -32,4 +32,4 @@
 <a href="https://www.curseforge.com/wow/addons/voiceover-classic-german-part-3" target="_blank" rel="nofollow">3</a>
 <a href="https://www.curseforge.com/wow/addons/voiceover-classic-german-part-4" target="_blank" rel="nofollow">4</a></p>
 <p>Buttons stay in English. Quest text stays in the language you set in WoW.</p>
-<p>Source: <a href="https://github.com/Ironship/WordHunterWoW" target="_blank" rel="nofollow">github.com/Ironship/WordHunterWoW</a> · All rights reserved.</p>
+<p>Source: <a href="https://github.com/Ironship/WordHunterWoW" target="_blank" rel="nofollow">github.com/Ironship/WordHunterWoW</a> · MIT licence.</p>
