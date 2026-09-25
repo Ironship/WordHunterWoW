@@ -93,6 +93,83 @@ events:SetScript("OnEvent", function(_, event, loadedAddon)
   end
 end)
 
+-- Three numbers that together say where a word went: what the client handed
+-- over at load, what the table holds now, and what the addon can reach
+-- through the locale it is actually using. A word that is on disk, absent at
+-- load and absent now was never given to the addon; one present at load and
+-- absent now was dropped in this session; one present in the table but not
+-- through GetWordsTable is filed under a locale nobody is reading.
+--
+-- A function rather than a branch of the slash command, because the settings
+-- window has a button for it as well.
+function Addon.PrintDiagnostics()
+  local snap = Addon.loadSnapshot
+  local live, byLocale = 0, {}
+  if type(WordHunterWoWDB) == "table" and type(WordHunterWoWDB.wordsByLocale) == "table" then
+    for locale, words in pairs(WordHunterWoWDB.wordsByLocale) do
+      local n = 0
+      if type(words) == "table" then for _ in pairs(words) do n = n + 1 end end
+      byLocale[#byLocale + 1] = locale .. "=" .. n
+      live = live + n
+    end
+  end
+  local reachable = 0
+  for _ in pairs(Addon.GetWordsTable()) do reachable = reachable + 1 end
+  print("|cff59aefaWordHunterWoW diag:|r")
+  print(string.format("  at load:    %s, %d words%s",
+    snap and snap.dbType or "(never fired)",
+    snap and snap.words or 0,
+    snap and snap.version and (", db v" .. tostring(snap.version)) or ""))
+  print(string.format("  now:        %d words  [%s]", live,
+    table.concat(byLocale, " ")))
+  print(string.format("  reachable:  %d  via locale %s",
+    reachable, tostring(Addon.GetTargetLocale())))
+  print(string.format("  game:       %s", tostring(Addon.Compat and Addon.Compat.GameFlavor())))
+  -- Where the flavour comes from, because on the Forever client it answered
+  -- "retail" with this file's own fix installed. The manifest reader is the
+  -- half that can fail quietly: a client with neither C_AddOns nor the global
+  -- returns nothing, and a name that is not the folder's returns nothing
+  -- either, and both look identical from outside.
+  local reader = (type(C_AddOns) == "table" and C_AddOns.GetAddOnMetadata and "C_AddOns")
+    or (type(GetAddOnMetadata) == "function" and "global") or "NONE"
+  local get = (type(C_AddOns) == "table" and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+  local iface, title
+  if type(get) == "function" then
+    local ok1, v1 = pcall(get, addonName, "Interface")
+    local ok2, v2 = pcall(get, addonName, "Title")
+    iface = ok1 and tostring(v1) or ("pcall failed: " .. tostring(v1))
+    title = ok2 and tostring(v2) or "?"
+  end
+  print(string.format("  manifest:   reader=%s  name=%s", reader, tostring(addonName)))
+  print(string.format("              Interface=%s  Title=%s", tostring(iface), tostring(title)))
+  local version, _, _, build = GetBuildInfo and GetBuildInfo()
+  print(string.format("              GetBuildInfo=%s (%s)  PROJECT_ID=%s",
+    tostring(version), tostring(build), tostring(WOW_PROJECT_ID)))
+  -- What the client answers for the player's own name right now, because on
+  -- the Forever client the name got past both harvest guards and nobody knows
+  -- what UnitName gave them. A secret value is described, never printed or
+  -- compared: touching one is what the check is there to avoid.
+  local raw, rawType, secret, shown = nil, "no UnitName", "n/a", "-"
+  if type(UnitName) == "function" then
+    local ok, value = pcall(UnitName, "player")
+    if not ok then
+      rawType = "error: " .. tostring(value)
+    else
+      raw = value
+      rawType = type(raw)
+      if type(issecretvalue) ~= "function" then
+        secret = "no issecretvalue"
+      else
+        secret = Addon.IsSecretValue and Addon.IsSecretValue(raw) and "yes" or "no"
+      end
+      if secret ~= "yes" and rawType == "string" then shown = "\"" .. raw .. "\"" end
+    end
+  end
+  local cached = Addon.CachedPlayerName and Addon.CachedPlayerName()
+  print(string.format("  name:       UnitName type=%s secret=%s value=%s  cached=%s",
+    rawType, secret, shown, cached and ("\"" .. cached .. "\"") or "none"))
+end
+
 SLASH_WORDHUNTERWOW1 = "/whw"
 SlashCmdList.WORDHUNTERWOW = function(message)
   local raw = strtrim(tostring(message or ""))
@@ -153,78 +230,8 @@ SlashCmdList.WORDHUNTERWOW = function(message)
     Addon.toggleWordList()
   elseif command == "stats" then
     Addon.toggleStats()
-  -- Three numbers that together say where a word went: what the client handed
-  -- over at load, what the table holds now, and what the addon can reach
-  -- through the locale it is actually using. A word that is on disk, absent at
-  -- load and absent now was never given to the addon; one present at load and
-  -- absent now was dropped in this session; one present in the table but not
-  -- through GetWordsTable is filed under a locale nobody is reading.
   elseif command == "diag" then
-    local snap = Addon.loadSnapshot
-    local live, byLocale = 0, {}
-    if type(WordHunterWoWDB) == "table" and type(WordHunterWoWDB.wordsByLocale) == "table" then
-      for locale, words in pairs(WordHunterWoWDB.wordsByLocale) do
-        local n = 0
-        if type(words) == "table" then for _ in pairs(words) do n = n + 1 end end
-        byLocale[#byLocale + 1] = locale .. "=" .. n
-        live = live + n
-      end
-    end
-    local reachable = 0
-    for _ in pairs(Addon.GetWordsTable()) do reachable = reachable + 1 end
-    print("|cff59aefaWordHunterWoW diag:|r")
-    print(string.format("  at load:    %s, %d words%s",
-      snap and snap.dbType or "(never fired)",
-      snap and snap.words or 0,
-      snap and snap.version and (", db v" .. tostring(snap.version)) or ""))
-    print(string.format("  now:        %d words  [%s]", live,
-      table.concat(byLocale, " ")))
-    print(string.format("  reachable:  %d  via locale %s",
-      reachable, tostring(Addon.GetTargetLocale())))
-    print(string.format("  game:       %s", tostring(Addon.Compat and Addon.Compat.GameFlavor())))
-    -- Where the flavour comes from, because on the Forever client it answered
-    -- "retail" with this file's own fix installed. The manifest reader is the
-    -- half that can fail quietly: a client with neither C_AddOns nor the global
-    -- returns nothing, and a name that is not the folder's returns nothing
-    -- either, and both look identical from outside.
-    local reader = (type(C_AddOns) == "table" and C_AddOns.GetAddOnMetadata and "C_AddOns")
-      or (type(GetAddOnMetadata) == "function" and "global") or "NONE"
-    local get = (type(C_AddOns) == "table" and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
-    local iface, title
-    if type(get) == "function" then
-      local ok1, v1 = pcall(get, addonName, "Interface")
-      local ok2, v2 = pcall(get, addonName, "Title")
-      iface = ok1 and tostring(v1) or ("pcall failed: " .. tostring(v1))
-      title = ok2 and tostring(v2) or "?"
-    end
-    print(string.format("  manifest:   reader=%s  name=%s", reader, tostring(addonName)))
-    print(string.format("              Interface=%s  Title=%s", tostring(iface), tostring(title)))
-    local version, _, _, build = GetBuildInfo and GetBuildInfo()
-    print(string.format("              GetBuildInfo=%s (%s)  PROJECT_ID=%s",
-      tostring(version), tostring(build), tostring(WOW_PROJECT_ID)))
-    -- What the client answers for the player's own name right now, because on
-    -- the Forever client the name got past both harvest guards and nobody knows
-    -- what UnitName gave them. A secret value is described, never printed or
-    -- compared: touching one is what the check is there to avoid.
-    local raw, rawType, secret, shown = nil, "no UnitName", "n/a", "-"
-    if type(UnitName) == "function" then
-      local ok, value = pcall(UnitName, "player")
-      if not ok then
-        rawType = "error: " .. tostring(value)
-      else
-        raw = value
-        rawType = type(raw)
-        if type(issecretvalue) ~= "function" then
-          secret = "no issecretvalue"
-        else
-          secret = Addon.IsSecretValue and Addon.IsSecretValue(raw) and "yes" or "no"
-        end
-        if secret ~= "yes" and rawType == "string" then shown = "\"" .. raw .. "\"" end
-      end
-    end
-    local cached = Addon.CachedPlayerName and Addon.CachedPlayerName()
-    print(string.format("  name:       UnitName type=%s secret=%s value=%s  cached=%s",
-      rawType, secret, shown, cached and ("\"" .. cached .. "\"") or "none"))
+    Addon.PrintDiagnostics()
   -- Reading mode has a slash command as well as a settings box because it is
   -- the one setting here somebody turns on and off inside a single session:
   -- read a quest, take the quest, go back to playing. A trip through the
