@@ -23,6 +23,14 @@ QuestWordHunter keeps the quest on screen as clickable text. See a word you don'
 
 Buttons stay in English. Quest text stays in the language you set in WoW.
 
+## What changed in 1.20
+
+**The settings have a window of their own.** `/whw settings` opens it: seven
+tabs, a live preview of the quest panel that changes as you move a control, and
+a **Reset this tab** button on each tab. It opens in combat too, and
+`/whw settings learning` goes straight to a tab. Your settings are unchanged,
+and Options → AddOns has a button that opens the same window.
+
 ## What changed in 1.18
 
 **A Learning word can ask before it tells.** Switch on the recall check in
@@ -117,5 +125,7 @@ The recall check has the same shape:
 Supported languages: English, German, French, Spanish, Italian, Portuguese (Brazil). Retail 12.1 and Classic Era 1.15.9.
 
 Everything stays on your machine. No uploads.
+
+The settings window's layout is adapted from [DoesItDie](https://github.com/Ironship/DoesItDie) by Joe Greive (MIT).
 
 MIT licence, see [LICENSE](LICENSE). Issues: [github.com/Ironship/WordHunterWoW](https://github.com/Ironship/WordHunterWoW)
