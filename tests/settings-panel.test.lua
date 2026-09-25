@@ -1,53 +1,43 @@
 -- Run from the addon root:  lua tests/settings-panel.test.lua
 --
--- Nothing used to build the settings panel outside the game, so a control added
--- with a nil global, or a row anchored past the bottom of the scroll box, only
--- showed up once someone logged in. Every control here is placed at a hand-
--- written offset, so inserting one moves every offset below it -- which is
--- exactly the kind of edit that needs a test rather than a careful reading.
+-- The settings window's controls, built outside the game. A control added with
+-- a nil global, or a row that ends past the bottom of its tab's scroll box,
+-- only showed up once someone logged in.
+--
+-- Rewritten for 1.20, when the settings moved out of the page in Blizzard's
+-- options canvas and into the addon's own window. It pins the same behaviour it
+-- did for the page: every word marking mode is offered and the current one is
+-- marked, the quest log and controller switches come up in the right position
+-- with their labels, every size slider carries its unit and follows a drag,
+-- the headings and notes are drawn, refresh catches up with a change made
+-- elsewhere, and nothing sits past the end of the box it scrolls in. What
+-- changed is how the choice is read: the page used Blizzard's dropdown, whose
+-- API this file used to record; the window opens a menu of its own, which is
+-- opened and read here instead.
 
 local node = dofile('tests/wowstub.lua')
 
--- The dropdown API, recorded rather than drawn: the test needs to know which
--- entries a menu offers and which one it ticks.
-local menus = {}
-UIDropDownMenu_SetWidth = function() end
-UIDropDownMenu_SetText = function(frame, text) frame.shownText = text end
-UIDropDownMenu_CreateInfo = function() return {} end
-UIDropDownMenu_AddButton = function(info) menus[#menus].entries[#menus[#menus].entries + 1] = info end
-UIDropDownMenu_Initialize = function(frame, initializer)
-  menus[#menus + 1] = { frame = frame, entries = {} }
-  frame.menu = menus[#menus]
-  initializer(frame, 1)
-end
-
--- Frames remember where they were put and who owns them, so the layout can be
--- checked. The stub deliberately does not, because almost nothing else cares.
+-- Every string drawn, so the headings and notes can be looked for, and the
+-- tick modelled on every frame.
 local placed = {}
 local plainCreateFrame = CreateFrame
-local function track(object, parent)
-  object.parent = parent
+local function track(object)
   -- The tick is modelled for the same reason the stub models shown and sized:
   -- a field nothing has set answers with another frame, which is truthy, so an
   -- unmodelled GetChecked reports every box ticked -- and a switch that is meant
   -- to come up off would pass this file whatever the addon actually did.
   function object:SetChecked(value) self.checked = not not value end
   function object:GetChecked() return self.checked and true or false end
-  function object:SetPoint(_, a, b)
-    -- SetPoint("TOPLEFT", x, y) and SetPoint("TOPLEFT", frame, "TOPLEFT", x, y)
-    if type(a) == "number" then self.x, self.y = a, b end
-    return self
-  end
   local created = object.CreateFontString
   function object:CreateFontString(...)
     local fs = type(created) == "function" and created(self, ...) or node()
-    return track(fs, self)
+    return track(fs)
   end
   placed[#placed + 1] = object
   return object
 end
 CreateFrame = function(kind, name, parent, template)
-  return track(plainCreateFrame(kind, name, parent, template), parent)
+  return track(plainCreateFrame(kind, name, parent, template))
 end
 
 WordHunterWoW_Addon = {}
@@ -56,10 +46,9 @@ dofile('Compat.lua')
 dofile('Gamepad.lua')
 dofile('UICommon.lua')
 dofile('Harvest.lua')
--- Loaded in the order the .toc loads it, and before Settings, because the panel
--- is only a set of controls over other files' settings: the quest log switch
--- and its wording both live with the behaviour they govern, and without this
--- the checkbox would be built against a nil getter.
+-- Loaded in the order the .toc loads it, and before Settings, because the
+-- window is only a set of controls over other files' settings: the quest log
+-- switch and its wording both live with the behaviour they govern.
 dofile('QuestPanel.lua')
 dofile('Settings.lua')
 local Addon = WordHunterWoW_Addon
@@ -69,45 +58,68 @@ WordHunterWoWDB = { settings = { targetLocale = 'deDE', frames = {} }, wordsByLo
 WordHunterWoWCorpus = { version = 1, byLocale = {} }
 Addon.initializeDatabase()
 
-local panel = Addon.CreateSettingsPanel()
-assert(panel, 'the settings panel did not build')
+local window = Addon.CreateSettingsPanel()
+assert(window, 'the settings window did not build')
+assert(rawget(_G, 'WordHunterWoWSettingsWindow') == window, 'the window is not reachable by its name')
 
-local box = _G.WordHunterWoWSettingsContent
-local marking = _G.WordHunterWoWWordMarkingDropdown
--- rawget for the menu: it is a field the initializer above hangs on the frame,
--- and a stub frame manufactures a child for any field it has not got. Read
--- plainly, a dropdown that was built but never initialised answers with a frame,
--- the assertion passes, and the loop below walks a table that never ends.
-assert(marking and rawget(marking, 'menu'), 'the word marking dropdown was never initialised')
+-- The choice for word marking, opened the way a click opens it.
+local marking = rawget(_G, 'WordHunterWoWWordMarkingDropdown')
+assert(marking, 'there is no word marking choice')
+local shown = rawget(_G, 'WordHunterWoWWordMarkingDropdownText')
+assert(shown, 'the choice has no text of its own')
+local function openMenu()
+  marking:GetScript('OnClick')(marking)
+  local menu = Addon.settingsMenu
+  assert(menu and menu:IsShown(), 'clicking the choice did not open its menu')
+  -- rawget: a field the menu has not been given would be manufactured, and a
+  -- loop over a manufactured table never ends.
+  local entries = rawget(menu, 'entries')
+  assert(type(entries) == 'table', 'the menu kept no list of what it offers')
+  local offered = {}
+  for index, entry in ipairs(entries) do
+    offered[entry.value] = { entry = entry, button = menu.buttons[index] }
+  end
+  return menu, entries, offered
+end
 
 -- Every mode the setting accepts has to be reachable from the menu, or a player
 -- can end up with one they cannot get back out of.
-local offered = {}
-for _, info in ipairs(marking.menu.entries) do offered[info.value] = info end
+local menu, entries, offered = openMenu()
 for _, key in ipairs(Addon.WORD_MARKING_ORDER) do
   assert(offered[key], 'no menu entry for marking mode ' .. key)
-  assert(offered[key].text == Addon.WORD_MARKINGS[key].name, key .. ': wrong label')
+  assert(offered[key].entry.label == Addon.WORD_MARKINGS[key].name, key .. ': wrong label')
 end
-assert(#marking.menu.entries == #Addon.WORD_MARKING_ORDER, 'menu offers a mode the setting does not accept')
-assert(offered[Addon.GetWordMarking()].checked, 'the current mode is not ticked')
-assert(marking.shownText == Addon.WORD_MARKINGS[Addon.GetWordMarking()].name, 'dropdown shows the wrong mode')
+assert(#entries == #Addon.WORD_MARKING_ORDER, 'menu offers a mode the setting does not accept')
+assert(offered[Addon.GetWordMarking()].button.current == true, 'the current mode is not marked')
+for key, item in pairs(offered) do
+  assert(item.button.current == (key == Addon.GetWordMarking()), key .. ' is marked but is not the current mode')
+end
+assert(shown:GetText() == Addon.WORD_MARKINGS[Addon.GetWordMarking()].name, 'the choice shows the wrong mode')
 
-offered.color.func(offered.color, 'color')
+offered.color.button:GetScript('OnClick')(offered.color.button)
 assert(Addon.GetWordMarking() == 'color', 'choosing a mode did not store it')
-assert(marking.shownText == Addon.WORD_MARKINGS.color.name, 'dropdown text did not follow the choice')
+assert(not menu:IsShown(), 'and the menu stays open after the choice')
+assert(shown:GetText() == Addon.WORD_MARKINGS.color.name, 'the choice text did not follow the choice')
 
--- Blizzard's own route into this panel calls refresh, not the setters, so the
--- controls have to be able to catch up with a value changed elsewhere.
+-- A second click on the choice closes the menu it opened.
+marking:GetScript('OnClick')(marking)
+marking:GetScript('OnClick')(marking)
+assert(not menu:IsShown(), 'a second click on the choice has to close its menu')
+
+-- A setting changed elsewhere -- a slash command, another window -- reaches the
+-- controls through refresh, not through the controls' own scripts.
 Addon.SetWordMarking('underline')
-panel.refresh()
-assert(marking.shownText == Addon.WORD_MARKINGS.underline.name, 'refresh did not resync the dropdown')
-local ticked
-for _, info in ipairs(marking.menu.entries) do if info.checked then ticked = info.value end end
-assert(ticked == 'underline', 'refresh left the tick on ' .. tostring(ticked))
+window.refresh()
+assert(shown:GetText() == Addon.WORD_MARKINGS.underline.name, 'refresh did not resync the choice')
+menu, entries, offered = openMenu()
+local marked
+for key, item in pairs(offered) do if item.button.current then marked = key end end
+assert(marked == 'underline', 'refresh left the mark on ' .. tostring(marked))
+menu:Hide()
 
 -- The quest log switch. It is the one control here that governs whether a
 -- window appears at all, so both positions have to be reachable and it has to
--- come up in the position a player who has never opened this panel is already
+-- come up in the position a player who has never opened this window is already
 -- in -- unticked, the panel staying out of the quest log's way.
 local questLogAuto = _G.WordHunterWoWQuestLogAutoCheck
 assert(questLogAuto:GetChecked() == false, 'the quest log switch must come up unticked')
@@ -117,12 +129,11 @@ questLogAuto:SetChecked(true)
 questLogAuto:GetScript('OnClick')(questLogAuto)
 assert(Addon.GetQuestLogAutoOpen() == true, 'ticking the switch did not store the setting')
 
--- Blizzard's own route into this panel calls refresh, not the setters.
 Addon.SetQuestLogAutoOpen(false)
-panel.refresh()
+window.refresh()
 assert(questLogAuto:GetChecked() == false, 'refresh did not resync the quest log switch')
 
--- The controller switch: on for a player who has never opened this panel. A
+-- The controller switch: on for a player who has never opened this window. A
 -- pad that is on in the game and ignored by the panel would be the surprise,
 -- so the switch exists to turn the panel's share off, not on.
 local pad = _G.WordHunterWoWGamepadCheck
@@ -133,22 +144,22 @@ pad:SetChecked(false)
 pad:GetScript('OnClick')(pad)
 assert(Addon.GetGamePadEnabled() == false, 'unticking the switch did not store the setting')
 Addon.SetGamePadEnabled(true)
-panel.refresh()
+window.refresh()
 assert(pad:GetChecked() == true, 'refresh did not resync the controller switch')
 
--- The size sliders, which are the reason this panel has headings at all. The
--- complaint was that the word editor came up visibly bigger than the quest
+-- The size sliders, which are the reason the Sizes tab has headings at all.
+-- The complaint was that the word editor came up visibly bigger than the quest
 -- panel with both sliders reading the same number -- and it does, because the
 -- two surfaces start from different Blizzard fonts and one grows its window
 -- while the other does not. No arrangement of the scaling makes equal numbers
--- look equal, so the panel has to stop offering two numbers that invite the
+-- look equal, so the window has to stop offering two numbers that invite the
 -- comparison: two headings, and a text size measured in points against a window
 -- size measured in per cent.
 for _, group in ipairs(Addon.SIZE_GROUPS) do
   for _, entry in ipairs(group.entries) do
     local suffix = entry.key:sub(1, 1):upper() .. entry.key:sub(2)
     local slider = _G['WordHunterWoW' .. suffix .. 'Slider']
-    assert(rawget(_G, 'WordHunterWoW' .. suffix .. 'Slider'), entry.key .. ' has no slider in the panel')
+    assert(rawget(_G, 'WordHunterWoW' .. suffix .. 'Slider'), entry.key .. ' has no slider in the window')
     local label = Addon.LABELS[entry.label]
     local caption = _G[slider:GetName() .. 'Text']
     assert(caption:GetText() == label .. ' (' .. Addon.FormatSizeValue(group.unit, 1.0) .. ')',
@@ -170,7 +181,7 @@ for _, group in ipairs(Addon.SIZE_GROUPS) do
   end
 end
 
--- The headings and the small print under them. They are what the panel says
+-- The headings and the small print under them. They are what the window says
 -- instead of the comment nobody reads, so their absence is the bug coming back.
 local drawn = {}
 for _, object in ipairs(placed) do
@@ -188,37 +199,40 @@ for _, group in ipairs(Addon.SIZE_GROUPS) do
   end
 end
 
--- Blizzard's own route in calls refresh, not the setters, and SetValue leaves
--- the figure alone when the slider is already at the value it is handed. So a
--- panel reopened after /whw reset showed the size it had been built with.
+-- A size changed elsewhere reaches the figure through refresh. SetValue leaves
+-- the figure alone when the slider is already at the value it is handed, so a
+-- window reopened after /whw reset showed the size it had been built with.
 Addon.SetEditorScale(1.2)
-panel.refresh()
+window.refresh()
 assert(_G.WordHunterWoWEditorScaleSliderText:GetText()
     == Addon.LABELS.editorScaleLabel .. ' (' .. Addon.FormatSizeValue('percent', 1.2) .. ')',
   'refresh left the editor size reading ' .. tostring(_G.WordHunterWoWEditorScaleSliderText:GetText()))
 
--- The scroll box is a fixed height and everything in it is at a fixed offset.
--- Inserting a control pushes the rest down; if the box is not grown to match,
--- the last one cannot be scrolled to.
--- rawget: an unset field on a stub frame manufactures another stub rather than
--- answering nil, so GetHeight() cannot be trusted for a control that never had
--- one set. Only a height the addon actually asked for counts.
-local boxHeight = rawget(box, 'h')
-local lowest, lowestName = 0, '?'
-for _, object in ipairs(placed) do
-  if object.parent == box and type(object.y) == 'number' then
-    local height = rawget(object, 'h')
-    local depth = -object.y + (type(height) == 'number' and height or 0)
-    if depth > lowest then
-      -- rawget: a font string has no GetName, and the stub would manufacture
-      -- one that answers with a table -- which Lua 5.1's %s then refuses.
-      local name = rawget(object, 'GetName') and object:GetName()
-      lowest, lowestName = depth, type(name) == 'string' and name or 'label'
+-- Each tab scrolls its own rows. A row that ends past the bottom of its tab's
+-- scroll box cannot be scrolled to -- and it is exactly what adding a row to a
+-- long tab without growing the box would do. Measured at the largest text size
+-- too, where the rows are deepest.
+local rowsSeen = 0
+for _, scale in ipairs({ 1.0, 2.0 }) do
+  Addon.SetTextScale(scale)
+  window.refresh()
+  for _, tab in ipairs(window.tabs) do
+    -- rawget: an unset field on a stub frame manufactures another stub rather
+    -- than answering nil, so only a height the addon actually asked for counts.
+    local boxHeight = rawget(tab.content, 'h')
+    assert(type(boxHeight) == 'number', tab.id .. ': the scroll box was never given a height')
+    local lowest = 0
+    for _, row in ipairs(tab.rows) do
+      assert(type(row.y) == 'number' and type(row.h) == 'number', tab.id .. ': a row was never placed')
+      lowest = math.max(lowest, -row.y + row.h)
+      rowsSeen = rowsSeen + 1
     end
+    assert(#tab.rows == 0 or lowest > 0, tab.id .. ': no row was placed in the scroll box')
+    assert(lowest <= boxHeight,
+      string.format('%s at %.1f: the last row reaches %.1f, past the %.1f-high scroll box',
+        tab.id, scale, lowest, boxHeight))
   end
 end
-assert(lowest > 0, 'no control was placed in the scroll box')
-assert(lowest <= boxHeight,
-  string.format('%s reaches %d, past the %d-high scroll box', lowestName, lowest, boxHeight))
+Addon.SetTextScale(1.0)
 
-print(string.format('settings-panel: %d controls, lowest reaches %d of %d', #placed, lowest, boxHeight))
+print(string.format('settings-panel: %d frames, %d rows over %d tabs at two sizes', #placed, rowsSeen / 2, #window.tabs))

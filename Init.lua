@@ -246,6 +246,14 @@ SlashCmdList.WORDHUNTERWOW = function(message)
     end
   elseif command == "settings" or command == "config" or command == "options" then
     if Addon.OpenSettings then Addon.OpenSettings() end
+  -- Straight to one tab: /whw settings learning, or any prefix that names only
+  -- one tab, the way /whw lang takes a prefix.
+  elseif command:match("^settings%s+") or command:match("^config%s+") or command:match("^options%s+") then
+    local arg = strtrim(command:match("^%S+%s+(.+)$") or "")
+    if not (Addon.OpenSettings and Addon.OpenSettings(arg)) then
+      print("|cff66ccffWordHunterWoW:|r /whw settings <"
+        .. table.concat(Addon.SettingsTabNames and Addon.SettingsTabNames() or {}, "|") .. ">")
+    end
   elseif command:match("^bg%s+") then
     local key = strlower(strtrim(command:match("^bg%s+(.+)$") or ""))
     if Addon.BACKGROUNDS[key] then

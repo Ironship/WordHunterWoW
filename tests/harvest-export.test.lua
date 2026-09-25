@@ -14,14 +14,6 @@
 
 local node = dofile('tests/wowstub.lua')
 
--- The dropdown API, recorded rather than drawn. The settings panel builds three
--- of them on the way to the export button.
-UIDropDownMenu_SetWidth = function() end
-UIDropDownMenu_SetText = function(frame, text) frame.shownText = text end
-UIDropDownMenu_CreateInfo = function() return {} end
-UIDropDownMenu_AddButton = function() end
-UIDropDownMenu_Initialize = function(frame, initializer) initializer(frame, 1) end
-
 dofile('Core.lua')
 dofile('Compat.lua')
 dofile('UICommon.lua')
