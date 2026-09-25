@@ -827,6 +827,7 @@ function Addon.SetQuestLogAutoOpen(value)
   if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
   if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
   WordHunterWoWDB.settings.questLogAutoOpen = not not value
+  if Addon.RefreshSettingsWindow then Addon.RefreshSettingsWindow() end
 end
 
 -- `requested` is the player having pressed the quest log's own button. It is

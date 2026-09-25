@@ -15,12 +15,6 @@
 
 local node = dofile("tests/wowstub.lua")
 
-UIDropDownMenu_SetWidth = function() end
-UIDropDownMenu_SetText = function(frame, text) frame.shownText = text end
-UIDropDownMenu_CreateInfo = function() return {} end
-UIDropDownMenu_AddButton = function() end
-UIDropDownMenu_Initialize = function(frame, initializer) initializer(frame, 1) end
-
 dofile("Core.lua")
 dofile("Compat.lua")
 dofile("Recall.lua")
@@ -117,7 +111,7 @@ assert(readyShown(25, 30), "twenty-five does")
 assert(not readyShown(25, 3), "but never before fourteen days, which is not settable")
 Addon.SetReadyAfter(5)
 
--- --- the sliders on the page ------------------------------------------------
+-- --- the sliders in the settings window --------------------------------------
 local panel = Addon.CreateSettingsPanel()
 panel.refresh()
 
@@ -166,5 +160,23 @@ assert(noteLine:GetText() == string.format(Addon.LABELS.difficultNote, 1, 5),
 dslider:GetScript("OnValueChanged")(dslider, 30)
 assert(noteLine:GetText() == string.format(Addon.LABELS.difficultNote, 0, 30),
   "at thirty it counts none, and says thirty: " .. tostring(noteLine:GetText()))
+
+-- With the rating question off, the two counts have nothing to feed, so their
+-- rows are dimmed -- and only dimmed. A player may set them before switching
+-- the question on, so a drag still has to store what it was dragged to.
+local readyRow = rawget(rawget(panel, "readySlider"), "settingsRow")
+local difficultRow = rawget(dslider, "settingsRow")
+assert(readyRow and difficultRow, "the sliders have no rows")
+Addon.SetRecallCheck(true)
+assert(readyRow.dimmed == false and difficultRow.dimmed == false, "with the question on, neither count is dimmed")
+Addon.SetRecallCheck(false)
+assert(readyRow.dimmed == true and difficultRow.dimmed == true, "with the question off, both counts are dimmed")
+dslider:GetScript("OnValueChanged")(dslider, 12)
+assert(Addon.GetDifficultMinRatings() == 12, "a dimmed slider still stores a drag: " .. Addon.GetDifficultMinRatings())
+local rslider = rawget(panel, "readySlider")
+rslider:GetScript("OnValueChanged")(rslider, 9)
+assert(Addon.GetReadyAfter() == 9, "and so does the other: " .. Addon.GetReadyAfter())
+Addon.SetRecallCheck(true)
+assert(readyRow.dimmed == false, "and switching the question back on lifts the dimming")
 
 print("recall-thresholds: ok")

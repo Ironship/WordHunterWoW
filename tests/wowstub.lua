@@ -186,9 +186,20 @@ local function node()
   -- The template argument was thrown away, so every string here started life
   -- with no font at all and a test could not tell a 16pt heading from a 10pt
   -- caption until something called SetFont on it.
-  function t:CreateFontString(_, _, template)
+  --
+  -- A name is registered as a global, which is what the client does with one.
+  -- The settings window builds its own slider and check box captions under the
+  -- names a Blizzard template used to give them (<name>Text, <name>Low,
+  -- <name>High), and without this the lookup by name would be answered by the
+  -- template-child rule below with a different, manufactured string -- so a
+  -- test reading the caption would read one nothing had written to.
+  function t:CreateFontString(name, _, template)
     local fs = node()
     if template then fs:SetFontObject(template) end
+    if type(name) == "string" then
+      function fs:GetName() return name end
+      rawset(_G, name, fs)
+    end
     return fs
   end
   function t:CreateTexture() return node() end
@@ -315,24 +326,19 @@ GameFontDisableSmall = fontObject(10, 0.5, 0.5, 0.5)
 GameFontHighlightSmall = fontObject(10, 1, 1, 1)
 ChatFontNormal = fontObject(14, 1, 1, 1)
 
--- The slash command table, and the dropdown calls Settings.lua makes.
+-- The slash command table.
 --
--- Without these two, Init.lua and Stats.lua could not be loaded here at all --
+-- Without it, Init.lua and Stats.lua could not be loaded here at all --
 -- Init.lua indexes SlashCmdList at file scope -- and so the event dispatcher
 -- and the whole /whw command tree were reached by no test. The one file that
 -- names Init.lua reads it off disk as text and greps it. That is string
 -- matching, not execution: a nil-global typo in the file that decides what
 -- happens on ADDON_LOADED and on every quest event would ship.
 --
--- Settings.lua's dropdown calls were being answered by the fabricating __index
--- for the same reason, which is why settings-panel.test.lua defines its own
--- five locally rather than relying on them.
+-- Blizzard's dropdown API used to be stubbed here too, for the settings page.
+-- The settings window builds its own menu since 1.20 and nothing calls it, so
+-- it is gone: a call to it now reads as the missing global it would be.
 SlashCmdList = {}
-UIDropDownMenu_Initialize = function() end
-UIDropDownMenu_SetWidth = function() end
-UIDropDownMenu_SetText = function() end
-UIDropDownMenu_AddButton = function() end
-UIDropDownMenu_CreateInfo = function() return {} end
 
 -- The quest windows. Whether they are open decides whether the panel opens.
 QuestFrame, QuestMapFrame, WorldMapFrame = node(), node(), node()

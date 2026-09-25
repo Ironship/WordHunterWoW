@@ -282,6 +282,15 @@ local function scaleGetter(key)
   end
 end
 
+-- The settings window, when it is open, redrawn after a setting changes from
+-- anywhere -- a slash command as much as its own controls -- so its controls
+-- and its preview never show a value that is no longer true. A closed window
+-- catches up when it is shown.
+function Addon.RefreshSettingsWindow()
+  local window = Addon.settingsPanel
+  if window and window.IsShown and window:IsShown() and window.refresh then window.refresh() end
+end
+
 local function scaleSetter(key, after)
   return function(value)
     value = tonumber(value) or 1.0
@@ -291,6 +300,7 @@ local function scaleSetter(key, after)
       WordHunterWoWDB.settings[key] = value
     end
     if after then after() end
+    Addon.RefreshSettingsWindow()
     return value
   end
 end
@@ -556,6 +566,7 @@ function Addon.SetWordMarking(value)
   if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
   WordHunterWoWDB.settings.wordMarking = value
   if Addon.refreshPanel and Addon.panel and Addon.panel:IsShown() then Addon.refreshPanel() end
+  Addon.RefreshSettingsWindow()
 end
 
 -- A one-pixel rule under twenty-four point letters is a smudge, and the quest
@@ -578,6 +589,7 @@ function Addon.SetIntegratedLayout(value)
   WordHunterWoWDB.settings.integratedLayout = not not value
   if Addon.ApplyIntegratedLayout then Addon.ApplyIntegratedLayout() end
   if Addon.OnIntegratedLayoutChanged then Addon.OnIntegratedLayoutChanged(Addon.GetIntegratedLayout()) end
+  Addon.RefreshSettingsWindow()
 end
 
 function Addon.SetOpacity(value)
@@ -890,13 +902,14 @@ function Addon.SetBackgroundStyle(key)
   if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
   WordHunterWoWDB.settings.background = key
   Addon.RefreshAllBackdrops()
+  Addon.RefreshSettingsWindow()
 end
 
 function Addon.RefreshAllBackdrops()
   -- pairs, not ipairs: most of these are created the first time they are opened,
   -- so the list has holes. ipairs stops at the first one, and the English panel
   -- sits behind three lazily-created windows -- it never got its backdrop.
-  for _, f in pairs({ Addon.panel, Addon.editor, Addon.listFrame, Addon.statsFrame, Addon.copyDialog, Addon.confirmDialog, Addon.enPanel, Addon.settingsPanel and Addon.settingsPanel.preview }) do
+  for _, f in pairs({ Addon.panel, Addon.editor, Addon.listFrame, Addon.statsFrame, Addon.copyDialog, Addon.confirmDialog, Addon.enPanel, Addon.settingsPanel, Addon.settingsPanel and Addon.settingsPanel.preview }) do
     if f and f.SetBackdrop then Addon.ApplyBackground(f) end
   end
 end
@@ -1457,12 +1470,14 @@ Addon.LAYOUT_DEFAULTS = {
     list = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -16, y = -36, w = 420, h = 520 },
     stats = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -448, y = -36, w = 340, h = 420 },
     editor = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -448, y = -448, w = 430, h = 400 },
+    settings = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0, w = 860, h = 580 },
   },
   questlog = {
     panel = { point = "RIGHT", relPoint = "RIGHT", x = -20, y = 40, w = 680, h = 500 },
     list = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -16, y = -36, w = 420, h = 500 },
     stats = { point = "BOTTOMRIGHT", relPoint = "BOTTOMRIGHT", x = -16, y = 90, w = 340, h = 420 },
     editor = { point = "CENTER", relPoint = "CENTER", x = 180, y = 50, w = 430, h = 400 },
+    settings = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0, w = 860, h = 580 },
   },
   -- Reading mode. Centred and much larger, because the point of it is the text.
   --
@@ -1479,6 +1494,9 @@ Addon.LAYOUT_DEFAULTS = {
     list = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -16, y = -36, w = 420, h = 520 },
     stats = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 16, y = -36, w = 340, h = 420 },
     editor = { point = "BOTTOMRIGHT", relPoint = "BOTTOMRIGHT", x = -16, y = 16, w = 430, h = 400 },
+    -- The settings window is the same in every context: it is opened on
+    -- purpose, and centred is where a window opened on purpose belongs.
+    settings = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0, w = 860, h = 580 },
   },
 }
 
@@ -1647,6 +1665,7 @@ function Addon.ResetLayout()
     { frame = Addon.listFrame, key = "list" },
     { frame = Addon.statsFrame, key = "stats" },
     { frame = Addon.enPanel, key = "enPanel" },
+    { frame = Addon.settingsPanel, key = "settings" },
   }) do
     if entry.frame then Addon.PlaceFrame(entry.frame, entry.key) end
   end

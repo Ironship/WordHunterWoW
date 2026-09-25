@@ -5,7 +5,7 @@
 --
 -- Two of the eleven could not be loaded here at all until now. Init.lua indexes
 -- SlashCmdList at file scope and the stub had no such table, and Settings.lua
--- calls UIDropDownMenu_SetWidth, which the fabricating __index used to answer
+-- called UIDropDownMenu_SetWidth, which the fabricating __index used to answer
 -- with a manufactured node. So the file that decides what happens on
 -- ADDON_LOADED and on every quest event, and the whole /whw command tree, were
 -- executed by nothing. The one test that names Init.lua opens it and greps the
@@ -88,6 +88,22 @@ for _, command in ipairs(commands) do
 end
 print = realPrint
 print("  every /whw command runs on a fresh profile without raising")
+-- /whw settings opened the addon's own window -- once in the list above, and
+-- nothing after it closes the window -- and a tab named after it opens there.
+local settingsWindow = Addon.settingsPanel
+assert(settingsWindow and settingsWindow:IsShown(), "/whw settings did not open the settings window")
+assert(pcall(run, "settings learn"), "/whw settings learn raised")
+assert(settingsWindow:IsShown() and settingsWindow.activeTab.id == "learning",
+  "/whw settings learn did not open the Learning tab")
+local usage = {}
+print = function(...) usage[#usage + 1] = table.concat({ ... }, " ") end
+local okTab = pcall(run, "settings nonsense")
+print = realPrint
+assert(okTab and usage[1] and usage[1]:find("/whw settings <appearance|", 1, true),
+  "/whw settings with no such tab has to say which tabs there are, said: " .. tostring(usage[1]))
+assert(pcall(run, "settings"), "/whw settings raised the second time")
+assert(not settingsWindow:IsShown(), "a second /whw settings closes the window")
+print("  /whw settings opens the window, and a tab by name")
 -- The recall commands say what they did, and the switch really moves.
 local recallOn
 for _, line in ipairs(said) do

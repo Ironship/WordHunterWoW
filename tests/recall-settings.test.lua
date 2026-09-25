@@ -1,17 +1,11 @@
 -- Run from the addon root:  lua tests/recall-settings.test.lua
 --
--- The settings page's side of the recall check: the switch, the count under
+-- The settings window's side of the recall check: the switch, the count under
 -- it, and the export button. Pressed, not read: the harvest export test found
 -- that a test which greps for a button's name passes for as long as the name
 -- is somewhere in the file, which is not the same as the button working.
 
 local node = dofile('tests/wowstub.lua')
-
-UIDropDownMenu_SetWidth = function() end
-UIDropDownMenu_SetText = function(frame, text) frame.shownText = text end
-UIDropDownMenu_CreateInfo = function() return {} end
-UIDropDownMenu_AddButton = function() end
-UIDropDownMenu_Initialize = function(frame, initializer) initializer(frame, 1) end
 
 dofile('Core.lua')
 dofile('Compat.lua')
@@ -97,12 +91,32 @@ assert(expected:find('Der Hund bellt. || Der Hund schläft.', 1, true), 'sentenc
 assert(math.abs(copy:GetScale() - 1.3) < 0.001, 'and the box is the size of the page it came from: ' .. tostring(copy:GetScale()))
 panel:SetScale(1)
 
--- The switch and the export sit at fixed offsets, so the layout test can see
--- them, and above the harvest block they pushed down.
+-- The order on the Learning tab: the switch first, then the two counts it
+-- governs, then the line they change, then the export of what that line
+-- counts. On the old single page this compared the switch against the harvest
+-- box as well; the harvest box is on the Collecting tab now, where comparing
+-- offsets across two scroll boxes would mean nothing, so that half checks the
+-- tab instead.
+local function rowOf(control)
+  local row = rawget(control, 'settingsRow')
+  assert(row, 'a control on the Learning tab has no row')
+  return row
+end
+local order = {
+  { 'switch', rowOf(check) },
+  { 'ready slider', rowOf(rawget(panel, 'readySlider')) },
+  { 'difficult slider', rowOf(rawget(panel, 'difficultSlider')) },
+  { 'difficult line', rowOf(note) },
+  { 'export', rowOf(button) },
+}
+for index, item in ipairs(order) do
+  assert(item[2].tab == 'learning', item[1] .. ' is on the ' .. tostring(item[2].tab) .. ' tab, not Learning')
+  if index > 1 then
+    local above = order[index - 1]
+    assert(above[2].y > item[2].y, ('%s at %.1f is not above %s at %.1f'):format(above[1], above[2].y, item[1], item[2].y))
+  end
+end
 local harvest = rawget(_G, 'WordHunterWoWHarvestCheck')
-local _, checkY = check:GetAnchor('TOPLEFT')
-local _, buttonY = button:GetAnchor('TOPLEFT')
-local _, harvestY = harvest:GetAnchor('TOPLEFT')
-assert(checkY > buttonY and buttonY > harvestY, ('switch %d, export %d, harvest %d: not in that order'):format(checkY, buttonY, harvestY))
+assert(harvest and rowOf(harvest).tab == 'collecting', 'the harvest switch belongs on the Collecting tab')
 
 print('recall-settings: ok')
