@@ -13,6 +13,7 @@ ignore:
   - art
   - curseforge
   - tests
+  - tools
   # This repository's own bookkeeping. Neither is addon code and the client
   # cannot load either, so they were 633 bytes of nothing in every download.
   - .gitignore

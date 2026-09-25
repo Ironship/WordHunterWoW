@@ -366,6 +366,56 @@ assert(not window.previewWash:IsShown(), "no dimmer with reading mode off")
 Addon.SetReadingMode(true)
 assert(window.previewWash:IsShown(), "reading mode dims the preview's pane")
 Addon.SetReadingMode(false)
+
+-- The mock ends under its last line, not at the bottom of the pane, and the
+-- rating cue sits under the words rather than on the line below them. Both at
+-- 100% and at twice the size, from the anchors the preview itself set. The
+-- first version counted the height to the top of the English and would have
+-- clipped it; the one before put the cue across "Stücke" in the game.
+-- The pane is anchored top and bottom in the game, about 480 high in the
+-- 580-high window; the stub's default of 240 is not a size it ever has.
+window.previewPane:SetHeight(480)
+-- The stub measures every string at 10, less than the mock's bottom margin, so
+-- a mock that stopped at the top of the English would still have looked tall
+-- enough. The English wraps to several lines in the game; so it does here.
+window.previewEnglish.GetStringHeight = function() return 60 end
+window.previewEnglishOff.GetStringHeight = function() return 45 end
+for _, size in ipairs({ 1.0, 2.0 }) do
+  Addon.SetTextScale(size)
+  Addon.SetEnPanelTextScale(size)
+  for _, integrated in ipairs({ true, false }) do
+    Addon.SetIntegratedLayout(integrated)
+    local last = integrated and window.previewEnglish or window.previewEnglishOff
+    local _, lastTop = last:GetAnchor("TOPLEFT")
+    local height = window.preview:GetHeight()
+    assert(-lastTop + last:GetStringHeight() <= height,
+      "the mock ends above its last line at " .. size .. ": " .. -lastTop .. " + " .. last:GetStringHeight()
+      .. " > " .. height)
+    -- At 200% the content can reach the pane's edge; at 100% it is well short.
+    if size == 1.0 then
+      assert(height < 300, "the mock still fills the pane (" .. height .. ")")
+    end
+    local _, badgeTop = window.previewBadge:GetAnchor("TOPLEFT")
+    assert(badgeTop, "the rating cue is not laid out under the words at " .. size)
+    for _, word in ipairs(words) do
+      if word:IsShown() then
+        local _, wordTop = word:GetAnchor("TOPLEFT")
+        assert(badgeTop <= wordTop - word:GetHeight(),
+          "the rating cue overlaps a word at " .. size .. ": cue at " .. badgeTop .. ", word bottom at "
+          .. (wordTop - word:GetHeight()))
+      end
+    end
+  end
+end
+Addon.SetTextScale(1.0)
+Addon.SetEnPanelTextScale(1.0)
+Addon.SetIntegratedLayout(true)
+
+-- A tab whose rows fit has no scroll bar: the template keeps a disabled one
+-- unless told the bar may hide.
+for _, tab in ipairs(window.tabs) do
+  assert(tab.scroll.scrollBarHideable == true, tab.id .. " keeps a scroll bar it has no use for")
+end
 print("  the preview follows the theme, the marking, both sizes, the layout and the language")
 
 -- ---------------------------------------------------------------------------

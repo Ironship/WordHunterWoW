@@ -875,7 +875,12 @@ function Addon.ApplyBackground(frame, alphaOverride)
   })
   local c = style.bgColor
   local alpha = alphaOverride or Addon.GetOpacity()
-  frame:SetBackdropColor(c[1], c[2], c[3], alpha)
+  -- The centre is drawn by the reading surface below, which covers exactly the
+  -- same inset rectangle. Were the backdrop's own centre left at the same alpha
+  -- underneath, the two would stack -- a 50% slider giving a 75% panel, with
+  -- the parchment bleeding through the dark -- so the centre is left empty and
+  -- the surface alone carries the opacity.
+  frame:SetBackdropColor(c[1], c[2], c[3], 0)
   if style.borderColor then
     local b = style.borderColor
     frame:SetBackdropBorderColor(b[1], b[2], b[3], alpha)
@@ -883,8 +888,8 @@ function Addon.ApplyBackground(frame, alphaOverride)
   -- Keep the skin and its opacity on the frame, but never let scenery or a
   -- bright texture compete with letters. BACKGROUND sublevel 1 is above the
   -- backdrop center and below text on both Retail and Classic.
-  -- The reading surface takes the same opacity as the backdrop, so the
-  -- effective opacity equals the slider for the player.
+  -- It takes the opacity the slider sets (or the frame's override), and is the
+  -- only fill, so what the player sees through the panel is what the slider says.
   if not frame.whwReadingBackground then
     frame.whwReadingBackground = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
   end

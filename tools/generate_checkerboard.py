@@ -1,82 +1,56 @@
 #!/usr/bin/env python3
-"""Generate a checkerboard transparency backdrop texture for the settings preview.
+"""Draw Textures/checker.tga: the two-grey checkerboard behind the settings preview.
 
-The output is a 64x64 pixel TGA file with alternating grey squares (0.35 and 0.50).
-Each square is 8x8 pixels, creating an 8x8 checkerboard pattern that tiles well
-in the WoW UI. The texture is 32-bit RGBA, uncompressed.
+    python tools/generate_checkerboard.py
 
-Usage: python3 generate_checkerboard.py
-Output: Textures/checker.tga
+The preview's mock panel follows the opacity slider, and without something
+patterned behind it a see-through panel looks exactly like a slightly darker
+opaque one. A checkerboard is the picture everybody reads as "transparent".
+
+64 x 64 pixels in 8-pixel squares, so it tiles seamlessly; an uncompressed
+32-bit TGA (image type 2, 8 alpha bits), the format the client loads. The file
+is read back and checked before the script says it is done: the first version
+of this script packed the header with a wrong struct format and wrote a file
+that claimed to be 16384 pixels wide with 0 bits per pixel.
 """
 
+import pathlib
 import struct
-import os
 
-# Checkerboard parameters
-SIZE = 64  # 64x64 pixels
-SQUARE_SIZE = 8  # 8x8 pixel squares
-GREY_DARK = (89, 89, 89)  # 0.35 grey (89/255 ≈ 0.349)
-GREY_LIGHT = (128, 128, 128)  # 0.50 grey (128/255 = 0.502)
-ALPHA = 255  # Fully opaque
+SIZE = 64
+SQUARE = 8
+DARK = (89, 89, 89)      # 0.35 grey
+LIGHT = (140, 140, 140)  # 0.55 grey
 
-def generate_checkerboard():
-    """Create a 64x64 checkerboard image with alternating greys."""
-    pixels = []
+OUT = pathlib.Path(__file__).resolve().parent.parent / "Textures" / "checker.tga"
+
+
+def pixels():
+    rows = []
     for y in range(SIZE):
         for x in range(SIZE):
-            # Determine which square this pixel belongs to
-            square_x = x // SQUARE_SIZE
-            square_y = y // SQUARE_SIZE
-            # Alternate based on checkerboard pattern
-            if (square_x + square_y) % 2 == 0:
-                r, g, b = GREY_DARK
-            else:
-                r, g, b = GREY_LIGHT
-            # BGRA format (TGA stores as BGRA)
-            pixels.append(bytes([b, g, r, ALPHA]))
-    return b''.join(pixels)
+            r, g, b = DARK if ((x // SQUARE) + (y // SQUARE)) % 2 == 0 else LIGHT
+            rows.append(bytes((b, g, r, 255)))  # TGA stores BGRA
+    return b"".join(rows)
 
-def write_tga(filename, image_data):
-    """Write a TGA file with the given image data.
 
-    Format: 32-bit BGRA, uncompressed, 64x64 pixels.
-    """
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
+def header():
+    # id length, colour map type, image type, colour map spec (5 bytes),
+    # x origin, y origin, width, height, bits per pixel, descriptor.
+    # Descriptor 0x28: 8 alpha bits, rows stored top to bottom.
+    return struct.pack("<BBB5sHHHHBB", 0, 0, 2, b"\0" * 5, 0, 0, SIZE, SIZE, 32, 0x28)
 
-    # TGA header (18 bytes)
-    # Byte 0: ID length (0)
-    # Byte 1: Color map type (0 = no color map)
-    # Byte 2: Image type (2 = uncompressed RGB/RGBA)
-    # Bytes 3-4: Color map origin (0)
-    # Bytes 5-6: Color map length (0)
-    # Byte 7: Color map entry size (0)
-    # Bytes 8-9: Image x origin (0)
-    # Bytes 10-11: Image y origin (0)
-    # Bytes 12-13: Image width (64)
-    # Bytes 14-15: Image height (64)
-    # Byte 16: Bits per pixel (32)
-    # Byte 17: Image descriptor (0x20 = top-left origin, no alpha)
 
-    header = struct.pack(
-        '<BBHHHBHHHHBB',
-        0,      # ID length
-        0,      # Color map type
-        2,      # Image type (uncompressed RGB/RGBA)
-        0, 0, 0,  # Color map origin, length, entry size
-        0, 0,   # Image x, y origin
-        SIZE, SIZE,  # Width, height
-        32,     # Bits per pixel
-        0       # Image descriptor
-    )
+def main():
+    data = header() + pixels()
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OUT.write_bytes(data)
+    back = OUT.read_bytes()
+    kind, width, height, bits = back[2], back[12] | back[13] << 8, back[14] | back[15] << 8, back[16]
+    assert (kind, width, height, bits, back[17] & 0x0F) == (2, SIZE, SIZE, 32, 8), (kind, width, height, bits)
+    assert len(back) == 18 + SIZE * SIZE * 4
+    print("wrote %s: %dx%d, %d bits, %d bytes" % (OUT, width, height, bits, len(back)))
 
-    with open(filename, 'wb') as f:
-        f.write(header)
-        f.write(image_data)
-        # TGA footer (optional, but helps with format recognition)
-        f.write(b'\x00' * 26 + b'TRUEVISION-XFILE.')
 
-if __name__ == '__main__':
-    output_path = os.path.join(os.path.dirname(__file__), '..', 'Textures', 'checker.tga')
-    image_data = generate_checkerboard()
-    write_tga(output_path, image_data)
-    print(f'Generated {output_path} ({len(image_data) + 18} bytes)')
+if __name__ == "__main__":
+    main()
