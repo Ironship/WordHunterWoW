@@ -45,7 +45,7 @@ events:SetScript("OnEvent", function(_, event, loadedAddon)
       Addon.hookQuestUi()
       if Addon.CreateSettingsPanel then Addon.CreateSettingsPanel() end
       local target = Addon.GetTargetLocale()
-      local client = GetLocale and GetLocale() or "enUS"
+      local client = Addon.TextLocale()
       if client ~= target then
         local name = Addon.SUPPORTED_LOCALES[target] or target
         print(string.format("|cff66ccffWordHunterWoW:|r " .. LABELS.german, name, name))
