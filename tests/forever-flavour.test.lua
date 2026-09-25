@@ -78,6 +78,19 @@ Compat.Refresh()
 assert(Compat.GameFlavor() == "retail",
   "a list manifest on Retail is still Retail, got " .. Compat.GameFlavor())
 
+-- The repository's own Mainline manifest names Forever too, so the CurseForge
+-- and GitHub builds load there: the client version still decides each game.
+local MAINLINE_LIST = io.open("WordHunterWoW_Mainline.toc"):read("*l"):match("^## Interface:%s*(.-)%s*$")
+assert(MAINLINE_LIST:find("16001", 1, true), "the Mainline manifest has to list Forever's 16001")
+manifest(MAINLINE_LIST)
+Compat.Refresh()
+assert(Compat.GameFlavor() == "retail", "the Mainline list on Retail must read as Retail")
+onForeverClient()
+manifest(MAINLINE_LIST)
+Compat.Refresh()
+assert(Compat.GameFlavor() == "forever", "the Mainline list on Forever must read as Forever")
+onRetailClient()
+
 -- Classic Era is 1.15.x: a 1.x version alone is not Forever.
 GetBuildInfo = function() return "1.15.9", "62222", "2026-09-01", 11509 end
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 2, 1
