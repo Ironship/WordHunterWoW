@@ -45,7 +45,7 @@ local function onRetailClient()
 end
 
 -- The manifest the Forever bundle actually ships: one file, every interface.
-local BUNDLE_LIST = "11509, 16001, 20506, 30405, 40402, 50504, 120100"
+local BUNDLE_LIST = "11509, 16001, 20506, 30405, 40402, 50504, 120100, 120105"
 
 local function manifest(interface)
   C_AddOns = { GetAddOnMetadata = function(name, field)
