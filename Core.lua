@@ -599,9 +599,19 @@ end
 -- its text in another one (the textLocale CVar), and the Forever beta with
 -- German text answered GetLocale() with enUS: a fresh profile there started out
 -- learning English over German quests, and no word on screen was coloured.
-function Addon.TextLocale()
-  local text = GetCVar and GetCVar("textLocale")
+-- The textLocale CVar alone, when the game names one this addon supports; nil
+-- otherwise. Kept apart from TextLocale because only a named text language is
+-- grounds for correcting a stored one -- GetLocale() is what was wrong.
+function Addon.NamedTextLocale()
+  local get = (C_CVar and C_CVar.GetCVar) or GetCVar
+  local text = get and get("textLocale")
   if type(text) == "string" and Addon.SUPPORTED_LOCALES[text] then return text end
+  return nil
+end
+
+function Addon.TextLocale()
+  local text = Addon.NamedTextLocale()
+  if text then return text end
   return GetLocale and GetLocale() or "enUS"
 end
 
@@ -1345,6 +1355,18 @@ function Addon.initializeDatabase()
     else
       WordHunterWoWDB.settings.targetLocale = "deDE"
     end
+  end
+  -- A stored language other than the one the quest text is in cannot work:
+  -- every word on screen is looked up in another language's dictionary and none
+  -- is found. The previous default wrote exactly that on the Forever beta
+  -- (enUS over German text), and a profile keeps what it was given, so it is
+  -- put right here rather than left for the player to find /whw lang. Only when
+  -- the game names its text language; enUS and enGB, or esES and esMX, count as
+  -- the same language and are left alone.
+  local named = Addon.NamedTextLocale()
+  local stored = WordHunterWoWDB.settings.targetLocale
+  if named and Addon.WH_LANGUAGE_MAP[named] ~= Addon.WH_LANGUAGE_MAP[stored] then
+    WordHunterWoWDB.settings.targetLocale = named
   end
   if (WordHunterWoWDB.version or 0) < 8 then
     local hasPartitioned = false
