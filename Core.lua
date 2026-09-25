@@ -594,10 +594,21 @@ function Addon.SetOpacity(value)
   end
 end
 
+-- The language the quest text is shown in, which is the language a player is
+-- here to learn. Usually that is the client's own locale, but the game can show
+-- its text in another one (the textLocale CVar), and the Forever beta with
+-- German text answered GetLocale() with enUS: a fresh profile there started out
+-- learning English over German quests, and no word on screen was coloured.
+function Addon.TextLocale()
+  local text = GetCVar and GetCVar("textLocale")
+  if type(text) == "string" and Addon.SUPPORTED_LOCALES[text] then return text end
+  return GetLocale and GetLocale() or "enUS"
+end
+
 function Addon.GetTargetLocale()
   local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.targetLocale
   if v and Addon.SUPPORTED_LOCALES[v] then return v end
-  local client = GetLocale and GetLocale() or "enUS"
+  local client = Addon.TextLocale()
   if Addon.SUPPORTED_LOCALES[client] then return client end
   -- German for a client this addon has no dictionary for, which is what
   -- initializeDatabase writes into the settings for the same case. The two used
@@ -1328,7 +1339,7 @@ function Addon.initializeDatabase()
     WordHunterWoWDB.settings.integratedLayout = true
   end
   if not Addon.SUPPORTED_LOCALES[WordHunterWoWDB.settings.targetLocale] then
-    local client = GetLocale and GetLocale() or "deDE"
+    local client = Addon.TextLocale()
     if Addon.SUPPORTED_LOCALES[client] then
       WordHunterWoWDB.settings.targetLocale = client
     else
