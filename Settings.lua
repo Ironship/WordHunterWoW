@@ -986,20 +986,21 @@ function Addon.CreateSettingsPanel()
   if preview.SetClipsChildren then preview:SetClipsChildren(true) end
   Addon.ApplyBackground(preview)
 
-  -- Transparency backdrop: a subtle two-grey checkerboard to show the opacity
+  -- Transparency backdrop: a two-grey checkerboard to show the opacity
   -- slider's effect. Placed at BACKGROUND sublevel 0, below the reading surface
   -- (sublevel 1) so it shows through when the surface's alpha is less than 1.
   local checker = preview:CreateTexture(nil, "BACKGROUND", nil, 0)
   window.previewChecker = checker
   local function setChecker()
-    -- The checkerboard is tiled at 24x24 pixels (the CHECK constant) with
-    -- a fallback to a solid light grey if SetHorizTile is not available.
+    -- Load the checkerboard texture (64x64 pixels with 8x8 squares) and tile it.
+    checker:SetTexture("Interface\\AddOns\\WordHunterWoW\\Textures\\checker")
     if checker.SetHorizTile and checker.SetVertTile then
-      checker:SetColorTexture(0.35, 0.35, 0.35, 1)
       checker:SetHorizTile(true)
       checker:SetVertTile(true)
     else
-      checker:SetColorTexture(0.40, 0.40, 0.40, 1)
+      -- Fallback: if SetHorizTile is not available, use texcoords to tile manually.
+      -- Scale the texture to repeat every 64 pixels (one tile size).
+      checker:SetTexCoord(0, 1, 0, 1)
     end
   end
   setChecker()

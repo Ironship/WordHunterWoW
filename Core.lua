@@ -912,7 +912,15 @@ function Addon.RefreshAllBackdrops()
   -- so the list has holes. ipairs stops at the first one, and the English panel
   -- sits behind three lazily-created windows -- it never got its backdrop.
   for _, f in pairs({ Addon.panel, Addon.editor, Addon.listFrame, Addon.statsFrame, Addon.copyDialog, Addon.confirmDialog, Addon.enPanel, Addon.settingsPanel, Addon.settingsPanel and Addon.settingsPanel.preview }) do
-    if f and f.SetBackdrop then Addon.ApplyBackground(f) end
+    if f and f.SetBackdrop then
+      -- Editor, copy dialog, and confirm dialog are work windows that should stay
+      -- opaque regardless of the opacity slider. Pass alphaOverride=1 to keep them at 100%.
+      if f == Addon.editor or f == Addon.copyDialog or f == Addon.confirmDialog then
+        Addon.ApplyBackground(f, 1)
+      else
+        Addon.ApplyBackground(f)
+      end
+    end
   end
 end
 
