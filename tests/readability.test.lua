@@ -67,19 +67,28 @@ for _, client in ipairs({'retail', 'classic', 'sod'}) do
         .. tostring(window.background[4]))
       assert(surface.layer == 'BACKGROUND' and surface.sublevel == 1, 'surface covers text or sits under backdrop')
       assert(Addon.confirmDialog.whwReadingBackground.color[1] == surface.color[1], 'confirmation theme did not refresh')
-      local bg = surface.color
+      -- Measured as drawn: the surface at its own alpha over a bright scene,
+      -- the worst case for these light colours. Reading only its r, g, b passed
+      -- a fully transparent surface with the same figure as an opaque one.
+      local bg = over(surface.color, {1, 1, 1})
       local selected = over(Addon.COLORS.enHighlightBackground, bg)
       local hover = over({0.30, 0.42, 0.55, 0.20}, bg)
+      -- The dialogs stay opaque at every slider value, so they are held to the
+      -- full measure at every one; the panel only at 100%, the default and the
+      -- value every profile from before 1.20 is reset to. Below that the player
+      -- has asked to see the game through the text.
+      local dialog = over(Addon.confirmDialog.whwReadingBackground.color, {1, 1, 1})
       -- The status four are in this list because "Text colour only" and
       -- "Underline and text colour" put them on the quest text itself. Offering
       -- that choice is only honest while every one of them stays legible on
       -- every theme, selected and hovered.
       for _, key in ipairs({'text', 'muted', 'caveat', 'enHighlight', 'enWordHighlight',
                             'new', 'learning', 'known', 'ignored'}) do
-        for _, background in ipairs({bg, selected, hover}) do
+        local backgrounds = opacity == 1 and {bg, selected, hover, dialog} or {dialog}
+        for _, background in ipairs(backgrounds) do
           local ratio = contrast(Addon.COLORS[key], background)
           minimum = math.min(minimum, ratio)
-          assert(ratio >= 4.5, theme .. '/' .. key .. ': contrast ' .. ratio)
+          assert(ratio >= 4.5, theme .. '/' .. key .. ' at ' .. opacity .. ' opacity: contrast ' .. ratio)
         end
       end
     end
@@ -138,4 +147,4 @@ for _, locale in ipairs({'deDE', 'frFR', 'esES', 'itIT', 'ptBR'}) do
   assert(Addon.GetEffectiveWord('test').translation == 'my meaning', 'theme overwrote user entry')
   assert(words.test.translation == 'meaning' and words.test.status == 'known', 'theme changed dictionary')
 end
-print(string.format('readability: 4 themes x 3 clients x 3 opacity levels; minimum text contrast %.2f:1', minimum))
+print(string.format('readability: 4 themes x 3 clients; panel at 100%%, dialogs at 3 opacity levels; minimum text contrast %.2f:1', minimum))
