@@ -468,6 +468,10 @@ function Addon.CreateSettingsPanel()
   -- load, out of combat, so letting presses through can be set here.
   if Addon.AttachGamePad and Addon.AttachGamePad(window) and Addon.SafePropagate then
     Addon.SafePropagate(window, true)
+    -- B hides the window with the flag left at "keep", and in a fight it cannot
+    -- be set back. Lockdown begins after this event, so every fight starts here.
+    window:RegisterEvent("PLAYER_REGEN_DISABLED")
+    window:SetScript("OnEvent", function(self) Addon.SafePropagate(self, true) end)
   end
 
   local rows, tabs, tabsById = {}, {}, {}
