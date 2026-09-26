@@ -28,8 +28,10 @@ Buttons stay in English. Quest text stays in the language you set in WoW.
 **The settings have a window of their own.** `/whw settings` opens it: seven
 tabs, a live preview of the quest panel that changes as you move a control, and
 a **Reset this tab** button on each tab. It opens in combat too, and
-`/whw settings learning` goes straight to a tab. Your settings are unchanged,
-and Options → AddOns has a button that opens the same window.
+`/whw settings learning` goes straight to a tab. Options → AddOns has a button
+that opens the same window. Your settings are unchanged, except one: **Frame
+opacity** now fades the background behind the text as well, so it starts at
+100% again.
 
 ## What changed in 1.18
 

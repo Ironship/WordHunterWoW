@@ -115,7 +115,7 @@ WordHunterWoWDB = { version = 10, settings = { background = "midnight" } }
 onGame(2, 1)
 Addon.initializeDatabase()
 assert(WordHunterWoWDB.settings.background == "dialog", "the old stamp should be migrated on Classic")
-assert(WordHunterWoWDB.version == 11, "the migration must move the schema version forward")
+assert(WordHunterWoWDB.version == 12, "the migration must move the schema version forward")
 
 WordHunterWoWDB = { version = 10, settings = { background = "dialog" } }
 onGame(2, 1)
