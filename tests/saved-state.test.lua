@@ -50,7 +50,7 @@ end
 -- described by, and a nil here is not the same as false.
 assert(settings.integratedLayout == true, "the integrated layout is the one out of the box")
 -- Stamped, or every login after this one replays all four migrations.
-assert(WordHunterWoWDB.version == 11, "the fresh database is stamped current, got " .. tostring(WordHunterWoWDB.version))
+assert(WordHunterWoWDB.version == 12, "the fresh database is stamped current, got " .. tostring(WordHunterWoWDB.version))
 
 -- And a client in a language the addon has no dictionary for still has to end
 -- up somewhere it can work. German is the fallback because it is the language
@@ -133,6 +133,21 @@ assert(next(WordHunterWoWDB.settings.frames) == nil, "the reset clears the saved
 
 local init = io.open("Init.lua"):read("*a")
 assert(init:find("Addon.ResetLayout", 1, true), "and it has to be reachable from a slash command")
+
+-- Opacity saved before 1.20 only ever faded the border: an opaque surface lay
+-- under the text whatever it said. Kept as it is, a 30% from then fades the
+-- text background to 30% now, so it starts at 100% again. One set after the
+-- update is the player's and survives a reload.
+WordHunterWoWDB = { version = 11, settings = { targetLocale = "deDE", opacity = 0.3 } }
+Addon.initializeDatabase()
+assert(WordHunterWoWDB.settings.opacity == 1.0,
+  "an opacity from before 1.20 must not make the text see-through, got "
+  .. tostring(WordHunterWoWDB.settings.opacity))
+WordHunterWoWDB.settings.opacity = 0.3
+Addon.initializeDatabase()
+assert(WordHunterWoWDB.settings.opacity == 0.3,
+  "an opacity set after the update must survive a reload, got "
+  .. tostring(WordHunterWoWDB.settings.opacity))
 
 
 print("saved-state: ok")

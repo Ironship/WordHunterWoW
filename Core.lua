@@ -1471,8 +1471,14 @@ function Addon.initializeDatabase()
       WordHunterWoWDB.settings.background = Addon.DefaultBackgroundStyle()
     end
   end
+  if (WordHunterWoWDB.version or 0) < 12 then
+    -- Before 1.20 an opaque reading surface lay under the text whatever the
+    -- slider said, so a stored value never meant see-through text. Carried
+    -- over, a 30% from then would fade the text background to 30% now.
+    WordHunterWoWDB.settings.opacity = 1.0
+  end
   Addon.GetWordsTable()
-  WordHunterWoWDB.version = 11
+  WordHunterWoWDB.version = 12
   -- The legacy copy has served its purpose; carrying it costs a second full
   -- write of every word at every logout.
   WordHunterWoWDB.words = nil
