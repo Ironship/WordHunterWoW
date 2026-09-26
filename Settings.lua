@@ -173,6 +173,7 @@ Addon.SETTINGS = {
   { key = "questLogAutoOpen", tab = "panel", reset = "clear" },
   { key = "readingMode", tab = "panel" },
   { key = "targetLocale", tab = "learning" },
+  { key = "targetLocaleChosen", where = "by picking a language, on the Learning tab or with /whw lang" },
   { key = "recallCheck", tab = "learning", reset = "clear" },
   { key = "readyAfter", tab = "learning", reset = "clear" },
   { key = "difficultMinRatings", tab = "learning", reset = "clear" },

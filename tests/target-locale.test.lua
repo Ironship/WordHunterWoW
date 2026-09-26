@@ -67,4 +67,15 @@ assert(stored("frFR") == "frFR", "with no textLocale a stored language must surv
 cvars.textLocale = "ruRU"
 assert(stored("frFR") == "frFR", "an unsupported text language corrects nothing")
 
+-- A language the player picked stays, over any text language: the correction
+-- is for the value an old default wrote, not for a choice. The Learning tab and
+-- /whw lang both go through SetTargetLocale.
+cvars.textLocale, client = "deDE", "deDE"
+WordHunterWoWDB = { settings = { targetLocale = "deDE" } }
+Addon.initializeDatabase()
+Addon.SetTargetLocale("frFR")
+Addon.initializeDatabase()
+assert(Addon.GetTargetLocale() == "frFR",
+  "a stored choice must survive a reload, got " .. tostring(Addon.GetTargetLocale()))
+
 print("target-locale: a fresh profile learns the language the quest text is in")
