@@ -417,21 +417,6 @@ local function addonVersion()
   return "?"
 end
 
--- Blizzard's own options, closed when the Open button on its page is pressed so
--- the window is not opened behind them. Skipped in combat, and pcall'd; if it
--- cannot be closed the window still opens, in a strata above it.
-local function closeBlizzardOptions()
-  if InCombatLockdown and InCombatLockdown() then return end
-  if type(HideUIPanel) ~= "function" then return end
-  for _, frame in ipairs({ SettingsPanel or false, InterfaceOptionsFrame or false }) do
-    if frame and frame.IsShown then
-      pcall(function()
-        if frame:IsShown() then HideUIPanel(frame) end
-      end)
-    end
-  end
-end
-
 -- ---------------------------------------------------------------------------
 -- The window.
 -- ---------------------------------------------------------------------------
@@ -1371,8 +1356,10 @@ function Addon.CreateSettingsOptionsPage()
   local open = Addon.createActionButton(page, LABELS.optionsPageButton)
   open:SetSize(260, Addon.RoleButtonHeight(1))
   open:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 0, -14)
+  -- Blizzard's options are left alone: hiding them from here skipped their own
+  -- Close(), which asks before dropping settings not yet applied. The window's
+  -- FULLSCREEN_DIALOG strata puts it above them anyway.
   open:SetScript("OnClick", function()
-    closeBlizzardOptions()
     showWindow()
   end)
   page.openButton = open

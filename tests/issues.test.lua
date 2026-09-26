@@ -181,8 +181,8 @@ assert(window:IsShown(), "OpenSettings did not show the window")
 assert(opened == nil, "OpenSettings still went through Settings.OpenToCategory, handed " .. tostring(opened))
 window:Hide()
 
--- The page's own button opens the window too, and closes Blizzard's options
--- first so the window is not opened behind them.
+-- The page's own button opens the window too, above Blizzard's options and
+-- without closing them: their own Close() asks about settings not yet applied.
 local hidden
 local realHide = HideUIPanel
 SettingsPanel = CreateFrame("Frame")
@@ -192,7 +192,8 @@ local open = rawget(Addon.settingsCategoryPage, "openButton")
 assert(open, "the options page has no button")
 open:GetScript("OnClick")(open)
 assert(window:IsShown(), "the options page's button did not open the window")
-assert(hidden == SettingsPanel, "and it left Blizzard's options open over it")
+assert(hidden == nil and SettingsPanel:IsShown(), "it closed Blizzard's options past their own Close()")
+assert(window:GetFrameStrata() == "FULLSCREEN_DIALOG", "the window is not above Blizzard's options")
 assert(opened == nil, "the button went through Settings.OpenToCategory")
 -- Shown, never toggled: a second press must not close what the first opened.
 open:GetScript("OnClick")(open)
