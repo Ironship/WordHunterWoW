@@ -657,6 +657,9 @@ function Addon.SetTargetLocale(locale)
   if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
   if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
   WordHunterWoWDB.settings.targetLocale = locale
+  -- Only a language the player picked is ever marked, so the load-time
+  -- correction below still reaches the one an old default wrote.
+  WordHunterWoWDB.settings.targetLocaleChosen = true
   Addon.GetWordsTable()
   Addon.rebuildExport()
   if Addon.settingsPanel and Addon.settingsPanel.refresh then
@@ -1390,10 +1393,13 @@ function Addon.initializeDatabase()
   -- (enUS over German text), and a profile keeps what it was given, so it is
   -- put right here rather than left for the player to find /whw lang. Only when
   -- the game names its text language; enUS and enGB, or esES and esMX, count as
-  -- the same language and are left alone.
+  -- the same language and are left alone. A language the player picked in the
+  -- Learning tab or with /whw lang is theirs: it stays, and the load message
+  -- says which text language it needs.
   local named = Addon.NamedTextLocale()
   local stored = WordHunterWoWDB.settings.targetLocale
-  if named and Addon.WH_LANGUAGE_MAP[named] ~= Addon.WH_LANGUAGE_MAP[stored] then
+  if named and not WordHunterWoWDB.settings.targetLocaleChosen
+      and Addon.WH_LANGUAGE_MAP[named] ~= Addon.WH_LANGUAGE_MAP[stored] then
     WordHunterWoWDB.settings.targetLocale = named
   end
   if (WordHunterWoWDB.version or 0) < 8 then
