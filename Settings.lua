@@ -1034,6 +1034,7 @@ function Addon.CreateSettingsPanel()
   window.previewBadge = badge
   local progress = preview:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   progress:SetJustifyH("LEFT")
+  progress:SetWordWrap(true)
   window.previewProgress = progress
   local ready = preview:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   ready:SetJustifyH("LEFT")
@@ -1122,7 +1123,10 @@ function Addon.CreateSettingsPanel()
     progress:ClearAllPoints()
     progress:SetPoint("TOPLEFT", preview, "TOPLEFT", PREVIEW_PAD, y)
     progress:SetWidth(inner)
-    y = y - lineHeight("meta", scale) - 2 * scale
+    -- Measured, not one line: in a narrow preview the stats wrap to two and a
+    -- fixed advance printed "Ready for Known" over "learning 67% new". The cue
+    -- above and the English below already measure; this one did not.
+    y = y - math.max(progress:GetStringHeight() or 0, lineHeight("meta", scale)) - 2 * scale
 
     Addon.ApplyFontRole(ready, "meta", scale)
     ready:SetText(Addon.ColorHex("known") .. LABELS.readyForKnown .. "|r  " ..
