@@ -1558,8 +1558,9 @@ end
 -- usually done and it takes every other addon down with it, cannot be undone
 -- while a dialog is open, and on Classic leaves the player unable to reach the
 -- quest's own accept button. A dimmer behind the panel gets the same attention
--- for none of that, and anything the player still needs is one dimmed pixel
--- away rather than gone.
+-- for none of that, and everything the player still needs stays reachable: the
+-- game's own quest windows are lifted just above the dimmer while it is up, so
+-- they stay bright beside the panel instead of going dark with the game.
 function Addon.GetReadingMode()
   local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.readingMode
   return v and true or false
@@ -1599,6 +1600,46 @@ local READING_DIM = 0.55
 -- never switched on -- because a full-screen frame that swallowed clicks would
 -- make the quest's own accept button unreachable, and a reading mode that stops
 -- the player taking the quest is a reading mode nobody uses twice.
+--
+-- The game's own quest windows are lifted above the dimmer while it is up, so
+-- they stay bright beside the panel: dimming the accept/continue button the
+-- player still has to press is hiding the interface by another name. They go
+-- back where they were the moment the dimmer goes.
+--
+-- The voice talker rides along by frame name. It belongs to the optional voice
+-- addon, which the base must not know about -- but its frame is HIGH, so the
+-- FULLSCREEN dimmer covers it too and the reader sits darkened under its own
+-- close button. A name from the global table is all the base needs to lift it;
+-- with no voice addon installed the name answers nil and nothing happens.
+local DIM_LIFT_FRAMES = { "QuestFrame", "GossipFrame", "QuestLogFrame", "WorldMapFrame", "WordHunterWoWVoiceTalker" }
+local DIM_LIFT_STRATA, DIM_LIFT_LEVEL = "FULLSCREEN_DIALOG", 10
+local liftedDimFrames = {}
+
+local function liftQuestFrames()
+  for _, name in ipairs(DIM_LIFT_FRAMES) do
+    local frame = _G[name]
+    if frame ~= nil and frame.SetFrameStrata ~= nil and frame.SetFrameLevel ~= nil then
+      if liftedDimFrames[frame] == nil then
+        liftedDimFrames[frame] = {
+          strata = frame.GetFrameStrata ~= nil and frame:GetFrameStrata() or nil,
+          level = frame.GetFrameLevel ~= nil and frame:GetFrameLevel() or nil,
+        }
+      end
+      frame:SetFrameStrata(DIM_LIFT_STRATA)
+      frame:SetFrameLevel(DIM_LIFT_LEVEL)
+    end
+  end
+end
+
+local function restoreQuestFrames()
+  for frame, saved in pairs(liftedDimFrames) do
+    if frame ~= nil and frame.SetFrameStrata ~= nil then
+      if saved.strata ~= nil then frame:SetFrameStrata(saved.strata) end
+      if saved.level ~= nil and frame.SetFrameLevel ~= nil then frame:SetFrameLevel(saved.level) end
+    end
+  end
+  liftedDimFrames = {}
+end
 function Addon.ApplyReadingDim()
   -- Both, not just the setting. Reading mode says how a quest should be shown
   -- when there is one; on its own it is not a thing to look at. Dimming the
@@ -1627,6 +1668,7 @@ function Addon.ApplyReadingDim()
     dim.wash = wash
   end
   if on then dim:Show() else dim:Hide() end
+  if on then liftQuestFrames() else restoreQuestFrames() end
 end
 
 function Addon.LayoutKey(base)

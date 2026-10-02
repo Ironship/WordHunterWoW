@@ -127,10 +127,47 @@ local dim = Addon.readingDim
 assert(dim, "an open panel in reading mode made no dimmer")
 assert(dim.shown ~= false, "the dimmer should be showing")
 
+-- --- the quest log stays bright ------------------------------------------------
+-- The dimmer is FULLSCREEN, so it covers Blizzard's own quest windows too --
+-- including the accept/continue button the player still has to press. While it
+-- is up they are lifted just above it (below the panel), and put back after.
+local function fakeQuestFrame(strata, level)
+  local f = { strata = strata, level = level }
+  function f:IsShown() return true end
+  function f:GetFrameStrata() return self.strata end
+  function f:GetFrameLevel() return self.level end
+  function f:SetFrameStrata(s) self.strata = s end
+  function f:SetFrameLevel(l) self.level = l end
+  return f
+end
+QuestFrame = fakeQuestFrame("DIALOG", 5)
+WorldMapFrame = fakeQuestFrame("FULLSCREEN", 3)
+-- The voice reader, when its addon is there. Known by frame name only, so the
+-- base carries no dependency on it; without the voice addon this is nil.
+WordHunterWoWVoiceTalker = fakeQuestFrame("HIGH", 1)
+Addon.ApplyReadingDim()
+assert(QuestFrame.strata == "FULLSCREEN_DIALOG",
+  "the NPC quest window must be lifted above the dimmer, got " .. tostring(QuestFrame.strata))
+assert(QuestFrame.level == 10,
+  "lifted below the panel, got " .. tostring(QuestFrame.level))
+assert(WorldMapFrame.strata == "FULLSCREEN_DIALOG",
+  "the quest log map must be lifted above the dimmer too")
+assert(WordHunterWoWVoiceTalker.strata == "FULLSCREEN_DIALOG"
+  and WordHunterWoWVoiceTalker.level == 10,
+  "the voice reader must come out from under the dimmer, got "
+  .. tostring(WordHunterWoWVoiceTalker.strata))
+
 -- And closing the panel takes the dim away without leaving reading mode.
 fakePanel.shown = false
 Addon.ApplyReadingDim()
 assert(dim.shown == false, "closing the panel has to undim the game")
+assert(QuestFrame.strata == "DIALOG" and QuestFrame.level == 5,
+  "closing the panel has to put the NPC quest window back where it was")
+assert(WorldMapFrame.strata == "FULLSCREEN" and WorldMapFrame.level == 3,
+  "and the quest log map with it")
+assert(WordHunterWoWVoiceTalker.strata == "HIGH"
+  and WordHunterWoWVoiceTalker.level == 1,
+  "and the voice reader goes back under its own strata with it")
 assert(Addon.GetReadingMode(), "but must not switch reading mode off")
 fakePanel.shown = true
 Addon.ApplyReadingDim()
