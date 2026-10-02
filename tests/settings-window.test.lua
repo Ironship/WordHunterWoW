@@ -409,6 +409,20 @@ for _, size in ipairs({ 1.0, 2.0 }) do
 end
 Addon.SetTextScale(1.0)
 Addon.SetEnPanelTextScale(1.0)
+
+-- A stats line that wraps must push the Ready line below it. The advance once
+-- assumed a single line, so in a narrow preview "Ready for Known" printed over
+-- "learning 67% new". Stubbed two lines tall, like the English above.
+window.previewProgress.GetStringHeight = function() return 40 end
+window.refreshPreview()
+local _, progressTop = window.previewProgress:GetAnchor("TOPLEFT")
+local _, readyTop = window.previewReady:GetAnchor("TOPLEFT")
+local progressBottom = progressTop - window.previewProgress:GetStringHeight()
+assert(readyTop <= progressBottom,
+  "the Ready line overlaps a wrapped stats line: ready at " .. readyTop
+  .. ", stats bottom at " .. progressBottom)
+print("  a wrapped stats line pushes the Ready line down instead of under it")
+
 Addon.SetIntegratedLayout(true)
 
 -- A tab whose rows fit has no scroll bar: the template keeps a disabled one
