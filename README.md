@@ -23,6 +23,44 @@ QuestWordHunter keeps the quest on screen as clickable text. See a word you don'
 
 Buttons stay in English. Quest text stays in the language you set in WoW.
 
+## Quest library
+
+Open `/whw quests`, or click the **WordHunterWoW book side tab** beside the Quest Log.
+The language button switches between your learning language and English in both
+the library and the reader. Words and recall ratings are saved separately for
+each language; this does not change your normal learning-language setting.
+The **German Dictionary** includes German and English Classic quest texts,
+plus native Forever cache records; no separate quest-data addon is needed.
+Text actually seen in your client takes
+precedence, and offers are archived immediately so you can study them after a
+fast party has completed the quest.
+No quest needs to be selected. The library has name/ID search, pagination, and
+filters for the database, your current log, completed quests, and this character's
+history. The database is a text catalog, not a promise that every quest is currently
+available from an NPC.
+
+Click a quest to open its description and objectives in the normal reader. Its book
+button returns to the library. Reading a catalog entry does not select it in
+Blizzard's log or mark it completed.
+
+The reader uses native quest-log text, a localized database when installed, or your
+locally collected text. With **English Quest Panel** installed, English database
+text is the fallback. If your target language is not English, this fallback is
+clearly marked **read only**: it cannot add English words to your target-language
+vocabulary or request a clip from a different-language voice pack. A German
+dictionary includes the Classic/Forever quest corpus; some passages are missing. Audio
+is available only where an installed pack has the corresponding passage.
+
+Native descriptions and objectives read from an NPC or safely from the quest log
+are kept locally for reopening after completion, even when optional corpus
+harvesting is off. Missing fields can be filled from the matching local database
+without replacing native text. Previously completed quests need a saved native
+text or a matching database passage; the completion list alone cannot recreate
+their missing descriptions.
+
+Completion history is stored per character. There is no upload. After updating
+the addon, use `/reload` to load the new files.
+
 ## What changed in 1.20
 
 **The settings have a window of their own.** `/whw settings` opens it: seven

@@ -75,6 +75,12 @@ Addon.LABELS = {
   readingOn = "reading mode on  (/whw read to leave)",
   readingOff = "reading mode off",
   listTitle = "WORD LIST",
+  questsTitle = "QUESTS",
+  questsWordsHint = "Pick a quest to see its words.",
+  questsWordsInQuest = "Words in this quest",
+  questsNoText = "No quest text yet — open the quest in the log.",
+  questsEnNote = "(English text from the quest database.)",
+  questsLogTip = "Open the quest browser.",
   search = "Search",
   all = "All",
   hideIgnored = "Hide Ignored",
@@ -407,6 +413,10 @@ Addon.SCALED_WINDOWS = {
   { key = "enPanelTextScale", frame = function() return Addon.enPanel end },
   { key = "editorScale",      frame = function() return Addon.editor end },
   { key = "listScale",        frame = function() return Addon.listFrame end },
+  -- The quest browser rides the word-list size: it is the same kind of
+  -- window (two list panes, same roles), and a second slider for it would
+  -- be a new setting answering a layout question.
+  { key = "listScale",        frame = function() return Addon.questsFrame end },
   { key = "statsScale",       frame = function() return Addon.statsFrame end },
 }
 
@@ -667,14 +677,15 @@ function Addon.SetTargetLocale(locale)
   end
   if Addon.listFrame and Addon.listFrame:IsShown() then Addon.refreshWordList() end
   if Addon.statsFrame and Addon.statsFrame:IsShown() then Addon.statsFrame:Hide() end
-  -- And the editor: it is open on a word of the old language, and both Save
-  -- and a rating write to whichever language is current when they happen.
+  -- Close the editor's old-language context too; its frozen locale still keeps
+  -- any delayed save or rating in the correct language bucket.
   if Addon.editor and Addon.editor:IsShown() then Addon.editor:Hide() end
   if Addon.panel and Addon.panel:IsShown() and Addon.lastQuest then Addon.refreshPanel() end
 end
 
-function Addon.GetWordsTable()
-  local locale = Addon.GetTargetLocale()
+function Addon.GetWordsTable(locale)
+  locale = locale or Addon.GetTargetLocale()
+  if not Addon.SUPPORTED_LOCALES[locale] then return {} end
   if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
   if type(WordHunterWoWDB.wordsByLocale) ~= "table" then WordHunterWoWDB.wordsByLocale = {} end
   if type(WordHunterWoWDB.wordsByLocale[locale]) ~= "table" then WordHunterWoWDB.wordsByLocale[locale] = {} end
@@ -714,10 +725,10 @@ function Addon.GetDictionaryEntry(key, locale)
   end
 end
 
-function Addon.GetEffectiveWord(key)
-  local user = Addon.GetWordsTable()[key]
+function Addon.GetEffectiveWord(key, locale)
+  local user = Addon.GetWordsTable(locale)[key]
   if user then return user, false end
-  local dict, providerId = Addon.GetDictionaryEntry(key)
+  local dict, providerId = Addon.GetDictionaryEntry(key, locale)
   if not dict then return nil, false end
   return {
     word = dict.word or key,
@@ -1035,10 +1046,10 @@ function Addon.SentenceContaining(text, word)
   return nil, nil
 end
 
-local function uniqueGlossHit(enSentences, word)
+local function uniqueGlossHit(enSentences, word, locale)
   local hit
   for i, sentence in ipairs(enSentences) do
-    if next(Addon.MatchEnglishTokenIndexes(sentence, word)) then
+    if next(Addon.MatchEnglishTokenIndexes(sentence, word, nil, locale)) then
       if hit then return nil end
       hit = i
     end
@@ -1069,7 +1080,7 @@ local function locateSentence(text, globalIndex)
   return last, math.max(1, #Addon.SplitSentences(paras[last]))
 end
 
-local function matchInPair(deText, enText, word, deIndex)
+local function matchInPair(deText, enText, word, deIndex, locale)
   local deSentences = Addon.SplitSentences(deText)
   local enSentences = Addon.SplitSentences(enText)
   if #enSentences == 0 then return nil, nil end
@@ -1081,14 +1092,14 @@ local function matchInPair(deText, enText, word, deIndex)
   -- Position cannot tell which half was meant; the gloss can, but only inside
   -- this pair -- never by searching the whole quest for the word.
   if #deSentences == 1 and #enSentences > 1 then
-    local hit = uniqueGlossHit(enSentences, word)
+    local hit = uniqueGlossHit(enSentences, word, locale)
     if hit then return hit, enSentences[hit] end
   end
   local mapped = mapSentenceIndex(deIndex, math.max(1, #deSentences), #enSentences)
   return mapped, enSentences[mapped]
 end
 
-function Addon.MatchEnglishSentence(deText, enText, word, deSentenceIndex)
+function Addon.MatchEnglishSentence(deText, enText, word, deSentenceIndex, locale)
   deText, enText = tostring(deText or ""), tostring(enText or "")
   word = tostring(word or "")
   if enText == "" or Addon.trim(deText) == "" then return nil, nil end
@@ -1110,7 +1121,7 @@ function Addon.MatchEnglishSentence(deText, enText, word, deSentenceIndex)
   deSentenceIndex = math.min(math.max(1, deSentenceIndex), math.max(1, #deSentences))
   if #deParas == #enParas and #deParas > 0 then
     local pIndex, localIndex = locateSentence(deText, deSentenceIndex)
-    local mappedLocal, localSentence = matchInPair(deParas[pIndex], enParas[pIndex], word, localIndex)
+    local mappedLocal, localSentence = matchInPair(deParas[pIndex], enParas[pIndex], word, localIndex, locale)
     if localSentence then
       local seen = 0
       for i = 1, pIndex - 1 do
@@ -1196,7 +1207,7 @@ local function addSenses(packed, seen, translation)
   end
 end
 
-function Addon.MatchEnglishTokenIndexes(enSentence, deWord, occurrence)
+function Addon.MatchEnglishTokenIndexes(enSentence, deWord, occurrence, locale)
   local tokens = Addon.FlattenTokens(enSentence)
   if #tokens == 0 then return {} end
   local key = Addon.wordKey(deWord)
@@ -1207,9 +1218,9 @@ function Addon.MatchEnglishTokenIndexes(enSentence, deWord, occurrence)
   -- adding a single letter -- took the dictionary's wording out of the match
   -- and the English word quietly stopped lighting up. An edit may add a way to
   -- match; it must never remove one.
-  local own = Addon.GetWordsTable and Addon.GetWordsTable()[key]
+  local own = Addon.GetWordsTable and Addon.GetWordsTable(locale)[key]
   if own then addSenses(packed, seen, own.translation) end
-  local dict = Addon.GetDictionaryEntry and Addon.GetDictionaryEntry(key)
+  local dict = Addon.GetDictionaryEntry and Addon.GetDictionaryEntry(key, locale)
   if dict then addSenses(packed, seen, dict.translation) end
   -- A proper noun is spelled the same in both languages and its gloss, when it
   -- has one, is itself: Azshara stays Azshara.
@@ -1495,6 +1506,7 @@ Addon.LAYOUT_DEFAULTS = {
   npc = {
     panel = { point = "LEFT", relPoint = "LEFT", x = 420, y = 40, w = 720, h = 500 },
     list = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -16, y = -36, w = 420, h = 520 },
+    quests = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -16, y = -36, w = 560, h = 460 },
     stats = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -448, y = -36, w = 340, h = 420 },
     editor = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -448, y = -448, w = 430, h = 400 },
     settings = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0, w = 860, h = 580 },
@@ -1502,6 +1514,7 @@ Addon.LAYOUT_DEFAULTS = {
   questlog = {
     panel = { point = "RIGHT", relPoint = "RIGHT", x = -20, y = 40, w = 680, h = 500 },
     list = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -16, y = -36, w = 420, h = 500 },
+    quests = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 16, y = -36, w = 560, h = 460 },
     stats = { point = "BOTTOMRIGHT", relPoint = "BOTTOMRIGHT", x = -16, y = 90, w = 340, h = 420 },
     editor = { point = "CENTER", relPoint = "CENTER", x = 180, y = 50, w = 430, h = 400 },
     settings = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0, w = 860, h = 580 },
@@ -1519,6 +1532,7 @@ Addon.LAYOUT_DEFAULTS = {
   reading = {
     panel = { point = "CENTER", relPoint = "CENTER", x = 0, y = 20, w = 980, h = 660 },
     list = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -16, y = -36, w = 420, h = 520 },
+    quests = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 16, y = -36, w = 560, h = 460 },
     stats = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 16, y = -36, w = 340, h = 420 },
     editor = { point = "BOTTOMRIGHT", relPoint = "BOTTOMRIGHT", x = -16, y = 16, w = 430, h = 400 },
     -- The settings window is the same in every context: it is opened on
@@ -1611,7 +1625,7 @@ local READING_DIM = 0.55
 -- FULLSCREEN dimmer covers it too and the reader sits darkened under its own
 -- close button. A name from the global table is all the base needs to lift it;
 -- with no voice addon installed the name answers nil and nothing happens.
-local DIM_LIFT_FRAMES = { "QuestFrame", "GossipFrame", "QuestLogFrame", "WorldMapFrame", "WordHunterWoWVoiceTalker" }
+local DIM_LIFT_FRAMES = { "QuestFrame", "GossipFrame", "QuestLogFrame", "WorldMapFrame", "WordHunterWoWVoiceTalker", "WordHunterWoWQuests" }
 local DIM_LIFT_STRATA, DIM_LIFT_LEVEL = "FULLSCREEN_DIALOG", 10
 local liftedDimFrames = {}
 
@@ -1733,6 +1747,7 @@ function Addon.ResetLayout()
     { frame = Addon.editor, key = "editor" },
     { frame = Addon.listFrame, key = "list" },
     { frame = Addon.statsFrame, key = "stats" },
+    { frame = Addon.questsFrame, key = "quests" },
     { frame = Addon.enPanel, key = "enPanel" },
     { frame = Addon.settingsPanel, key = "settings" },
   }) do
@@ -1871,7 +1886,7 @@ end
 
 function Addon.CloseAll()
   local closed = false
-  for _, key in ipairs({ "panel", "editor", "listFrame", "statsFrame", "copyDialog", "enPanel", "confirmDialog" }) do
+  for _, key in ipairs({ "panel", "editor", "listFrame", "statsFrame", "questsFrame", "copyDialog", "enPanel", "confirmDialog" }) do
     local frame = Addon[key]
     if frame and frame.IsShown and frame:IsShown() then
       frame:Hide()

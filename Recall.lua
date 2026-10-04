@@ -151,17 +151,18 @@ end
 -- The recall rows for the current language, made on first use the way
 -- GetWordsTable makes its table. Keyed by wordKey, so a row and a word entry
 -- for the same word share a key across the two tables.
-function Addon.GetRecallTable()
-  local locale = Addon.GetTargetLocale()
+function Addon.GetRecallTable(locale)
+  locale = locale or Addon.GetTargetLocale()
+  if not Addon.SUPPORTED_LOCALES[locale] then return {} end
   if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
   if type(WordHunterWoWDB.recallByLocale) ~= "table" then WordHunterWoWDB.recallByLocale = {} end
   if type(WordHunterWoWDB.recallByLocale[locale]) ~= "table" then WordHunterWoWDB.recallByLocale[locale] = {} end
   return WordHunterWoWDB.recallByLocale[locale]
 end
 
-function Addon.GetRecallRow(key, create)
+function Addon.GetRecallRow(key, create, locale)
   if type(key) ~= "string" or key == "" then return nil end
-  local rows = Addon.GetRecallTable()
+  local rows = Addon.GetRecallTable(locale)
   local row = rows[key]
   if type(row) ~= "table" and create then
     row = { ratings = {}, ratingCount = 0, ratingSum = 0, examples = {} }
@@ -207,13 +208,14 @@ end
 -- The same question with the lookups done and the setting consulted, which
 -- is what the quest panel and the editor ask. The setting is checked first so
 -- that with the check off -- the default -- a hover costs one boolean.
-function Addon.RecallGated(key, now)
+function Addon.RecallGated(key, now, locale)
   if not Addon.GetRecallCheck() then return false end
   if type(key) ~= "string" or key == "" then return false end
-  local entry = Addon.GetWordsTable()[key]
+  locale = locale or Addon.GetTargetLocale()
+  local entry = Addon.GetWordsTable(locale)[key]
   if not entry then return false end
   local rows = WordHunterWoWDB and WordHunterWoWDB.recallByLocale
-  local row = rows and rows[Addon.GetTargetLocale()] and rows[Addon.GetTargetLocale()][key]
+  local row = rows and rows[locale] and rows[locale][key]
   return Addon.RecallDue(entry, row, now or time())
 end
 
@@ -226,10 +228,10 @@ end
 -- Writes the verdict the moment it is given. The editor's Save is not
 -- involved: cancelling the editor is the natural end of "I only wanted to
 -- check", and a rating that needed Save would be lost on most of them.
-function Addon.RecordRating(key, score, now)
+function Addon.RecordRating(key, score, now, locale)
   score = validScore(score)
   if not score then return nil end
-  local row = Addon.GetRecallRow(key, true)
+  local row = Addon.GetRecallRow(key, true, locale)
   if not row then return nil end
   now = now or time()
   row.ratings[#row.ratings + 1] = { at = now, score = score }
@@ -249,10 +251,10 @@ end
 -- Keeps the sentence the word was met in, up to five, oldest out first. The
 -- same sentence twice -- the same quest read twice -- is kept once, in the
 -- place it first had.
-function Addon.RecordExample(key, text, questId, questTitle, now)
+function Addon.RecordExample(key, text, questId, questTitle, now, locale)
   text = cleanSentence(text)
   if text == "" or #text > EXAMPLE_MAX then return false end
-  local row = Addon.GetRecallRow(key, true)
+  local row = Addon.GetRecallRow(key, true, locale)
   if not row then return false end
   for _, example in ipairs(row.examples) do
     if example.text == text then return false end
@@ -358,8 +360,8 @@ end
 
 -- The line the editor shows once a word has been rated at all: how many
 -- times, and how it has been going lately.
-function Addon.RecallSummary(key)
-  local row = Addon.GetRecallRow(key)
+function Addon.RecallSummary(key, locale)
+  local row = Addon.GetRecallRow(key, nil, locale)
   if not row or row.ratingCount == 0 then return nil end
   local mean = Addon.RecallAverage(row)
   return string.format(LABELS.recallHistory, mean or 0, row.ratingCount), mean, row.ratingCount

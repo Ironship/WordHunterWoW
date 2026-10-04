@@ -61,6 +61,7 @@ LABELS.aboutWords = "Learning %s: %d of your words in this language, %d across a
 LABELS.aboutCommandsHeading = "Slash commands"
 LABELS.aboutCommands = "/whw — open or close the quest panel\n"
   .. "/whw words  ·  /whw stats — the word list and the statistics\n"
+  .. "/whw quests — quests and the words saved from each\n"
   .. "/whw settings [tab] — this window\n"
   .. "/whw lang <locale>  ·  /whw bg <style>  ·  /whw opacity <0-100>\n"
   .. "/whw read — reading mode\n"

@@ -10,10 +10,34 @@ events:RegisterEvent("QUEST_DETAIL")
 events:RegisterEvent("QUEST_PROGRESS")
 events:RegisterEvent("QUEST_COMPLETE")
 events:RegisterEvent("QUEST_FINISHED")
+events:RegisterEvent("QUEST_ACCEPTED")
+events:RegisterEvent("QUEST_TURNED_IN")
+events:RegisterEvent("QUEST_LOG_UPDATE")
+-- Legacy query completion is optional: Forever rejects this event and an
+-- unconditional registration aborts this file before /whw can initialize.
+local eventUtils = C_EventUtils
+if type(eventUtils) ~= "table" or type(eventUtils.IsEventValid) ~= "function"
+    or eventUtils.IsEventValid("QUEST_QUERY_COMPLETE") then
+  pcall(events.RegisterEvent, events, "QUEST_QUERY_COMPLETE")
+end
 events:RegisterEvent("GOSSIP_SHOW")
 events:RegisterEvent("GOSSIP_CLOSED")
-events:SetScript("OnEvent", function(_, event, loadedAddon)
+
+-- Log updates may arrive in bursts; redraw only a visible library, once the
+-- burst has settled, rather than rebuilding a large database every frame.
+local browserTimer
+local function refreshCatalogSoon()
+  if not (Addon.questsFrame and Addon.questsFrame:IsShown()) then return end
+  if browserTimer then browserTimer:Cancel() end
+  browserTimer = C_Timer.NewTimer(0.2, function()
+    browserTimer = nil
+    if Addon.refreshQuestBrowser then Addon.refreshQuestBrowser() end
+  end)
+end
+
+events:SetScript("OnEvent", function(_, event, a1, a2)
   if event == "ADDON_LOADED" then
+    local loadedAddon = a1
     if loadedAddon == addonName then
       -- What the saved variables held the instant this addon was told it had
       -- loaded, recorded before anything here has had a chance to touch them.
@@ -64,10 +88,14 @@ events:SetScript("OnEvent", function(_, event, loadedAddon)
     -- Remembered now, while the client is sure to answer it, so the collector
     -- still has it at a later moment that answers nothing or a secret value.
     if Addon.PlayerName then Addon.PlayerName() end
+    -- History syncs here too: the bulk completion answer is per-character and
+    -- only worth asking once the player is in the world.
+    if Addon.SyncCharacterQuestHistory then Addon.SyncCharacterQuestHistory() end
   elseif event == "PLAYER_ENTERING_WORLD" then
     -- Its own branch: the last one below treats any event it is handed as a
     -- quest window opening.
     if Addon.PlayerName then Addon.PlayerName() end
+    if Addon.SyncCharacterQuestHistory then Addon.SyncCharacterQuestHistory() end
   elseif event == "GOSSIP_SHOW" then
     Addon.lastPassage = "gossip"
     if Addon.HarvestGossip then Addon.HarvestGossip() end
@@ -79,9 +107,33 @@ events:SetScript("OnEvent", function(_, event, loadedAddon)
     end
   elseif event == "QUEST_FINISHED" then
     Addon.lastPassage = "offer"
-    if Addon.panel then Addon.panel:Hide() end
-    if Addon.editor then Addon.editor:Hide() end
+    if not Addon.lastQuest or not Addon.lastQuest.catalog then
+      if Addon.panel then Addon.panel:Hide() end
+      if Addon.editor then Addon.editor:Hide() end
+    end
+  elseif event == "QUEST_ACCEPTED" then
+    -- Modern clients hand one questId; older clients hand (logIndex, questId).
+    -- Never reinterpret a modern questId as a row number in the current log.
+    if Addon.RecordCharacterQuest then
+      local id = tonumber(a2) or tonumber(a1)
+      if id and Addon.CaptureNativeQuestOffer then Addon.CaptureNativeQuestOffer(id) end
+      Addon.RecordCharacterQuest(id, "accepted")
+    end
+    refreshCatalogSoon()
+  elseif event == "QUEST_TURNED_IN" then
+    -- QUEST_TURNED_IN hands (questId, xp, money). Same rule: record, no read.
+    if Addon.RecordCharacterQuest then
+      Addon.RecordCharacterQuest(tonumber(a1), "completed")
+    end
+    refreshCatalogSoon()
+  elseif event == "QUEST_LOG_UPDATE" or event == "QUEST_QUERY_COMPLETE" then
+    -- The log changed, or Classic answered the legacy catalogue: re-sync.
+    -- Additive as well -- QUEST_LOG_UPDATE fires constantly and must never
+    -- reach the quest reader through the branch below.
+    if Addon.SyncCharacterQuestHistory then Addon.SyncCharacterQuestHistory() end
+    refreshCatalogSoon()
   else
+    if event == "QUEST_DETAIL" and Addon.CaptureNativeQuestOffer then Addon.CaptureNativeQuestOffer() end
     if event == "QUEST_PROGRESS" then
       Addon.lastPassage = "progress"
     elseif event == "QUEST_COMPLETE" then
@@ -238,6 +290,8 @@ SlashCmdList.WORDHUNTERWOW = function(message)
     Addon.toggleWordList()
   elseif command == "stats" then
     Addon.toggleStats()
+  elseif command == "quests" then
+    Addon.toggleQuestBrowser()
   elseif command == "diag" then
     Addon.PrintDiagnostics()
   -- Reading mode has a slash command as well as a settings box because it is

@@ -24,7 +24,19 @@ test("never hooks a Blizzard function without checking it exists", () => {
   assert.match(source, /type\(_G\[name\]\) == "function"/);
 });
 
-test("does not use noisy Quest Log update events", () => {
-  assert.doesNotMatch(source, /RegisterEvent\("QUEST_LOG_UPDATE"\)/);
+test("quest log updates never open the reader and debounce the visible library", () => {
+  assert.match(source, /RegisterEvent\("QUEST_LOG_UPDATE"\)/);
+  const start = source.indexOf('elseif event == "QUEST_LOG_UPDATE" or event == "QUEST_QUERY_COMPLETE" then');
+  assert.ok(start >= 0, "quest-state events need a dedicated branch");
+  const end = source.indexOf("\n  else\n", start);
+  const branch = source.slice(start, end);
+  assert.match(branch, /SyncCharacterQuestHistory/);
+  assert.match(branch, /refreshCatalogSoon\(\)/);
+  assert.doesNotMatch(branch, /readCurrentQuest|panel:Show/);
+  const helperStart = source.indexOf("local function refreshCatalogSoon()");
+  const helper = source.slice(helperStart, source.indexOf('events:SetScript("OnEvent"', helperStart));
+  assert.match(helper, /Addon\.questsFrame and Addon\.questsFrame:IsShown\(\)/);
+  assert.match(helper, /browserTimer:Cancel\(\)/);
+  assert.match(helper, /C_Timer\.NewTimer\(0\.2/);
 });
 

@@ -5,7 +5,7 @@ import { source } from "./source.mjs";
 test("dictionary providers are overlays, not copied into SavedVariables", () => {
   assert.match(source, /function Addon\.RegisterDictionaryProvider\(locale, providerId, entries\)/);
   assert.match(source, /function Addon\.GetDictionaryEntry\(key, locale\)/);
-  assert.match(source, /function Addon\.GetEffectiveWord\(key\)/);
+  assert.match(source, /function Addon\.GetEffectiveWord\(key, locale\)/);
   assert.match(source, /function Addon\.GetEffectiveWords\(\)/);
 });
 
