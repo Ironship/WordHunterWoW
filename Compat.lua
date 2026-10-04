@@ -151,10 +151,8 @@ function Compat.GameFlavor()
 end
 
 function Compat.IsRetail() return Compat.GameFlavor() == RETAIL end
--- Everything that is not Retail, Forever included. That is deliberate and not
--- an oversight of the new value: Forever is a Classic-line game and wants the
--- Classic quest log calls, the Classic frame names and the Classic defaults.
--- What it must not share is the corpus, and that is keyed on GameFlavor.
+-- Corpus and default appearance follow the game flavor. Getter capabilities
+-- are separate: Forever uses Classic content with a Mainline-family quest API.
 function Compat.IsClassic() return Compat.GameFlavor() ~= RETAIL end
 function Compat.IsSeasonOfDiscovery() return Compat.GameFlavor() == SOD end
 function Compat.IsForever() return Compat.GameFlavor() == FOREVER end
@@ -237,24 +235,125 @@ function Compat.TitleForQuestID(questId)
   return nil
 end
 
--- Retail's GetQuestLogQuestText takes the log index. Classic's takes nothing
--- and reads whichever entry is currently selected, so the entry has to be
--- selected first -- and the player's own selection put back, or the quest log
--- jumps under their hands.
+-- The modern namespace provides indexed reads, including on Forever. Legacy
+-- clients expose the global index lookup and read only the selected entry.
+-- Do not infer the getter's signature from the content/game flavor.
+function Compat.QuestLogTextIsIndexed()
+  return type(C_QuestLog) == "table" and type(C_QuestLog.GetLogIndexForQuestID) == "function"
+end
+
 function Compat.QuestLogText(questLogIndex)
   if type(GetQuestLogQuestText) ~= "function" then return "", "" end
-  if Compat.IsRetail() then
+  if Compat.QuestLogTextIsIndexed() then
     if questLogIndex then return GetQuestLogQuestText(questLogIndex) end
     return GetQuestLogQuestText()
   end
   if not questLogIndex then return GetQuestLogQuestText() end
-  if type(SelectQuestLogEntry) ~= "function" then return GetQuestLogQuestText() end
-  local previous = type(GetQuestLogSelection) == "function" and GetQuestLogSelection() or nil
+  if type(GetQuestLogSelection) ~= "function" then return "", "" end
+  local previous = GetQuestLogSelection()
   local moved = previous ~= questLogIndex
-  if moved then SelectQuestLogEntry(questLogIndex) end
-  local description, objectives = GetQuestLogQuestText()
-  if moved and previous and previous > 0 then SelectQuestLogEntry(previous) end
+  if moved and (type(SelectQuestLogEntry) ~= "function" or type(previous) ~= "number" or previous < 0) then return "", "" end
+  local ok, description, objectives = pcall(function()
+    if moved then SelectQuestLogEntry(questLogIndex) end
+    return GetQuestLogQuestText()
+  end)
+  if moved then
+    local restored, failure = pcall(SelectQuestLogEntry, previous)
+    if ok and not restored then error(failure, 0) end
+  end
+  if not ok then error(description, 0) end
   return description, objectives
+end
+
+-- Enumerate the quests sitting in the player's log: { { id, title }, ... }.
+--
+-- Read-only on purpose: no selection is moved, no frame is touched, so this is
+-- safe to call in combat and from a window that only lists. Headers are
+-- skipped, entries without an id or a title are skipped, and a client with
+-- neither API answers {} rather than raising.
+function Compat.QuestLogEntries()
+  local out = {}
+  if type(C_QuestLog) == "table" and type(C_QuestLog.GetNumQuestLogEntries) == "function"
+    and type(C_QuestLog.GetInfo) == "function" then
+    local ok, n = pcall(C_QuestLog.GetNumQuestLogEntries)
+    n = (ok and tonumber(n)) or 0
+    for index = 1, n do
+      local okInfo, info = pcall(C_QuestLog.GetInfo, index)
+      if okInfo and type(info) == "table" then
+        local id = tonumber(info.questID) or 0
+        local title = info.title
+        if id > 0 and type(title) == "string" and title ~= "" and not info.isHeader then
+          out[#out + 1] = { id = id, title = title }
+        end
+      end
+    end
+    return out
+  end
+  if type(GetNumQuestLogEntries) == "function" and type(GetQuestLogTitle) == "function" then
+    local ok, n = pcall(GetNumQuestLogEntries)
+    n = (ok and tonumber(n)) or 0
+    for index = 1, n do
+      local okTitle, title, _, _, isHeader = pcall(GetQuestLogTitle, index)
+      if okTitle and type(title) == "string" and title ~= "" and not isHeader then
+        local id = Compat.QuestIDForLogIndex(index)
+        if id and id > 0 then out[#out + 1] = { id = id, title = title } end
+      end
+    end
+  end
+  return out
+end
+
+-- Whether the id is flagged complete. A hint, not the truth: the flag is
+-- account-wide and lies about some quests. nil where the client cannot answer.
+function Compat.QuestCompleted(id)
+  if not id or id <= 0 then return nil end
+  if type(C_QuestLog) == "table" and type(C_QuestLog.IsQuestFlaggedCompleted) == "function" then
+    local ok, value = pcall(C_QuestLog.IsQuestFlaggedCompleted, id)
+    if ok then return value and true or false end
+    return nil
+  end
+  if type(IsQuestFlaggedCompleted) == "function" then
+    local ok, value = pcall(IsQuestFlaggedCompleted, id)
+    if ok then return value and true or false end
+  end
+  return nil
+end
+
+-- Every quest this character has completed, as a list of numeric ids.
+--
+-- Retail answers C_QuestLog.GetAllCompletedQuestIDs, a plain list of numbers
+-- (Interface/AddOns/Blizzard_APIDocumentationGenerated/QuestLogDocumentation:
+-- a quests table with InnerType number). Classic fills a table passed to
+-- GetQuestsCompleted with id -> true instead. Either shape comes out as one
+-- list; nil where no client answers or one throws. The account-wide flag is
+-- deliberately never consulted: it leaks other characters' deeds.
+function Compat.CompletedQuestIDs()
+  if type(C_QuestLog) == "table" and type(C_QuestLog.GetAllCompletedQuestIDs) == "function" then
+    local ok, ids = pcall(C_QuestLog.GetAllCompletedQuestIDs)
+    if ok and type(ids) == "table" then
+      local out = {}
+      for _, id in ipairs(ids) do
+        id = tonumber(id)
+        if id and id > 0 and math.floor(id) == id then out[#out + 1] = id end
+      end
+      return out
+    end
+    return nil
+  end
+  if type(GetQuestsCompleted) == "function" then
+    local filled = {}
+    local ok = pcall(GetQuestsCompleted, filled)
+    if ok and type(filled) == "table" then
+      local out = {}
+      for id, done in pairs(filled) do
+        id = tonumber(id)
+        if id and id > 0 and math.floor(id) == id and done then out[#out + 1] = id end
+      end
+      return out
+    end
+    return nil
+  end
+  return nil
 end
 
 -- Frames ---------------------------------------------------------------------

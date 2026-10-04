@@ -188,4 +188,32 @@ end
 assert(Addon.UnderlineThickness(2.0) > Addon.UnderlineThickness(1.0), 'thickness does not follow the text size')
 Addon.SetTextScale(1.0)
 Addon.SetWordMarking('both')
+
+-- A catalog language is independent of the profile language. Both English
+-- panel paths must still use the dictionary of the German quest being read.
+WordHunterWoWDB.settings.targetLocale = 'enUS'
+Addon.lastQuest = { id = 1, text = source, passage = 'offer', wordLocale = 'deDE' }
+Addon.refreshPanel()
+Addon.HighlightEnglishForWord('Zuflucht', 4, 1)
+red, yellow = highlighted()
+assert(#red == 1 and red[1].sentenceIndex == 4, 'catalog highlight used the profile dictionary')
+
+-- Identical text in a different language still starts a new reading context.
+Addon.lastQuest.wordLocale = 'enUS'
+Addon.refreshPanel()
+red, yellow = highlighted()
+assert(#red == 0 and #yellow == 0, 'same-text language switch retained old highlights')
+Addon.lastQuest.wordLocale = 'deDE'
+Addon.refreshPanel()
+Addon.HighlightEnglishForWord('Zuflucht', 4, 1)
+Addon.lastQuest.readOnly = true
+Addon.refreshPanel()
+red, yellow = highlighted()
+assert(#red == 0 and #yellow == 0, 'read-only switch retained old clickable-word highlights')
+Addon.lastQuest.readOnly = nil
+WordHunterWoWDB.settings.integratedLayout = false
+Addon.ApplyIntegratedLayout()
+events.scripts.OnEvent(nil, 'QUEST_DETAIL')
+Addon.OnHighlightEnglishForWord('Zuflucht', Addon.lastQuest, 4, 1)
+assert(enPanel.text:GetText() == expected, 'separate catalog highlight used the profile dictionary')
 print('english-highlight-ui: ok')

@@ -214,22 +214,30 @@ end
 -- The buttons along the bottom, laid right to left from the corner. Their
 -- captions come from UIPanelButtonTemplate's own font object, which is fixed,
 -- so the box has to be resized along with the letters or the caption grows out
--- of the button it is in.
+-- of the button it is in. Wrap instead of widening a reader the player sized.
 local function layoutActions(m)
-  local previous
+  local available = math.max(1, panel:GetWidth() - 36)
+  local previous, used, rows = nil, 0, 1
   for _, action in ipairs(panel.actions) do
     if action.GetFontString then
       chromeFont(action:GetFontString(), "GameFontNormal", "body", m.scale)
     end
-    action:SetSize(action.baseWidth * m.scale, m.buttonH)
+    local width = action.baseWidth * m.scale
+    action:SetSize(width, m.buttonH)
     action:ClearAllPoints()
+    if previous and used + m.buttonGap + width > available then
+      previous, used, rows = nil, 0, rows + 1
+    end
     if previous then
       action:SetPoint("RIGHT", previous, "LEFT", -m.buttonGap, 0)
     else
-      action:SetPoint("BOTTOMRIGHT", -18, m.footPad)
+      action:SetPoint("BOTTOMRIGHT", -18, m.footPad + (rows - 1) * (m.buttonH + m.buttonGap))
     end
+    used = used + width + (previous and m.buttonGap or 0)
     previous = action
   end
+  m.legendBottom = m.legendBottom + (rows - 1) * (m.buttonH + m.buttonGap)
+  return rows, available - used
 end
 
 -- The one place that knows the panel's vertical stack, in either arrangement.
@@ -263,7 +271,16 @@ local function layoutChrome()
   panel.enTitle:SetPoint("RIGHT", panel, "CENTER", -12, 0)
   panel.scroll:ClearAllPoints()
   panel.enScroll:ClearAllPoints()
-  layoutActions(m)
+  local actionRows, freeWidth = layoutActions(m)
+  -- A narrow footer needs a separate progress row; never reverse its anchors
+  -- or put the progress line under the wrapped buttons.
+  local progressRow = panel.integratedLayout and (actionRows > 1 or freeWidth <= 8)
+  if progressRow then
+    m.metaFootY = m.footPad + actionRows * (m.buttonH + m.buttonGap)
+    m.legendBottom = m.metaFootY + m.metaH + m.legendGap
+  end
+  local titleInset = Addon.lastQuest and Addon.lastQuest.catalog
+    and (panel.catalogLanguageButton and -120 or -72)
 
   local rows = layoutLegend(m)
   local legendTop = m.legendBottom + rows * m.legendRowH + (rows - 1) * m.legendRowGap
@@ -277,7 +294,7 @@ local function layoutChrome()
 
   if panel.integratedLayout then
     panel.title:SetPoint("TOPLEFT", panel, "TOP", 12, -m.topPad)
-    panel.title:SetPoint("TOPRIGHT", -40, -m.topPad)
+    panel.title:SetPoint("TOPRIGHT", titleInset or -40, -m.topPad)
     panel.meta:SetPoint("BOTTOMLEFT", 18, m.metaFootY)
     -- Bounded on the right by the buttons it shares the footer with. Left
     -- unbounded, as it was, a long progress line at a large size runs straight
@@ -286,8 +303,12 @@ local function layoutChrome()
     -- Offset back to the same height its left-hand corner is at. The buttons sit
     -- lower than this line does, and two bottom anchors that disagree about
     -- where the bottom is are not a layout the game can resolve.
-    panel.meta:SetPoint("BOTTOMRIGHT", panel.actions[#panel.actions], "BOTTOMLEFT",
-      -8, m.metaFootY - m.footPad)
+    if progressRow then
+      panel.meta:SetPoint("BOTTOMRIGHT", -18, m.metaFootY)
+    else
+      panel.meta:SetPoint("BOTTOMRIGHT", panel.actions[#panel.actions], "BOTTOMLEFT",
+        -8, m.metaFootY - m.footPad)
+    end
     panel.scroll:SetPoint("TOPLEFT", panel, "TOP", 8, -m.headBottom)
     panel.scroll:SetPoint("BOTTOMRIGHT", -32, bandTop)
     panel.enScroll:SetPoint("TOPLEFT", 18, -en.headBottom)
@@ -301,9 +322,9 @@ local function layoutChrome()
     panel.chromeHeight = math.max(m.headBottom, en.headBottom) + bandTop
   else
     panel.title:SetPoint("TOPLEFT", 18, -m.topPad)
-    panel.title:SetPoint("TOPRIGHT", -18, -m.topPad)
+    panel.title:SetPoint("TOPRIGHT", titleInset or -18, -m.topPad)
     panel.meta:SetPoint("TOPLEFT", 18, -m.headBottom)
-    panel.meta:SetPoint("TOPRIGHT", -140, -m.headBottom)
+    panel.meta:SetPoint("TOPRIGHT", Addon.lastQuest and Addon.lastQuest.readOnly and -18 or -140, -m.headBottom)
     panel.scroll:SetPoint("TOPLEFT", 18, -m.metaBottom)
     panel.scroll:SetPoint("BOTTOMRIGHT", -32, bandTop)
     panel.chromeHeight = m.metaBottom + bandTop
@@ -340,7 +361,7 @@ local selectedHighlight
 -- passed before this existed.
 local function recallGated(button)
   if not Addon.RecallGated or not button.key then return nil end
-  return Addon.RecallGated(button.key, time()) or nil
+  return Addon.RecallGated(button.key, time(), button.wordLocale) or nil
 end
 
 local function sentenceForWord(text, word)
@@ -405,11 +426,11 @@ function Addon.HighlightEnglishForWord(word, deSentenceIndex, wordOccurrence, se
   -- since the voiceover was written, so nothing below needs to change with it.
   if (word or deSentenceIndex) and panel.enCanHighlight and enText ~= ""
     and Addon.MatchEnglishSentence then
-    index, sentence = Addon.MatchEnglishSentence(Addon.lastQuest.text, enText, word, deSentenceIndex)
+    index, sentence = Addon.MatchEnglishSentence(Addon.lastQuest.text, enText, word, deSentenceIndex, Addon.lastQuest.wordLocale)
   end
   local wordTokens
   if sentence and not sentenceOnly and Addon.MatchEnglishTokenIndexes then
-    wordTokens = Addon.MatchEnglishTokenIndexes(sentence, word, wordOccurrence)
+    wordTokens = Addon.MatchEnglishTokenIndexes(sentence, word, wordOccurrence, Addon.lastQuest.wordLocale)
   end
   paintEnglishHighlight(index, wordTokens)
   if Addon.OnHighlightEnglishForWord then
@@ -442,12 +463,20 @@ local function refreshPanel()
   -- is measured from.
   layoutChrome()
   local lastQuest = Addon.lastQuest
+  local readOnly = lastQuest.readOnly == true
+  local wordLocale = lastQuest.wordLocale or Addon.GetTargetLocale()
+  if Addon.RefreshCatalogLanguageControls then Addon.RefreshCatalogLanguageControls() end
+  if Addon.libraryReturnButton then
+    if lastQuest.catalog then Addon.libraryReturnButton:Show() else Addon.libraryReturnButton:Hide() end
+  end
   -- Whether this render is a different quest from the last one drawn, which is
   -- what decides if the panes go back to the top.
   local newQuest = panel.renderedQuestKey ~= tostring(lastQuest.id or lastQuest.title or "")
     or panel.renderedText ~= lastQuest.text or panel.renderedPassage ~= lastQuest.passage
+    or panel.renderedWordLocale ~= wordLocale or panel.renderedReadOnly ~= readOnly
   panel.renderedQuestKey = tostring(lastQuest.id or lastQuest.title or "")
   panel.renderedText, panel.renderedPassage = lastQuest.text, lastQuest.passage
+  panel.renderedWordLocale, panel.renderedReadOnly = wordLocale, readOnly
   if newQuest then
     lastHighlightWord, lastHighlightIndex, lastHighlightOccurrence = nil, nil, nil
     lastHighlightSentenceOnly, selectedHighlight = nil, nil
@@ -464,7 +493,8 @@ local function refreshPanel()
       math.max(180, (integrated and (panel:GetWidth() / 2) or panel:GetWidth()) - 48))
     panel.enContent:SetWidth(enWidth)
     local qid = lastQuest.id
-    local entry = WordHunterWoW_QuestEN and qid and WordHunterWoW_QuestEN[tonumber(qid)]
+    local entry = qid and (Addon.GetEnglishQuestRecord and Addon.GetEnglishQuestRecord(qid)
+      or not Addon.GetEnglishQuestRecord and WordHunterWoW_QuestEN and WordHunterWoW_QuestEN[tonumber(qid)])
     local enTitle = LABELS.englishHeader
     -- Kept as separate blocks rather than one joined string. This pane places one
     -- token at a time, so a newline inside a joined string is discarded with the
@@ -680,7 +710,8 @@ local function refreshPanel()
 
       local word = Addon.cleanWord(token)
       local key = Addon.wordKey(word)
-      local entry = Addon.GetEffectiveWord(key)
+      local entry
+      if not readOnly then entry = Addon.GetEffectiveWord(key, wordLocale) end
       -- Scored once per distinct word, whether or not anything knows it yet.
       -- A word no dictionary covers is still a word in this quest the player
       -- does not know, so it belongs in the total rather than outside it.
@@ -691,22 +722,23 @@ local function refreshPanel()
         if progress[status] ~= nil then progress[status] = progress[status] + 1 end
       end
       Addon.StyleWordButton(button, entry and (entry.status or "new") or nil, marking, underlineHeight)
-      if not entry then
+      if not readOnly and not entry then
         -- Nothing knows this word: no dictionary entry and the player has not
         -- saved it. That is the 5% a new patch brings, and the only vocabulary
         -- the project cannot already gloss, so it is worth collecting.
         if Addon.HarvestUnknownWord and word ~= "" then
-          Addon.HarvestUnknownWord(word, lastQuest.id)
+          Addon.HarvestUnknownWord(word, lastQuest.id, wordLocale)
         end
       end
       button.word = word
       button.key = key
+      button.wordLocale = wordLocale
       button.sentenceIndex = deSentenceOfToken[deTokenNum]
       local occKey = tostring(button.sentenceIndex or 0) .. "\0" .. key
       wordOccurrenceInSentence[occKey] = (wordOccurrenceInSentence[occKey] or 0) + 1
       button.wordOccurrence = wordOccurrenceInSentence[occKey]
       button:SetScript("OnEnter", function(self)
-        if self.word and self.word ~= "" then
+        if not readOnly and self.word and self.word ~= "" then
           Addon.HighlightEnglishForWord(self.word, self.sentenceIndex, self.wordOccurrence, recallGated(self))
         end
       end)
@@ -715,6 +747,7 @@ local function refreshPanel()
         Addon.HighlightEnglishForWord(selected[1], selected[2], selected[3], true)
       end)
       button:SetScript("OnClick", function(self)
+        if readOnly then return end
         local gated = recallGated(self)
         selectedHighlight = { self.word, self.sentenceIndex, self.wordOccurrence, gated }
         Addon.HighlightEnglishForWord(self.word, self.sentenceIndex, self.wordOccurrence, gated)
@@ -722,16 +755,19 @@ local function refreshPanel()
         local context = (self.sentenceIndex and deSentences[self.sentenceIndex])
           or sentenceForWord(lastQuest.text, self.word)
         Addon.lastOpened = { index = self.gridIndex, serial = panel.layoutSerial, key = self.key }
-        Addon.openEditor(self.word, context, lastQuest.id, lastQuest.title, { origin = "panel" })
+        Addon.openEditor(self.word, context, lastQuest.id, lastQuest.title, { origin = "panel", locale = wordLocale })
       end)
-      button:SetEnabled(word ~= "")
+      button:SetEnabled(not readOnly and word ~= "")
       button:Show()
     end
   end
   local contentHeight = math.max(28, -y + 28)
   panel.content:SetHeight(contentHeight)
   panel.scroll:UpdateScrollChildRect()
-  panel.meta:SetText(Addon.FormatProgress(progress))
+  panel.meta:SetText(readOnly and "English database text – read only" or Addon.FormatProgress(progress))
+  for _, item in ipairs(panel.legend) do
+    if readOnly then item.dot:Hide() item.text:Hide() else item.dot:Show() item.text:Show() end
+  end
   -- The panel grows to fit the quest unless the player has sized it themselves.
   -- This used to look under the bare key "panel", but sizes are saved per
   -- layout context, so the lookup never found anything and the height was reset
@@ -840,7 +876,9 @@ local function readCurrentQuest(questLogId, requested)
   local description = GetQuestText and GetQuestText() or ""
   local objectives = GetObjectiveText and GetObjectiveText() or ""
   local Compat = Addon.Compat
+  local nativeNPC = true
   if questLogId and questLogId > 0 then
+    nativeNPC = false
     questId = questLogId
     description, objectives = Compat.QuestLogText(Compat.QuestLogIndexForID(questId))
     title = Compat.TitleForQuestID(questId) or title
@@ -848,6 +886,7 @@ local function readCurrentQuest(questLogId, requested)
   -- log window. The Classic arm is guarded by flavour rather than folded in, so
   -- that opening the world map on Retail keeps behaving exactly as it did.
   elseif (QuestInfoFrame and QuestInfoFrame.questLog) or (Compat.IsClassic() and Compat.QuestLogShown()) then
+    nativeNPC = false
     questId = Compat.SelectedQuestID() or questId
     description, objectives = Compat.QuestLogText(Compat.QuestLogIndexForID(questId))
     title = Compat.TitleForQuestID(questId) or title
@@ -894,6 +933,12 @@ local function readCurrentQuest(questLogId, requested)
     text = rewardText
   end
   if text == "" then return end
+  -- Legacy log helpers may answer the currently selected quest when selection
+  -- fails. Only this raw NPC path has verified ID/text provenance here; the
+  -- library's separately guarded liveRecord archives safe log observations.
+  if nativeNPC and Addon.ArchiveNativeQuest then
+    Addon.ArchiveNativeQuest(questId, { title = title, description = desc, objectives = obj }, Addon.TextLocale())
+  end
   -- Objectives, progress and hand-in text exist only here, never in the quest
   -- API the dictionaries were built from. Record them when the player opts in.
   if Addon.HarvestQuest then
@@ -1074,17 +1119,132 @@ function Addon.AttachQuestLogButton()
   return button
 end
 
+local questsLogButton
+local questsLogRoot
+
+-- The library's host: the quest LIST, never the reader's details pane. The
+-- reader hangs on Retail's QuestMapFrame.DetailsFrame, which exists only while
+-- a quest is picked; hung there, the library would vanish exactly when the
+-- player is browsing the list with nothing selected.
+--
+-- Probed by frame rather than by flavour, unlike questLogHost above: Forever
+-- hosts the same map list while answering Classic to every flavour question,
+-- so asking the flavour would send its button to a QuestLogFrame window
+-- Forever does not have. The QuestsFrame field is read with rawget so the
+-- probe never creates the field as a side effect.
+local function questsLogHost()
+  if type(QuestMapFrame) == "table" then
+    local list = rawget(QuestMapFrame, "QuestsFrame")
+    local ok = usableFrame(list)
+    if ok then return ok end
+  end
+  return usableFrame(QuestLogFrame)
+end
+Addon.QuestsLogButtonHost = questsLogHost
+
+-- A side tab outside the outer window. Parenting it to UIParent keeps the
+-- quest list's clipped children and border from cutting off the tab's art.
+function Addon.RefreshQuestsLogButton()
+  local b = questsLogButton
+  if not b then return end
+  local host = questsLogHost()
+  local anchor
+  if type(QuestMapFrame) == "table" and host == rawget(QuestMapFrame, "QuestsFrame") then
+    for _, key in ipairs({ "QuestsTab", "EventsTab", "MapLegendTab" }) do
+      local tab = usableFrame(rawget(QuestMapFrame, key))
+      if tab and (not anchor or tab:IsShown()) then anchor = tab end
+    end
+  end
+  b:ClearAllPoints()
+  if anchor then
+    -- Reserve a neighbour at -3, its 32px height, and an 8px gap (Lorever).
+    b:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -43)
+  else
+    b:SetPoint("TOPLEFT", questsLogRoot, "TOPRIGHT", 2, -96)
+  end
+  if UIParent and type(UIParent.GetEffectiveScale) == "function"
+      and type(questsLogRoot.GetEffectiveScale) == "function" then
+    b:SetScale(questsLogRoot:GetEffectiveScale() / UIParent:GetEffectiveScale())
+  end
+  b:SetChecked(Addon.questsFrame and Addon.questsFrame:IsShown() or false)
+  local function visible(frame)
+    if not frame then return false end
+    if type(frame.IsVisible) == "function" then return frame:IsVisible() end
+    return frame:IsShown()
+  end
+  if visible(host) and visible(questsLogRoot) then b:Show() else b:Hide() end
+end
+
+function Addon.AttachQuestsLogButton()
+  if questsLogButton then return questsLogButton end
+  local host = questsLogHost()
+  if not host then return nil end
+  local map = type(QuestMapFrame) == "table" and host == rawget(QuestMapFrame, "QuestsFrame")
+  questsLogRoot = map and (usableFrame(WorldMapFrame) or usableFrame(QuestMapFrame)) or host
+  local function toggle()
+    if Addon.toggleQuestBrowser then Addon.toggleQuestBrowser() end
+  end
+  local b
+  if type(SidePanelTabButtonMixin) == "table" then
+    b = CreateFrame("Frame", nil, UIParent, "LargeSideTabButtonTemplate")
+    b.Icon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
+    b:SetFillToInterior(true, 40)
+    b:EnableMouse(true)
+    b:SetCustomOnMouseUpHandler(function(_, button, upInside)
+      if button == "LeftButton" and upInside then toggle() end
+    end)
+  else
+    b = CreateFrame("CheckButton", nil, UIParent, "SpellBookSkillLineTabTemplate")
+    b:SetSize(32, 32)
+    b:SetNormalTexture("Interface\\Icons\\INV_Misc_Book_09")
+    b:SetScript("OnClick", toggle)
+  end
+  b:SetFrameStrata("FULLSCREEN_DIALOG")
+  b:SetFrameLevel(40)
+  b:SetScript("OnEnter", function(self)
+    if not GameTooltip then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText("WordHunterWoW - " .. (LABELS.questsTitle or "QUESTS"))
+    GameTooltip:AddLine(LABELS.questsLogTip or "Open the quest browser.", 0.8, 0.82, 0.88, true)
+    GameTooltip:Show()
+  end)
+  b:SetScript("OnLeave", function()
+    if GameTooltip then GameTooltip:Hide() end
+  end)
+  questsLogButton = b
+  Addon.questsLogButton = b
+  local watched = {}
+  local function watch(frame)
+    if not frame or watched[frame] then return end
+    watched[frame] = true
+    frame:HookScript("OnShow", Addon.RefreshQuestsLogButton)
+    frame:HookScript("OnHide", Addon.RefreshQuestsLogButton)
+  end
+  watch(host)
+  watch(questsLogRoot)
+  if map then
+    watch(QuestMapFrame)
+    for _, key in ipairs({ "QuestsTab", "EventsTab", "MapLegendTab" }) do
+      watch(usableFrame(rawget(QuestMapFrame, key)))
+    end
+  end
+  Addon.RefreshQuestsLogButton()
+  return b
+end
+
 -- Which of Blizzard's functions fired only matters for working out which quest
 -- the player is looking at; the reading itself is the same on every game.
 function Addon.hookQuestUi()
   local Compat = Addon.Compat
   Addon.AttachQuestLogButton()
+  if Addon.AttachQuestsLogButton then Addon.AttachQuestsLogButton() end
   return Compat.HookQuestUi(function(name)
     C_Timer.After(0, function()
       -- Belt and braces for a log that arrived by some route ADDON_LOADED did
       -- not name: by the time one of the log's own functions has run, its
       -- frames certainly exist, so nothing can be too early here.
       Addon.AttachQuestLogButton()
+      if Addon.AttachQuestsLogButton then Addon.AttachQuestsLogButton() end
       if name == "QuestMapFrame_ShowQuestDetails" then
         local questId = QuestMapFrame_GetDetailQuestID and QuestMapFrame_GetDetailQuestID()
         if not questId or questId == 0 then questId = Compat.SelectedQuestID() end
@@ -1177,6 +1337,11 @@ function Addon.createPanel()
     panel:Hide()
     if Addon.editor then Addon.editor:Hide() end
   end)
+  if Addon.CreateCatalogLanguageButton then
+    local language = Addon.CreateCatalogLanguageButton(panel, true)
+    language:SetPoint("TOPRIGHT", -68, -5)
+    language:Hide()
+  end
 
   panel.enTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   panel.enTitle:SetJustifyH("LEFT")
@@ -1252,7 +1417,9 @@ function Addon.createPanel()
   function Addon.ApplyIntegratedLayout()
     if not panel then return end
     local hasEN = type(WordHunterWoW_QuestEN) == "table"
-    local integrated = Addon.GetIntegratedLayout() and hasEN
+    local quest = Addon.lastQuest
+    local singleCatalog = quest and quest.catalog and (quest.sourceLocale == "enUS" or quest.sourceLocale == "enGB")
+    local integrated = Addon.GetIntegratedLayout() and hasEN and not (quest and quest.readOnly) and not singleCatalog
     -- nil on the very first call, which counts as a change: a width saved from
     -- a two-column session has to be brought back down once.
     local wasIntegrated = panel.integratedLayout
@@ -1278,9 +1445,13 @@ function Addon.createPanel()
       -- they talked to anyone. The first call (wasIntegrated == nil) must
       -- restore the saved position instead: without the English pack the
       -- panel never took the integrated branch, so PlaceFrame never ran.
+      -- A catalog reference merely hides the companion column; it is not a
+      -- request to compact the reader. Resizing here would overwrite the same
+      -- saved geometry used by the normal reader, including a hand-picked size.
       if wasIntegrated == nil then
         Addon.PlaceFrame(panel, "panel")
-      elseif wasIntegrated ~= false and panel:GetWidth() > 700 then
+      elseif not (quest and quest.readOnly) and not singleCatalog
+          and wasIntegrated ~= false and panel:GetWidth() > 700 then
         panel:SetSize(430, 240)
       end
     end

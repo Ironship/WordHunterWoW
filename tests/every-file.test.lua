@@ -42,7 +42,7 @@ do
 end
 
 local TOC = manifest("WordHunterWoW_Mainline.toc")
-assert(#TOC == 12, "the manifest names " .. #TOC .. " lua files, expected 12")
+assert(#TOC == 15, "the manifest names " .. #TOC .. " lua files, expected 15")
 -- The Classic manifest is a second copy of the same list. A file added to one
 -- and not the other loads on Retail and is nil on Classic Era, and nothing
 -- else here reads the second file at all.
@@ -76,7 +76,7 @@ local said = {}
 local realPrint = print
 print = function(...) said[#said + 1] = table.concat({ ... }, " ") end
 local commands = {
-  "", "settings", "words", "stats", "reset", "bg", "opacity",
+  "", "settings", "words", "stats", "quests", "reset", "bg", "opacity",
   "lang", "harvest", "harvest on", "harvest off", "harvest clear", "export",
   "difficult", "difficult export", "recall", "recall on", "recall off", "diag",
 }

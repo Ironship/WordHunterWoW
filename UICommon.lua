@@ -84,6 +84,45 @@ function Addon.createActionButton(parent, text)
   return button
 end
 
+-- The library and its reader share a language choice, apart from the player's
+-- normal learning-language setting. Vocabulary remains in its own language.
+function Addon.RefreshCatalogLanguageControls()
+  local locale = Addon.GetCatalogLocale and Addon.GetCatalogLocale() or Addon.GetTargetLocale()
+  for _, parent in ipairs({ Addon.questsFrame or false, Addon.panel or false }) do
+    local b = parent and parent.catalogLanguageButton
+    if b then
+      b:SetText(b.compact and string.upper(Addon.WH_LANGUAGE_MAP[locale] or locale)
+        or Addon.SUPPORTED_LOCALES[locale] or locale)
+      if parent == Addon.panel then
+        if Addon.lastQuest and Addon.lastQuest.catalog then b:Show() else b:Hide() end
+      end
+    end
+  end
+end
+
+function Addon.CreateCatalogLanguageButton(parent, compact)
+  local b = Addon.createActionButton(parent, "")
+  b.compact = compact
+  b:SetSize(compact and 42 or 112, 22)
+  b:SetScript("OnClick", function()
+    if not Addon.SetCatalogLocale then return end
+    local locale = Addon.GetCatalogLocale()
+    local target = Addon.GetTargetLocale()
+    if target == "enUS" or target == "enGB" then target = "deDE" end
+    Addon.SetCatalogLocale((locale == "enUS" or locale == "enGB") and target or "enUS")
+  end)
+  b:SetScript("OnEnter", function(self)
+    if not GameTooltip then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText("Switch quest language")
+    GameTooltip:AddLine("Vocabulary is saved separately for each language.", 0.8, 0.82, 0.88, true)
+    GameTooltip:Show()
+  end)
+  b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+  parent.catalogLanguageButton = b
+  return b
+end
+
 function Addon.createEditBox(parent)
   local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
   box:SetFontObject("ChatFontNormal")

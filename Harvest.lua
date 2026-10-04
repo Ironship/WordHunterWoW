@@ -29,7 +29,7 @@ function Addon.SetHarvestEnabled(value)
   if Addon.settingsPanel and Addon.settingsPanel.refresh then Addon.settingsPanel.refresh() end
 end
 
-local function corpusTable()
+local function corpusTable(locale)
   if type(WordHunterWoWCorpus) ~= "table" then WordHunterWoWCorpus = {} end
   -- Older versions are migrated, not discarded. There is only version 1 today,
   -- so nothing here runs -- but writing it as "anything unexpected, wipe it"
@@ -42,7 +42,7 @@ local function corpusTable()
     end
   end
   if type(WordHunterWoWCorpus.byLocale) ~= "table" then WordHunterWoWCorpus.byLocale = {} end
-  local locale = Addon.GetTargetLocale()
+  locale = locale or Addon.GetTargetLocale()
   if type(WordHunterWoWCorpus.byLocale[locale]) ~= "table" then
     WordHunterWoWCorpus.byLocale[locale] = {}
   end
@@ -207,15 +207,19 @@ local function withoutPlayerName(text)
     return "<name>"
   end))
 end
+-- Local quest-library snapshots use the same name normalization as exports.
+Addon.WithoutPlayerName = withoutPlayerName
 
-function Addon.HarvestText(kind, questId, text)
+function Addon.HarvestText(kind, questId, text, locale)
   if not Addon.GetHarvestEnabled() then return false end
   if not KINDS[kind] then return false end
+  locale = locale or Addon.GetTargetLocale()
+  if not Addon.SUPPORTED_LOCALES[locale] then return false end
   text = Addon.trim(tostring(text or ""))
   if text == "" or #text > MAX_TEXT then return false end
   if kind ~= "word" then text = withoutPlayerName(text) end
 
-  local bucket = corpusTable()
+  local bucket = corpusTable(locale)
   questId = tonumber(questId) or 0
   -- A quest passage is uniquely identified by the quest and which passage it is.
   -- Gossip has neither, so it is keyed by its own content. A word is keyed by
@@ -235,7 +239,7 @@ function Addon.HarvestText(kind, questId, text)
   local flavor = Addon.Compat and Addon.Compat.GameFlavor() or "retail"
   if flavor ~= "retail" then key = flavor .. ":" .. key end
   if bucket[key] then return false end
-  if Addon.HarvestCount() >= MAX_ENTRIES then
+  if Addon.HarvestCount(locale) >= MAX_ENTRIES then
     -- Said once, not on every passage. Before, collection simply stopped and a
     -- contributor who had left it on for months went on playing with nothing
     -- being recorded and no way to know.
@@ -249,7 +253,6 @@ function Addon.HarvestText(kind, questId, text)
     return false
   end
   bucket[key] = { kind = kind, id = questId, text = text, flavor = flavor }
-  local locale = Addon.GetTargetLocale()
   -- HarvestCount() walks the table when the cache is empty, so it already
   -- includes this row. Only increment when a cached count is already in hand.
   if counts[locale] then
@@ -262,7 +265,7 @@ end
 -- what a new patch introduces -- measured at about 5% of the words in quests
 -- newer than the corpus -- and they are the only ones nobody can gloss yet.
 -- Collecting them is what lets the next dictionary release cover them.
-function Addon.HarvestUnknownWord(word, questId)
+function Addon.HarvestUnknownWord(word, questId, locale)
   if not Addon.GetHarvestEnabled() then return false end
   word = Addon.trim(tostring(word or ""))
   if word == "" or #word > 64 then return false end
@@ -280,7 +283,7 @@ function Addon.HarvestUnknownWord(word, questId)
   if player and Addon.wordKey(word) == Addon.wordKey(player) then
     return false
   end
-  return Addon.HarvestText("word", questId, word)
+  return Addon.HarvestText("word", questId, word, locale)
 end
 
 function Addon.HarvestWordCount(locale)
@@ -348,11 +351,11 @@ function Addon.rebuildHarvestExport()
   if #rows == 0 then return 0 end
   WordHunterWoWCorpusExport = "WHC2|" .. locale .. "|" .. table.concat(rows, ";")
   -- The blob is already in WordHunterWoWCorpusExport and lands on disk with the
-  -- next reload. Free the live table so collection can start again, matching
+  -- next reload. Free this locale so collection can start again, matching
   -- what the full-cap message tells the player. An empty export must not wipe
-  -- a blob that has not reached disk yet.
-  WordHunterWoWCorpus = { version = 1, byLocale = {} }
-  counts = {}
+  -- a blob that has not reached disk yet. Other languages stay unexported.
+  WordHunterWoWCorpus.byLocale[locale] = nil
+  counts[locale] = nil
   Addon.harvestFullAnnounced = nil
   return #rows
 end

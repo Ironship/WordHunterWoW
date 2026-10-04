@@ -15,6 +15,9 @@ Editor.lua
 QuestPanel.lua
 WordList.lua
 Stats.lua
+QuestBrowser.lua
 Harvest.lua
+QuestHistory.lua
+QuestReader.lua
 Settings.lua
 Init.lua

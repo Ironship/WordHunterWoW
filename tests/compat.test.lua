@@ -117,6 +117,66 @@ assert(Compat.TitleForQuestID(8342) == "Wanted: Hogger")
 -- Hooks ----------------------------------------------------------------------
 
 clearApi()
+WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
+Compat.Refresh()
+
+-- Enumerating the log ----------------------------------------------------------
+
+-- Retail: C_QuestLog answers, headers are skipped, nothing is selected.
+C_QuestLog = {
+  GetNumQuestLogEntries = function() return 4 end,
+  GetInfo = function(index)
+    local rows = {
+      { questID = 0, title = "Elwynn Forest", isHeader = true },
+      { questID = 40, title = "A Threat Within" },
+      { questID = 0, title = "" },
+      { questID = 61, title = "Kobold Camp Cleanup" },
+    }
+    return rows[index]
+  end,
+}
+local entries = Compat.QuestLogEntries()
+assert(#entries == 2, "expected 2 quests, header and empty title skipped, got " .. #entries)
+assert(entries[1].id == 40 and entries[1].title == "A Threat Within")
+assert(entries[2].id == 61 and entries[2].title == "Kobold Camp Cleanup")
+
+-- Classic: GetNumQuestLogEntries + GetQuestLogTitle, id resolved per index.
+clearApi()
+WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 2, 1
+Compat.Refresh()
+GetNumQuestLogEntries = function() return 3 end
+GetQuestLogTitle = function(index)
+  if index == 1 then return "Zone header", nil, nil, true end
+  if index == 2 then return "Wanted: Hogger", 11, nil, false, false, false, nil, 8342 end
+  if index == 3 then return "", 5, nil, false end
+  return nil
+end
+GetQuestLogIndexByID = function(id) return id == 8342 and 2 or nil end
+entries = Compat.QuestLogEntries()
+assert(#entries == 1, "expected 1 quest, header and empty title skipped, got " .. #entries)
+assert(entries[1].id == 8342 and entries[1].title == "Wanted: Hogger")
+
+-- No API at all: empty, not an error.
+clearApi()
+WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 2, 1
+Compat.Refresh()
+GetNumQuestLogEntries = function() error("gone") end
+entries = Compat.QuestLogEntries()
+assert(#entries == 0, "a throwing log API must answer empty, got " .. #entries)
+assert(#Compat.QuestLogEntries() == 0, "a missing log API must answer empty")
+
+-- Completed flag: a hint, nil where the client cannot answer.
+clearApi()
+assert(Compat.QuestCompleted(40) == nil, "no API means no answer, not false")
+assert(Compat.QuestCompleted(0) == nil and Compat.QuestCompleted(nil) == nil)
+C_QuestLog = { IsQuestFlaggedCompleted = function(id) return id == 40 end }
+assert(Compat.QuestCompleted(40) == true)
+assert(Compat.QuestCompleted(41) == false)
+IsQuestFlaggedCompleted = function() error("gone") end
+C_QuestLog = nil
+assert(Compat.QuestCompleted(40) == nil, "a throwing flag API must answer nil")
+
+clearApi()
 local hookedNames = {}
 hooksecurefunc = function(name) hookedNames[#hookedNames + 1] = name end
 QuestInfo_ShowDescriptionText = function() end

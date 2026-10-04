@@ -21,7 +21,7 @@ local function updateEditorHistory()
   local selected = Addon.selected
   -- The recall summary rides on the first line, which has room; the second
   -- already carries the Ready-for-Known hint and is held to two lines.
-  local recall = Addon.RecallSummary and selected.key and Addon.RecallSummary(selected.key)
+  local recall = Addon.RecallSummary and selected.key and Addon.RecallSummary(selected.key, selected.locale)
   local history = string.format(
     "First added: %s  •  Last seen: %s%s\n%d quests  •  Status changed: %s",
     date("%Y-%m-%d", selected.firstSeenAt),
@@ -168,9 +168,9 @@ local function rate(score, fromKey)
   local selected = Addon.selected
   if not selected or not selected.recallPending or not editor:IsShown() then return end
   local now = time()
-  if Addon.RecordRating then Addon.RecordRating(selected.key, score, now) end
+  if Addon.RecordRating then Addon.RecordRating(selected.key, score, now, selected.locale) end
   if Addon.RecordExample then
-    Addon.RecordExample(selected.key, selected.context, selected.questId, selected.questTitle, now)
+    Addon.RecordExample(selected.key, selected.context, selected.questId, selected.questTitle, now, selected.locale)
   end
   reveal(fromKey)
 end
@@ -179,10 +179,12 @@ end
 -- "panel": a word met in a quest is the moment to ask whether it is known,
 -- and the word list -- which shows the meaning beside the word -- is not.
 function Addon.openEditor(word, context, questId, questTitle, opts)
+  local locale = type(opts) == "table" and opts.locale or Addon.GetTargetLocale()
+  if not Addon.SUPPORTED_LOCALES[locale] then return end
   local key = Addon.wordKey(word)
   if key == "" then return end
-  local entry = Addon.GetEffectiveWord(key)
-  local dictionaryEntry = Addon.GetDictionaryEntry(key)
+  local entry = Addon.GetEffectiveWord(key, locale)
+  local dictionaryEntry = Addon.GetDictionaryEntry(key, locale)
   local fromPanel = type(opts) == "table" and opts.origin == "panel"
   local now = time()
   -- The sentence a Learning word was met in is worth keeping whether or not
@@ -190,14 +192,15 @@ function Addon.openEditor(word, context, questId, questTitle, opts)
   -- dictionary word has no entry, and making one here would put it in the
   -- export and freeze the pack's wording, which is what Save avoids.
   if fromPanel and Addon.RecordExample then
-    local own = Addon.GetWordsTable()[key]
+    local own = Addon.GetWordsTable(locale)[key]
     if own and Addon.EffectiveStatus(own) == "learning" then
-      Addon.RecordExample(key, context, questId, questTitle, now)
+      Addon.RecordExample(key, context, questId, questTitle, now, locale)
     end
   end
   local gated = false
-  if fromPanel and Addon.RecallGated then gated = Addon.RecallGated(key, now) end
+  if fromPanel and Addon.RecallGated then gated = Addon.RecallGated(key, now, locale) end
   Addon.selected = {
+    locale = locale,
     key = key,
     word = entry and entry.word or word,
     status = entry and entry.status or "learning",
@@ -248,7 +251,7 @@ function Addon.openEditor(word, context, questId, questTitle, opts)
       local mean, count
       if Addon.RecallSummary then
         local _
-        _, mean, count = Addon.RecallSummary(key)
+        _, mean, count = Addon.RecallSummary(key, locale)
       end
       editor.cover.soFar:SetText(count and count > 0 and string.format(LABELS.recallSoFar, count, mean) or "")
     end
@@ -283,26 +286,26 @@ local function saveSelected()
   -- The sentence goes with the word from the moment it is marked Learning,
   -- whichever branch below the entry itself takes.
   if selected.status == "learning" and Addon.RecordExample then
-    Addon.RecordExample(key, selected.context, selected.questId, selected.questTitle, now)
+    Addon.RecordExample(key, selected.context, selected.questId, selected.questTitle, now, selected.locale)
   end
-  local dict = selected.dictionaryEntry or Addon.GetDictionaryEntry(key)
+  local dict = selected.dictionaryEntry or Addon.GetDictionaryEntry(key, selected.locale)
   local dictStatus = dict and ((dict.status == "ignored" or dict.status == "known" or dict.status == "learning" or dict.status == "new") and dict.status or "new") or nil
   -- Matching the dictionary exactly means there is nothing of the player's to
   -- keep. Writing an overlay would freeze this wording against later pack updates.
   if dict and translation == Addon.trim(dict.translation or "")
       and note == Addon.trim(dict.note or "")
       and selected.status == dictStatus then
-    Addon.GetWordsTable()[key] = nil
+    Addon.GetWordsTable(selected.locale)[key] = nil
     Addon.rebuildExport()
     editor:Hide()
     Addon.refreshPanel()
     Addon.refreshWordList()
     return
   end
-  local entry = Addon.GetWordsTable()[key]
+  local entry = Addon.GetWordsTable(selected.locale)[key]
   if not entry then
     entry = { word = selected.word }
-    Addon.GetWordsTable()[key] = entry
+    Addon.GetWordsTable(selected.locale)[key] = entry
   end
   local statusChangedAt = entry.statusChangedAt or now
   if entry.status ~= selected.status then statusChangedAt = now end

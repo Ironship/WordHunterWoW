@@ -1,0 +1,353 @@
+local Addon = WordHunterWoW_Addon
+
+-- The library reuses the real reader; it never selects an offline quest in
+-- Blizzard's log. A source language travels with the text so an English
+-- fallback cannot be stored as German vocabulary or sent to the German voice.
+local function plain(value)
+  if type(value) ~= "string" then return "" end
+  local check = Addon.IsSecretValue or issecretvalue
+  if type(check) == "function" then
+    local ok, secret = pcall(check, value)
+    if not ok or secret then return "" end
+  end
+  return Addon.trim(value:gsub("\r\n", "\n"):gsub("\r", "\n"))
+end
+
+local function idFor(value)
+  if type(value) ~= "number" and type(value) ~= "string" then return nil end
+  local id = tonumber(value)
+  if not id or id <= 0 or id == math.huge or id ~= math.floor(id) then return nil end
+  return id
+end
+
+local function playerName()
+  if Addon.PlayerName then
+    local ok, value = pcall(Addon.PlayerName)
+    if ok and plain(value) ~= "" then return plain(value) end
+  end
+  if type(UnitName) == "function" then
+    local ok, value = pcall(UnitName, "player")
+    if ok and plain(value) ~= "" then return plain(value):match("^[^%-]+") end
+  end
+  return nil
+end
+
+local function personalize(text, locale)
+  local name = playerName()
+  local function fill(token, pattern, value)
+    if not value or value == "" then return end
+    for _, mark in ipairs({ "{" .. token .. "}", "<" .. token .. ">", pattern }) do
+      text = text:gsub(mark, function() return value end)
+    end
+  end
+  fill("name", "%$[nN]", name)
+  for _, unit in ipairs({ { "class", "%$[cC]", UnitClass }, { "race", "%$[rR]", UnitRace } }) do
+    if type(unit[3]) == "function" then
+      local ok, localized, englishName = pcall(unit[3], "player")
+      local value
+      if ok and locale == Addon.TextLocale() then value = plain(localized)
+      elseif ok and (locale == "enUS" or locale == "enGB") then
+        value = plain(englishName)
+        if unit[1] == "class" then
+          value = ({ DEATHKNIGHT = "Death Knight", DEMONHUNTER = "Demon Hunter" })[value]
+            or (value:sub(1, 1):upper() .. value:sub(2):lower())
+        else value = value == "Scourge" and "Undead" or value:gsub("(%l)(%u)", "%1 %2") end
+      end
+      fill(unit[1], unit[2], value)
+    end
+  end
+  local ok, sex = false, nil
+  if type(UnitSex) == "function" then ok, sex = pcall(UnitSex, "player") end
+  local check = Addon.IsSecretValue or issecretvalue
+  if ok and type(check) == "function" then
+    local checked, secret = pcall(check, sex)
+    if not checked or secret then ok = false end
+  end
+  text = text:gsub("%$[gG]([^:;]*):([^;]*);", function(male, female) return ok and sex == 3 and female or male end)
+  return text
+end
+
+local function passage(record)
+  if type(record) ~= "table" then return "" end
+  local desc, obj = plain(record.description), plain(record.objectives)
+  return desc .. (desc ~= "" and obj ~= "" and "\n\n" or "") .. obj
+end
+
+local function recordFor(data, id)
+  if type(data) ~= "table" then return nil end
+  return data[id] or data[tostring(id)]
+end
+
+local function corpusRecord(id, locale)
+  local corpus = WordHunterWoWCorpus
+  local buckets = type(corpus) == "table" and corpus.byLocale
+  local bucket = type(buckets) == "table" and buckets[locale]
+  if type(bucket) ~= "table" then return nil end
+  local flavor = Addon.Compat and Addon.Compat.GameFlavor() or "retail"
+  local record = {}
+  local prefix = flavor == "retail" and "" or flavor .. ":"
+  for _, kind in ipairs({ "title", "description", "objectives" }) do
+    local entry = bucket[prefix .. kind .. ":" .. id]
+    if type(entry) == "table" and idFor(entry.id) == id
+        and (entry.flavor == flavor or (entry.flavor == nil and flavor == "retail")) then
+      record[kind] = plain(entry.text)
+    end
+  end
+  -- Older/imported corpora need not use Harvest's keys. Sort the keys first
+  -- so duplicate records cannot randomly change between openings.
+  local keys = {}
+  for key in pairs(bucket) do if type(key) == "string" then keys[#keys + 1] = key end end
+  table.sort(keys)
+  for _, key in ipairs(keys) do
+    local entry = bucket[key]
+    if type(entry) == "table" and idFor(entry.id) == id
+        and (entry.flavor == flavor or (entry.flavor == nil and flavor == "retail"))
+        and (entry.kind == "title" or entry.kind == "description" or entry.kind == "objectives")
+        and not record[entry.kind] then
+      record[entry.kind] = plain(entry.text)
+    end
+  end
+  return record
+end
+
+local function liveRecord(id, locale)
+  if Addon.TextLocale() ~= locale then return nil end
+  local Compat = Addon.Compat
+  if not Compat or type(GetQuestLogQuestText) ~= "function" then return nil end
+  local okIndex, index = pcall(Compat.QuestLogIndexForID, id)
+  if not okIndex or type(index) ~= "number" or index <= 0 then return nil end
+  local ok, desc, obj
+  if Compat.QuestLogTextIsIndexed and Compat.QuestLogTextIsIndexed() then
+    ok, desc, obj = pcall(GetQuestLogQuestText, index)
+  else
+    -- Legacy reads the selected quest. Do not move that selection even briefly.
+    local okSelected, selected = pcall(Compat.SelectedQuestID)
+    if not okSelected or selected ~= id then return nil end
+    ok, desc, obj = pcall(GetQuestLogQuestText)
+  end
+  if not ok then return nil end
+  local okTitle, title = pcall(Compat.TitleForQuestID, id)
+  return { title = okTitle and plain(title) or "", description = plain(desc), objectives = plain(obj) }
+end
+
+local function english(locale) return locale == "enUS" or locale == "enGB" end
+
+function Addon.GetCatalogLocale()
+  return Addon.SUPPORTED_LOCALES[Addon.catalogLocale] and Addon.catalogLocale or Addon.GetTargetLocale()
+end
+
+-- A qualified game bucket is authoritative, including IDs it does not contain.
+-- Legacy locale-flat packs remain readable when no qualified game pack exists.
+-- A publisher can explicitly share Classic records with Forever by providing
+-- its Forever bucket and sourceFlavor="classic"; no alias is inferred here.
+function Addon.GetQuestDatabase(locale)
+  locale = locale or Addon.GetCatalogLocale()
+  local flavor = Addon.Compat and Addon.Compat.GameFlavor() or "retail"
+  local games = WordHunterWoW_QuestDataByFlavor
+  local game = type(games) == "table" and games[flavor]
+  local all = WordHunterWoW_QuestData
+  local data = type(game) == "table" and game or (type(all) == "table" and all or {})
+  local sourceLocale = locale
+  local bucket = data[locale]
+  if type(bucket) ~= "table" and english(locale) then
+    sourceLocale = locale == "enGB" and "enUS" or "enGB"
+    bucket = data[sourceLocale]
+  end
+  if type(bucket) ~= "table" and type(game) ~= "table" and english(locale)
+      and type(WordHunterWoW_QuestEN) == "table" then
+    bucket, sourceLocale = WordHunterWoW_QuestEN, "enUS"
+  end
+  return type(bucket) == "table" and bucket or {},
+    type(game) == "table" and (game.sourceFlavor or flavor) or "legacy",
+    type(game) == "table", sourceLocale
+end
+
+local function databaseRecord(record, sourceFlavor, locale)
+  if type(record) ~= "table" then return nil end
+  local flavor = Addon.Compat and Addon.Compat.GameFlavor() or "retail"
+  local declared = record.sourceFlavor or record.flavor
+  if declared and declared ~= flavor and declared ~= sourceFlavor then return nil end
+  local declaredLocale = record.sourceLocale or record.locale
+  if declaredLocale and declaredLocale ~= locale
+      and not (english(declaredLocale) and english(locale)) then return nil end
+  if flavor ~= "retail" and type(record.descriptionSource) == "string"
+      and record.descriptionSource:lower():find("^retail") then
+    local copy = {}
+    for key, value in pairs(record) do copy[key] = value end
+    copy.description = "" -- The objectives may still be authentic Classic data.
+    return copy
+  end
+  return record
+end
+
+local function incomplete(record)
+  return type(record) ~= "table" or plain(record.title) == ""
+    or plain(record.description) == "" or plain(record.objectives) == ""
+end
+
+-- Supplement an observation without changing the native archive or the static
+-- database. Callers supply only records already qualified for this game/language.
+local function fillMissing(record, fallback, source)
+  if type(record) ~= "table" or type(fallback) ~= "table" then return record end
+  local result = record
+  for _, field in ipairs({ "title", "description", "objectives" }) do
+    if plain(record[field]) == "" and plain(fallback[field]) ~= "" then
+      if result == record then
+        result = {}
+        for key, value in pairs(record) do result[key] = value end
+      end
+      result[field] = fallback[field]
+      result[field .. "Source"] = fallback[field .. "Source"] or fallback.source or source
+    end
+  end
+  return result
+end
+
+function Addon.GetEnglishQuestRecord(value)
+  local id = idFor(value)
+  if not id then return nil end
+  local currentFlavor = Addon.Compat and Addon.Compat.GameFlavor() or "retail"
+  local data, flavor, qualified, locale = Addon.GetQuestDatabase("enUS")
+  local record = recordFor(data, id)
+  if not record and not qualified then
+    record, locale = recordFor(WordHunterWoW_QuestEN, id), "enUS"
+  end
+  record = databaseRecord(record, flavor, locale)
+  for _, nativeLocale in ipairs({ "enUS", "enGB" }) do
+    local observed = Addon.GetObservedQuestTexts and Addon.GetObservedQuestTexts(nativeLocale)
+    local native = recordFor(observed, id)
+    if passage(native) ~= "" then
+      if incomplete(native) then native = fillMissing(native, corpusRecord(id, nativeLocale), "collected text") end
+      return fillMissing(native, record, "database"), currentFlavor, nativeLocale, "observed text"
+    end
+    native = corpusRecord(id, nativeLocale)
+    if passage(native) ~= "" then return fillMissing(native, record, "database"), currentFlavor, nativeLocale, "collected text" end
+  end
+  return record, record and (record.sourceFlavor or record.flavor) or flavor, locale, "database"
+end
+
+function Addon.ResolveCatalogQuest(value, locale)
+  local id = idFor(value)
+  if not id then return nil end
+  locale = locale or Addon.GetCatalogLocale()
+  if not Addon.SUPPORTED_LOCALES[locale] then return nil end
+  local flavor = Addon.Compat and Addon.Compat.GameFlavor() or "retail"
+  local localized, databaseFlavor, _, databaseLocale = Addon.GetQuestDatabase(locale)
+  local sourceFlavor, sourceLocale = flavor, locale
+  local record, source = liveRecord(id, locale), "quest log"
+  if passage(record) ~= "" and Addon.ArchiveNativeQuest then Addon.ArchiveNativeQuest(id, record, locale) end
+  if incomplete(record) then
+    local observed = Addon.GetObservedQuestTexts and Addon.GetObservedQuestTexts(locale)
+    local native = recordFor(observed, id)
+    if passage(record) == "" then record, source = native, "observed text"
+    else record = fillMissing(record, native, "observed text") end
+  end
+  if incomplete(record) then
+    local collected = corpusRecord(id, locale)
+    if passage(record) == "" then
+      record, source = collected, "collected text"
+      sourceFlavor, sourceLocale = flavor, locale
+    else record = fillMissing(record, collected, "collected text") end
+  end
+  local combined = false
+  if passage(record) == "" then
+    local last = Addon.lastQuest
+    if type(last) == "table" and not last.catalog and not last.readOnly and idFor(last.id) == id
+        and (not last.sourceFlavor or last.sourceFlavor == flavor)
+        and last.passage == "offer" and Addon.TextLocale() == locale and plain(last.text) ~= "" then
+      record, source = { title = last.title, description = last.text }, "quest log"
+      combined = true -- last.text already combines the description and objectives.
+      sourceFlavor, sourceLocale = flavor, locale
+    end
+  end
+  local database = databaseRecord(recordFor(localized, id), databaseFlavor, locale)
+  if passage(record) == "" then
+    record, source = database, "database"
+    sourceFlavor, sourceLocale = record and (record.sourceFlavor or record.flavor) or databaseFlavor, databaseLocale
+  elseif not combined then
+    record = fillMissing(record, database, "database")
+  end
+  if passage(record) == "" then
+    record, sourceFlavor, sourceLocale, source = Addon.GetEnglishQuestRecord(id)
+  end
+  local text = passage(record)
+  if text == "" then return nil end
+  local englishTarget = english(locale)
+  local readOnly = sourceLocale ~= locale and not (english(sourceLocale) and englishTarget)
+  local title = plain(record.title)
+  if title == "" then title = "Quest " .. id end
+  -- A reference is deliberately not a voice-pack passage. Existing optional
+  -- voice hooks still get their cleanup callback, but have no clip to attach.
+  return { id = id, title = personalize(title, sourceLocale), text = personalize(text, sourceLocale), passage = readOnly and "reference" or "offer",
+    catalog = true, requestedLocale = locale, sourceLocale = sourceLocale, sourceFlavor = sourceFlavor,
+    wordLocale = not readOnly and locale or nil, source = source, readOnly = readOnly,
+    descriptionSource = record.descriptionSource or source, objectivesSource = record.objectivesSource or source,
+    originFlavor = record.originFlavor or sourceFlavor, sourceBuild = record.sourceBuild,
+    voiceUnavailable = readOnly or sourceLocale ~= "deDE" }
+end
+
+local function libraryNavigation()
+  if Addon.libraryReturnButton then return end
+  local button = CreateFrame("Button", nil, Addon.panel)
+  button:SetSize(24, 24)
+  button:SetPoint("TOPRIGHT", -36, -5)
+  if button.SetNormalTexture then button:SetNormalTexture("Interface\\Icons\\INV_Misc_Book_09") end
+  if button.SetHighlightTexture then button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD") end
+  button:SetScript("OnClick", function()
+    Addon.panel:Hide()
+    if Addon.editor then Addon.editor:Hide() end
+    -- Show, don't toggle: the library may already be open under the reader,
+    -- and a toggle would close exactly the window the button promises.
+    if Addon.questsFrame and Addon.questsFrame:IsShown() then
+      Addon.questsFrame:Show()
+    elseif Addon.toggleQuestBrowser then
+      Addon.toggleQuestBrowser()
+    end
+  end)
+  button:SetScript("OnEnter", function(self)
+    if not GameTooltip then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText("Back to quest library")
+    GameTooltip:Show()
+  end)
+  button:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+  Addon.libraryReturnButton = button
+end
+
+function Addon.OpenCatalogQuest(value, locale)
+  local quest = Addon.ResolveCatalogQuest(value, locale)
+  if not quest then return false end
+  if locale and Addon.catalogLocale ~= quest.requestedLocale then
+    Addon.catalogLocale = quest.requestedLocale
+    if Addon.RefreshCatalogLanguageControls then Addon.RefreshCatalogLanguageControls() end
+    if Addon.refreshQuestBrowser then Addon.refreshQuestBrowser() end
+  end
+  if not Addon.panel then Addon.createPanel() end
+  libraryNavigation()
+  Addon.libraryReturnButton:Show()
+  if Addon.editor then Addon.editor:Hide() end
+  Addon.lastQuest = quest
+  if Addon.ApplyIntegratedLayout then Addon.ApplyIntegratedLayout() end
+  Addon.panel:Show()
+  Addon.refreshPanel()
+  return true
+end
+
+function Addon.SetCatalogLocale(locale)
+  if not Addon.SUPPORTED_LOCALES[locale] then return false end
+  Addon.catalogLocale = locale
+  if Addon.RefreshCatalogLanguageControls then Addon.RefreshCatalogLanguageControls() end
+  if Addon.editor then Addon.editor:Hide() end
+  if Addon.confirmDialog then Addon.confirmDialog:Hide() end
+  Addon.selected = nil
+  if Addon.refreshQuestBrowser then Addon.refreshQuestBrowser() end
+  local quest = Addon.lastQuest
+  if quest and quest.catalog and Addon.panel and Addon.panel:IsShown() then
+    if not Addon.OpenCatalogQuest(quest.id, locale) then
+      Addon.panel:Hide()
+      if Addon.questsFrame then Addon.questsFrame:Show() end
+      return false
+    end
+  end
+  return true
+end
