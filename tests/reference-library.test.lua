@@ -14,9 +14,13 @@ WordHunterWoW_QuestDataByFlavor = {forever={deDE={[7]={title='Nativ',description
 local key = 'multilanguage-classic-master'
 WordHunterWoW_QuestSources = {[key]={label='Classic and seasonal source',locales={
   deDE={[7]={title='Quelle',description='Der Hund wartet.',completion='Danke Hund.',sourceObjective='Die Quelle spricht.'},
-    [8]={title='Nur Deutsch',progress='Ein Hund.'}},
+    [8]={title='Nur Deutsch',progress='Ein Hund.'},
+    [10]={title='Deutscher Titel'}, [11]={title='Deutscher Titel ohne Dialog'},
+    [13]={title='Deutscher Titel mit Dialog',description='Der Hund wartet.'}},
   enUS={[7]={title='Source',description='The dog waits.',completion='Thanks dog.',sourceObjective='The source speaks.'},
-    [9]={title='English only',description='An English dog.'}}}}}
+    [9]={title='English only',description='An English dog.'},
+    [10]={title='English title'}, [11]={title='English title with dialogue',description='An English dog.'},
+    [12]={title='English-only title'}, [13]={title='English-only counterpart title'}}}}}
 WordHunterWoW_EntityDataBySource = {['multilanguage-classic']={sourceLabel='Classic entity reference',kinds={
   item={deDE={[7]={name='Ein Gegenstand',text='Ein Hund.'}},enUS={[7]={name='An item',text='A dog.'}}},
   spell={deDE={[7]={name='Ein Zauber',text='Der Hund schläft.'}},enUS={}},
@@ -32,6 +36,17 @@ assert(A.SetCatalogLocale('deDE') and A.SetCatalogPhase('sourceObjective'))
 assert(A.panel.enPlain=='The source speaks.' and A.lastQuest.text=='Die Quelle spricht.')
 assert(A.OpenCatalogQuest(ref('quest',9),'deDE') and A.lastQuest.readOnly and not A.lastQuest.wordLocale)
 assert(not A.ResolveCatalogQuest(ref('quest',7),'deDE','invalid'))
+assert(A.OpenCatalogQuest(ref('quest',10),'deDE') and A.lastQuest.text=='Deutscher Titel')
+assert(A.lastQuest.catalogPhase=='title' and not A.lastQuest.readOnly and A.lastQuest.wordLocale=='deDE')
+assert(A.panel.enPlain=='English title' and A.lastQuest.referenceNote:find('Title-only',1,true))
+assert(not A.ResolveCatalogQuest(ref('quest',10),'deDE','completion'), 'title-only study must not invent dialogue')
+assert(A.SetCatalogLocale('enUS') and A.lastQuest.text=='English title' and A.lastQuest.catalogPhase=='title')
+assert(A.OpenCatalogQuest(ref('quest',11),'deDE') and A.lastQuest.text=='Deutscher Titel ohne Dialog' and not A.lastQuest.readOnly)
+assert(A.SetCatalogPhase('offer') and A.lastQuest.readOnly and A.lastQuest.text=='An English dog.')
+assert(A.OpenCatalogQuest(ref('quest',12),'deDE') and A.lastQuest.catalogPhase=='title' and A.lastQuest.readOnly)
+assert(A.OpenCatalogQuest(ref('quest',13),'deDE') and A.lastQuest.catalogPhase=='offer' and A.lastQuest.text=='Der Hund wartet.')
+assert(not A.panel.enCanHighlight, 'a bare English title is not English offer text')
+assert(A.SetCatalogPhase('title') and A.lastQuest.text=='Deutscher Titel mit Dialog' and A.panel.enPlain=='English-only counterpart title')
 assert(A.OpenCatalogQuest(ref('item',7,'multilanguage-classic'),'deDE'))
 assert(A.lastQuest.text=='Ein Gegenstand\n\nEin Hund.' and A.panel.enPlain=='An item\n\nA dog.' and A.lastQuest.sourceId==7)
 local clicked
@@ -46,7 +61,7 @@ local history=A.GetCharacterQuestHistory()
 assert(not history[7] or not history[7].completed, 'source study must not award native quest completion')
 A.toggleQuestBrowser()
 assert(A.SetLibraryView(key..':quest'))
-assert(A.questsFrame.resultCount==3 and A.questsFrame.filter=='database')
+assert(A.questsFrame.resultCount==7 and A.questsFrame.filter=='database')
 A.SetQuestCatalogFilter('completed')
 assert(A.questsFrame.filter=='database', 'native history filters cannot claim source-version completion')
 local row=A.questsFrame.rows[1]

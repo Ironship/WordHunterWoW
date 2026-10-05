@@ -379,7 +379,7 @@ function Addon.RefreshCatalogPhaseControl()
   if not (quest and quest.catalog) then button:Hide() return end
   local phases = quest.catalogPhases or { "offer" }
   button:SetText((quest.referenceKind and quest.referenceKind ~= "quest" and "Text"
-    or ({ offer = "Offer", progress = "Progress", completion = "Completion", sourceObjective = "Source field" })[quest.catalogPhase or "offer"])
+    or ({ offer = "Offer", progress = "Progress", completion = "Completion", sourceObjective = "Source field", title = "Title" })[quest.catalogPhase or "offer"])
     .. (#phases > 1 and " >" or ""))
   if button.SetEnabled then button:SetEnabled(#phases > 1) end
   button:Show()
