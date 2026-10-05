@@ -68,14 +68,14 @@ test("how a met word is marked is the player's choice, and the mark scales", () 
   assert.match(source, /underline:SetHeight\(underlineHeight\)/);
 });
 
-test("says so when a quest record has no English opening text", () => {
-  // Classic records carry a title and an objective and nothing else. The panel
+test("says so when a quest record has neither English opening nor matching dialogue", () => {
+  // Some records carry a title and an objective and nothing else. The panel
   // used to show the lone objective with no explanation, where it read as a
   // translation that had been cut short. The existing caveat covered only the
   // other case -- an NPC showing progress or hand-in text -- so this one needs
   // its own branch and its own label.
   assert.match(source, /enNoOffer = "\[No English opening text/);
-  assert.match(source, /elseif not hasOffer then/);
+  assert.match(source, /elseif not hasOffer and not \(passageText and passageText ~= ""\) then/);
   assert.match(source, /caveat = LABELS\.enNoOffer/);
   // It must stay an either/or with the passage caveat: two red lines above one
   // objective would be worse than none. One variable, assigned in one branch or

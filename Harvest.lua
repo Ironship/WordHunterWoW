@@ -210,7 +210,7 @@ end
 -- Local quest-library snapshots use the same name normalization as exports.
 Addon.WithoutPlayerName = withoutPlayerName
 
-function Addon.HarvestText(kind, questId, text, locale)
+function Addon.HarvestText(kind, questId, text, locale, observedPassage)
   if not Addon.GetHarvestEnabled() then return false end
   if not KINDS[kind] then return false end
   locale = locale or Addon.GetTargetLocale()
@@ -238,7 +238,16 @@ function Addon.HarvestText(kind, questId, text, locale)
   -- collected all over again the first time this runs.
   local flavor = Addon.Compat and Addon.Compat.GameFlavor() or "retail"
   if flavor ~= "retail" then key = flavor .. ":" .. key end
-  if bucket[key] then return false end
+  local verified = questId > 0 and ((kind == "progress" and observedPassage == "progress")
+    or (kind == "reward" and observedPassage == "reward"))
+  if bucket[key] then
+    -- Older harvests read every getter, including offscreen stale text. Keep
+    -- those entries, but only certify one when the same line is seen again.
+    if verified and type(bucket[key]) == "table" and bucket[key].kind == kind and bucket[key].text == text then
+      bucket[key].observedPassage = observedPassage
+    end
+    return false
+  end
   if Addon.HarvestCount(locale) >= MAX_ENTRIES then
     -- Said once, not on every passage. Before, collection simply stopped and a
     -- contributor who had left it on for months went on playing with nothing
@@ -253,6 +262,7 @@ function Addon.HarvestText(kind, questId, text, locale)
     return false
   end
   bucket[key] = { kind = kind, id = questId, text = text, flavor = flavor }
+  if verified then bucket[key].observedPassage = observedPassage end
   -- HarvestCount() walks the table when the cache is empty, so it already
   -- includes this row. Only increment when a cached count is already in hand.
   if counts[locale] then
@@ -298,10 +308,10 @@ function Addon.HarvestWordCount(locale)
   return n
 end
 
-function Addon.HarvestQuest(questId, passages)
+function Addon.HarvestQuest(questId, passages, locale, observedPassage)
   if not Addon.GetHarvestEnabled() then return end
   for kind, text in pairs(passages) do
-    Addon.HarvestText(kind, questId, text)
+    Addon.HarvestText(kind, questId, text, locale, observedPassage)
   end
 end
 

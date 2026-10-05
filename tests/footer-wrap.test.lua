@@ -97,7 +97,7 @@ end
 local function check(step, width)
   flush()
   local rects = {}
-  for _, button in ipairs(panel.actions) do
+  for _, button in ipairs(A.lastQuest and A.lastQuest.catalog and panel.catalogActions or panel.actions) do
     local l, r, b, t = rect(button)
     assert(l >= 18 - 0.001 and r <= width - 18 + 0.001,
       step .. ': footer control outside reader: ' .. l .. '..' .. r)
