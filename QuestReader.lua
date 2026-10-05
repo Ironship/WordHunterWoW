@@ -67,15 +67,32 @@ local function personalize(text, locale)
   return text
 end
 
-local function passage(record)
+local PHASES = { "offer", "progress", "completion" }
+local FIELDS = { "title", "description", "objectives", "progress", "completion" }
+local function passage(record, phase)
   if type(record) ~= "table" then return "" end
+  if phase == "progress" or phase == "completion" then return plain(record[phase]) end
   local desc, obj = plain(record.description), plain(record.objectives)
   return desc .. (desc ~= "" and obj ~= "" and "\n\n" or "") .. obj
+end
+
+local function hasText(record)
+  for _, phase in ipairs(PHASES) do if passage(record, phase) ~= "" then return true end end
+  return false
 end
 
 local function recordFor(data, id)
   if type(data) ~= "table" then return nil end
   return data[id] or data[tostring(id)]
+end
+
+local function collectedPhaseVerified(entry, kind)
+  if kind == "progress" then return entry.kind == kind and entry.observedPassage == "progress" end
+  if kind == "reward" or kind == "completion" then
+    return (entry.kind == "reward" or entry.kind == "completion")
+      and (entry.observedPassage == "reward" or entry.observedPassage == "completion")
+  end
+  return true
 end
 
 local function corpusRecord(id, locale)
@@ -86,11 +103,13 @@ local function corpusRecord(id, locale)
   local flavor = Addon.Compat and Addon.Compat.GameFlavor() or "retail"
   local record = {}
   local prefix = flavor == "retail" and "" or flavor .. ":"
-  for _, kind in ipairs({ "title", "description", "objectives" }) do
+  for _, kind in ipairs({ "title", "description", "objectives", "progress", "completion", "reward" }) do
     local entry = bucket[prefix .. kind .. ":" .. id]
     if type(entry) == "table" and idFor(entry.id) == id
+        and collectedPhaseVerified(entry, kind)
         and (entry.flavor == flavor or (entry.flavor == nil and flavor == "retail")) then
-      record[kind] = plain(entry.text)
+      local field = kind == "reward" and "completion" or kind
+      if plain(record[field]) == "" then record[field] = plain(entry.text) end
     end
   end
   -- Older/imported corpora need not use Harvest's keys. Sort the keys first
@@ -101,10 +120,12 @@ local function corpusRecord(id, locale)
   for _, key in ipairs(keys) do
     local entry = bucket[key]
     if type(entry) == "table" and idFor(entry.id) == id
+        and collectedPhaseVerified(entry, entry.kind)
         and (entry.flavor == flavor or (entry.flavor == nil and flavor == "retail"))
-        and (entry.kind == "title" or entry.kind == "description" or entry.kind == "objectives")
-        and not record[entry.kind] then
-      record[entry.kind] = plain(entry.text)
+        and (entry.kind == "title" or entry.kind == "description" or entry.kind == "objectives"
+          or entry.kind == "progress" or entry.kind == "completion" or entry.kind == "reward") then
+      local field = entry.kind == "reward" and "completion" or entry.kind
+      if plain(record[field]) == "" then record[field] = plain(entry.text) end
     end
   end
   return record
@@ -181,8 +202,9 @@ local function databaseRecord(record, sourceFlavor, locale)
 end
 
 local function incomplete(record)
-  return type(record) ~= "table" or plain(record.title) == ""
-    or plain(record.description) == "" or plain(record.objectives) == ""
+  if type(record) ~= "table" then return true end
+  for _, field in ipairs(FIELDS) do if plain(record[field]) == "" then return true end end
+  return false
 end
 
 -- Supplement an observation without changing the native archive or the static
@@ -190,7 +212,7 @@ end
 local function fillMissing(record, fallback, source)
   if type(record) ~= "table" or type(fallback) ~= "table" then return record end
   local result = record
-  for _, field in ipairs({ "title", "description", "objectives" }) do
+  for _, field in ipairs(FIELDS) do
     if plain(record[field]) == "" and plain(fallback[field]) ~= "" then
       if result == record then
         result = {}
@@ -198,6 +220,7 @@ local function fillMissing(record, fallback, source)
       end
       result[field] = fallback[field]
       result[field .. "Source"] = fallback[field .. "Source"] or fallback.source or source
+      result[field .. "SourceFlavor"] = fallback[field .. "SourceFlavor"] or fallback.sourceFlavor or fallback.flavor
     end
   end
   return result
@@ -216,21 +239,23 @@ function Addon.GetEnglishQuestRecord(value)
   for _, nativeLocale in ipairs({ "enUS", "enGB" }) do
     local observed = Addon.GetObservedQuestTexts and Addon.GetObservedQuestTexts(nativeLocale)
     local native = recordFor(observed, id)
-    if passage(native) ~= "" then
+    if hasText(native) then
       if incomplete(native) then native = fillMissing(native, corpusRecord(id, nativeLocale), "collected text") end
       return fillMissing(native, record, "database"), currentFlavor, nativeLocale, "observed text"
     end
     native = corpusRecord(id, nativeLocale)
-    if passage(native) ~= "" then return fillMissing(native, record, "database"), currentFlavor, nativeLocale, "collected text" end
+    if hasText(native) then return fillMissing(native, record, "database"), currentFlavor, nativeLocale, "collected text" end
   end
   return record, record and (record.sourceFlavor or record.flavor) or flavor, locale, "database"
 end
 
-function Addon.ResolveCatalogQuest(value, locale)
+function Addon.ResolveCatalogQuest(value, locale, phase)
   local id = idFor(value)
   if not id then return nil end
   locale = locale or Addon.GetCatalogLocale()
   if not Addon.SUPPORTED_LOCALES[locale] then return nil end
+  if phase == "reward" then phase = "completion" end
+  if phase and phase ~= "offer" and phase ~= "progress" and phase ~= "completion" then return nil end
   local flavor = Addon.Compat and Addon.Compat.GameFlavor() or "retail"
   local localized, databaseFlavor, _, databaseLocale = Addon.GetQuestDatabase(locale)
   local sourceFlavor, sourceLocale = flavor, locale
@@ -239,12 +264,12 @@ function Addon.ResolveCatalogQuest(value, locale)
   if incomplete(record) then
     local observed = Addon.GetObservedQuestTexts and Addon.GetObservedQuestTexts(locale)
     local native = recordFor(observed, id)
-    if passage(record) == "" then record, source = native, "observed text"
+    if not hasText(record) then record, source = native, "observed text"
     else record = fillMissing(record, native, "observed text") end
   end
   if incomplete(record) then
     local collected = corpusRecord(id, locale)
-    if passage(record) == "" then
+    if not hasText(record) then
       record, source = collected, "collected text"
       sourceFlavor, sourceLocale = flavor, locale
     else record = fillMissing(record, collected, "collected text") end
@@ -255,35 +280,58 @@ function Addon.ResolveCatalogQuest(value, locale)
     if type(last) == "table" and not last.catalog and not last.readOnly and idFor(last.id) == id
         and (not last.sourceFlavor or last.sourceFlavor == flavor)
         and last.passage == "offer" and Addon.TextLocale() == locale and plain(last.text) ~= "" then
-      record, source = { title = last.title, description = last.text }, "quest log"
+      local fresh = { title = last.title, description = last.text }
+      record, source = hasText(record) and fillMissing(fresh, record, source) or fresh, "quest log"
       combined = true -- last.text already combines the description and objectives.
       sourceFlavor, sourceLocale = flavor, locale
     end
   end
   local database = databaseRecord(recordFor(localized, id), databaseFlavor, locale)
-  if passage(record) == "" then
+  if not hasText(record) then
     record, source = database, "database"
     sourceFlavor, sourceLocale = record and (record.sourceFlavor or record.flavor) or databaseFlavor, databaseLocale
   elseif not combined then
     record = fillMissing(record, database, "database")
+  else
+    -- Fresh text already contains its objectives; only supplement dialogue.
+    record = fillMissing(record, database and { progress = database.progress, completion = database.completion,
+      progressSource = database.progressSource, completionSource = database.completionSource,
+      progressSourceFlavor = database.progressSourceFlavor, completionSourceFlavor = database.completionSourceFlavor }, "database")
   end
-  if passage(record) == "" then
-    record, sourceFlavor, sourceLocale, source = Addon.GetEnglishQuestRecord(id)
+  local englishRecord, englishFlavor, englishLocale, englishSource = Addon.GetEnglishQuestRecord(id)
+  local available = {}
+  for _, candidate in ipairs(PHASES) do
+    if passage(record, candidate) ~= "" or passage(englishRecord, candidate) ~= "" then available[#available + 1] = candidate end
   end
-  local text = passage(record)
+  if not phase then
+    for _, candidate in ipairs(PHASES) do
+      if passage(record, candidate) ~= "" then phase = candidate break end
+    end
+    phase = phase or available[1]
+  end
+  if not phase then return nil end
+  if passage(record, phase) == "" then
+    record, sourceFlavor, sourceLocale, source = englishRecord, englishFlavor, englishLocale, englishSource
+  end
+  local text = passage(record, phase)
   if text == "" then return nil end
   local englishTarget = english(locale)
   local readOnly = sourceLocale ~= locale and not (english(sourceLocale) and englishTarget)
   local title = plain(record.title)
   if title == "" then title = "Quest " .. id end
+  local phaseSource = phase ~= "offer" and (record[phase .. "Source"] or source) or source
+  if phase ~= "offer" then sourceFlavor = record[phase .. "SourceFlavor"] or sourceFlavor end
   -- A reference is deliberately not a voice-pack passage. Existing optional
   -- voice hooks still get their cleanup callback, but have no clip to attach.
-  return { id = id, title = personalize(title, sourceLocale), text = personalize(text, sourceLocale), passage = readOnly and "reference" or "offer",
+  return { id = id, title = personalize(title, sourceLocale), text = personalize(text, sourceLocale),
+    passage = readOnly and "reference" or phase == "completion" and "reward" or phase,
+    catalogPhase = phase, catalogPhases = available, phaseSource = phaseSource,
     catalog = true, requestedLocale = locale, sourceLocale = sourceLocale, sourceFlavor = sourceFlavor,
     wordLocale = not readOnly and locale or nil, source = source, readOnly = readOnly,
     descriptionSource = record.descriptionSource or source, objectivesSource = record.objectivesSource or source,
     originFlavor = record.originFlavor or sourceFlavor, sourceBuild = record.sourceBuild,
-    voiceUnavailable = readOnly or sourceLocale ~= "deDE" }
+    voiceUnavailable = readOnly or sourceLocale ~= "deDE"
+      or (phase ~= "offer" and type(phaseSource) == "string" and phaseSource:find("MultiLanguage", 1, true) ~= nil) }
 end
 
 local function libraryNavigation()
@@ -314,8 +362,26 @@ local function libraryNavigation()
   Addon.libraryReturnButton = button
 end
 
-function Addon.OpenCatalogQuest(value, locale)
-  local quest = Addon.ResolveCatalogQuest(value, locale)
+function Addon.RefreshCatalogPhaseControl()
+  local button = Addon.panel and Addon.panel.catalogPhaseButton
+  if not button then return end
+  local quest = Addon.lastQuest
+  if not (quest and quest.catalog) then button:Hide() return end
+  local phases = quest.catalogPhases or { "offer" }
+  button:SetText(({ offer = "Offer", progress = "Progress", completion = "Completion" })[quest.catalogPhase or "offer"]
+    .. (#phases > 1 and " >" or ""))
+  if button.SetEnabled then button:SetEnabled(#phases > 1) end
+  button:Show()
+end
+
+function Addon.SetCatalogPhase(phase)
+  local quest = Addon.lastQuest
+  if not (quest and quest.catalog) then return false end
+  return Addon.OpenCatalogQuest(quest.id, quest.requestedLocale, phase)
+end
+
+function Addon.OpenCatalogQuest(value, locale, phase)
+  local quest = Addon.ResolveCatalogQuest(value, locale, phase)
   if not quest then return false end
   if locale and Addon.catalogLocale ~= quest.requestedLocale then
     Addon.catalogLocale = quest.requestedLocale
@@ -326,7 +392,10 @@ function Addon.OpenCatalogQuest(value, locale)
   libraryNavigation()
   Addon.libraryReturnButton:Show()
   if Addon.editor then Addon.editor:Hide() end
+  if Addon.confirmDialog then Addon.confirmDialog:Hide() end
+  Addon.selected = nil
   Addon.lastQuest = quest
+  Addon.RefreshCatalogPhaseControl()
   if Addon.ApplyIntegratedLayout then Addon.ApplyIntegratedLayout() end
   Addon.panel:Show()
   Addon.refreshPanel()
@@ -343,7 +412,7 @@ function Addon.SetCatalogLocale(locale)
   if Addon.refreshQuestBrowser then Addon.refreshQuestBrowser() end
   local quest = Addon.lastQuest
   if quest and quest.catalog and Addon.panel and Addon.panel:IsShown() then
-    if not Addon.OpenCatalogQuest(quest.id, locale) then
+    if not Addon.OpenCatalogQuest(quest.id, locale, quest.catalogPhase) then
       Addon.panel:Hide()
       if Addon.questsFrame then Addon.questsFrame:Show() end
       return false

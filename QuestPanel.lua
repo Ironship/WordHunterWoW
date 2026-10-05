@@ -218,7 +218,8 @@ end
 local function layoutActions(m)
   local available = math.max(1, panel:GetWidth() - 36)
   local previous, used, rows = nil, 0, 1
-  for _, action in ipairs(panel.actions) do
+  local actions = Addon.lastQuest and Addon.lastQuest.catalog and panel.catalogActions or panel.actions
+  for _, action in ipairs(actions) do
     if action.GetFontString then
       chromeFont(action:GetFontString(), "GameFontNormal", "body", m.scale)
     end
@@ -237,7 +238,7 @@ local function layoutActions(m)
     previous = action
   end
   m.legendBottom = m.legendBottom + (rows - 1) * (m.buttonH + m.buttonGap)
-  return rows, available - used
+  return rows, available - used, previous
 end
 
 -- The one place that knows the panel's vertical stack, in either arrangement.
@@ -271,7 +272,7 @@ local function layoutChrome()
   panel.enTitle:SetPoint("RIGHT", panel, "CENTER", -12, 0)
   panel.scroll:ClearAllPoints()
   panel.enScroll:ClearAllPoints()
-  local actionRows, freeWidth = layoutActions(m)
+  local actionRows, freeWidth, lastAction = layoutActions(m)
   -- A narrow footer needs a separate progress row; never reverse its anchors
   -- or put the progress line under the wrapped buttons.
   local progressRow = panel.integratedLayout and (actionRows > 1 or freeWidth <= 8)
@@ -306,7 +307,7 @@ local function layoutChrome()
     if progressRow then
       panel.meta:SetPoint("BOTTOMRIGHT", -18, m.metaFootY)
     else
-      panel.meta:SetPoint("BOTTOMRIGHT", panel.actions[#panel.actions], "BOTTOMLEFT",
+      panel.meta:SetPoint("BOTTOMRIGHT", lastAction, "BOTTOMLEFT",
         -8, m.metaFootY - m.footPad)
     end
     panel.scroll:SetPoint("TOPLEFT", panel, "TOP", 8, -m.headBottom)
@@ -461,6 +462,7 @@ local function refreshPanel()
   -- its words now and its title on the next quest is the same complaint in
   -- slower motion. It also settles panel.chromeHeight, which the height below
   -- is measured from.
+  if Addon.RefreshCatalogPhaseControl then Addon.RefreshCatalogPhaseControl() end
   layoutChrome()
   local lastQuest = Addon.lastQuest
   local readOnly = lastQuest.readOnly == true
@@ -533,7 +535,7 @@ local function refreshPanel()
       local caveat
       if lastQuest.passage and lastQuest.passage ~= "offer" and not (passageText and passageText ~= "") then
         caveat = LABELS.enOfferOnly
-      elseif not hasOffer then
+      elseif not hasOffer and not (passageText and passageText ~= "") then
         -- The record itself has no opening text, which is every Classic quest.
         -- Nothing is being withheld here, so say what is actually on screen.
         caveat = LABELS.enNoOffer
@@ -936,19 +938,25 @@ local function readCurrentQuest(questLogId, requested)
   -- Legacy log helpers may answer the currently selected quest when selection
   -- fails. Only this raw NPC path has verified ID/text provenance here; the
   -- library's separately guarded liveRecord archives safe log observations.
+  local observation = { title = title }
+  -- Getters can retain another passage's text. Both archives receive only the
+  -- selected line, never an offscreen offer, progress or hand-in value.
+  if passage == "offer" then observation.description, observation.objectives = desc, obj end
+  if passage == "progress" and progressText ~= "" then observation.progress = progressText end
+  if passage == "reward" and rewardText ~= "" then observation.completion = rewardText end
   if nativeNPC and Addon.ArchiveNativeQuest then
-    Addon.ArchiveNativeQuest(questId, { title = title, description = desc, objectives = obj }, Addon.TextLocale())
+    Addon.ArchiveNativeQuest(questId, observation, Addon.TextLocale())
   end
   -- Objectives, progress and hand-in text exist only here, never in the quest
   -- API the dictionaries were built from. Record them when the player opts in.
   if Addon.HarvestQuest then
     Addon.HarvestQuest(questId, {
-      title = title,
-      description = desc,
-      objectives = obj,
-      progress = progressText ~= "" and progressText or nil,
-      reward = rewardText ~= "" and rewardText or nil,
-    })
+      title = observation.title,
+      description = observation.description,
+      objectives = observation.objectives,
+      progress = observation.progress,
+      reward = observation.completion,
+    }, Addon.TextLocale(), nativeNPC and passage or nil)
   end
   Addon.lastQuest = { id = questId or 0, title = Addon.trim(title), text = text, passage = passage }
   trackQuestEncounters(Addon.lastQuest)
@@ -1412,7 +1420,28 @@ function Addon.createPanel()
 
   -- In the order they are laid out, which is right to left from the corner. The
   -- last of them is the leftmost, and that is what the progress line stops at.
+  local phase = Addon.createActionButton(panel, "Offer")
+  phase.baseWidth = 102
+  phase:Hide()
+  phase:SetScript("OnClick", function()
+    local quest = Addon.lastQuest
+    if not (quest and quest.catalog and Addon.SetCatalogPhase) then return end
+    local phases = quest.catalogPhases or { "offer" }
+    for index, value in ipairs(phases) do
+      if value == quest.catalogPhase then Addon.SetCatalogPhase(phases[index % #phases + 1]) return end
+    end
+  end)
+  phase:SetScript("OnEnter", function(self)
+    if not GameTooltip then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText("Switch quest passage")
+    GameTooltip:AddLine("Offer, progress and completion text where stored.", 0.8, 0.82, 0.88, true)
+    GameTooltip:Show()
+  end)
+  phase:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+  panel.catalogPhaseButton = phase
   panel.actions = { copyQuest, wordsBtn, statsBtn }
+  panel.catalogActions = { copyQuest, wordsBtn, statsBtn, phase }
 
   function Addon.ApplyIntegratedLayout()
     if not panel then return end

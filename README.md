@@ -43,6 +43,12 @@ Click a quest to open its description and objectives in the normal reader. Its b
 button returns to the library. Reading a catalog entry does not select it in
 Blizzard's log or mark it completed.
 
+The footer's **Offer / Progress / Completion** button cycles through stored quest
+passages. The language button keeps the selected passage when switching DE/EN.
+Quests with only dialogue open on their first available passage; words remain
+clickable in the selected language. Imported dialogue has no audio until a
+matching recording is provided.
+
 The reader uses native quest-log text, a localized database when installed, or your
 locally collected text. With **English Quest Panel** installed, English database
 text is the fallback. If your target language is not English, this fallback is
@@ -51,7 +57,8 @@ vocabulary or request a clip from a different-language voice pack. A German
 dictionary includes the Classic/Forever quest corpus; some passages are missing. Audio
 is available only where an installed pack has the corresponding passage.
 
-Native descriptions and objectives read from an NPC or safely from the quest log
+Native descriptions and objectives read from an NPC or safely from the quest log,
+plus the progress or completion dialogue actually displayed by an NPC,
 are kept locally for reopening after completion, even when optional corpus
 harvesting is off. Missing fields can be filled from the matching local database
 without replacing native text. Previously completed quests need a saved native

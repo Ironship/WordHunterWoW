@@ -145,7 +145,8 @@ function Addon.ArchiveNativeQuest(id, record, locale)
     return Addon.WithoutPlayerName and Addon.WithoutPlayerName(value) or value
   end
   local description, objectives = text(record.description), text(record.objectives)
-  if description == "" and objectives == "" then return false end
+  local progress, completion = text(record.progress), text(record.completion)
+  if description == "" and objectives == "" and progress == "" and completion == "" then return false end
   local flavor = Compat and Compat.GameFlavor() or "retail"
   if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
   if type(WordHunterWoWDB.questTexts) ~= "table" then WordHunterWoWDB.questTexts = {} end
@@ -159,6 +160,8 @@ function Addon.ArchiveNativeQuest(id, record, locale)
   -- A later objective-only observation must not erase a known description.
   if description ~= "" then saved.description = description end
   if objectives ~= "" then saved.objectives = objectives end
+  if progress ~= "" then saved.progress = progress end
+  if completion ~= "" then saved.completion = completion end
   bucket[id] = saved
   return true
 end
