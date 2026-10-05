@@ -49,6 +49,15 @@ Quests with only dialogue open on their first available passage; words remain
 clickable in the selected language. Imported dialogue has no audio until a
 matching recording is provided.
 
+The library's **Game quests >** button cycles through the installed source
+editions, Classic items, spells and NPCs. These references use the same DE/EN
+reader and word editor, with a source notice. They include historical/seasonal
+material; their versions, language pairs and static numerical values may differ
+from your client. Reference IDs remain separate from native quest IDs and
+character completion history. **Source field** displays an original field whose
+role as an objective was not independently confirmed. Retail/TBC quest source
+tables load only on the matching client family.
+
 The reader uses native quest-log text, a localized database when installed, or your
 locally collected text. With **English Quest Panel** installed, English database
 text is the fallback. If your target language is not English, this fallback is

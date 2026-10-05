@@ -68,6 +68,7 @@ local function personalize(text, locale)
 end
 
 local PHASES = { "offer", "progress", "completion" }
+Addon.PersonalizeQuestText = personalize
 local FIELDS = { "title", "description", "objectives", "progress", "completion" }
 local function passage(record, phase)
   if type(record) ~= "table" then return "" end
@@ -227,6 +228,9 @@ local function fillMissing(record, fallback, source)
 end
 
 function Addon.GetEnglishQuestRecord(value)
+  if type(value) == "string" and value:find("^reference:") then
+    return Addon.GetReferenceEnglishRecord and Addon.GetReferenceEnglishRecord(value)
+  end
   local id = idFor(value)
   if not id then return nil end
   local currentFlavor = Addon.Compat and Addon.Compat.GameFlavor() or "retail"
@@ -250,6 +254,9 @@ function Addon.GetEnglishQuestRecord(value)
 end
 
 function Addon.ResolveCatalogQuest(value, locale, phase)
+  if type(value) == "string" and value:find("^reference:") then
+    return Addon.ResolveReferenceQuest and Addon.ResolveReferenceQuest(value, locale, phase)
+  end
   local id = idFor(value)
   if not id then return nil end
   locale = locale or Addon.GetCatalogLocale()
@@ -366,9 +373,13 @@ function Addon.RefreshCatalogPhaseControl()
   local button = Addon.panel and Addon.panel.catalogPhaseButton
   if not button then return end
   local quest = Addon.lastQuest
+  if Addon.panel.copyQuestButton then
+    Addon.panel.copyQuestButton:SetText(quest and quest.referenceKind and quest.referenceKind ~= "quest" and "Copy text" or "Copy quest")
+  end
   if not (quest and quest.catalog) then button:Hide() return end
   local phases = quest.catalogPhases or { "offer" }
-  button:SetText(({ offer = "Offer", progress = "Progress", completion = "Completion" })[quest.catalogPhase or "offer"]
+  button:SetText((quest.referenceKind and quest.referenceKind ~= "quest" and "Text"
+    or ({ offer = "Offer", progress = "Progress", completion = "Completion", sourceObjective = "Source field" })[quest.catalogPhase or "offer"])
     .. (#phases > 1 and " >" or ""))
   if button.SetEnabled then button:SetEnabled(#phases > 1) end
   button:Show()

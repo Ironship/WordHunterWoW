@@ -258,6 +258,23 @@ local function layoutChrome()
   -- column at another is the fault this whole function exists to end, and it
   -- would simply have moved one column across.
   local en = chromeMetrics(Addon.GetEnPanelTextScale and Addon.GetEnPanelTextScale() or 1)
+  if panel.sourceNote then
+    local note = Addon.lastQuest and Addon.lastQuest.referenceNote
+    if note then
+      chromeFont(panel.sourceNote, "GameFontDisableSmall", "label", m.scale)
+      panel.sourceNote:SetWidth(math.max(1, panel:GetWidth() - 36))
+      panel.sourceNote:SetText(note)
+      local top = math.max(m.headBottom, en.headBottom)
+      local height = math.max(m.metaH, panel.sourceNote:GetStringHeight())
+      panel.sourceNote:ClearAllPoints()
+      panel.sourceNote:SetPoint("TOPLEFT", 18, -top)
+      panel.sourceNote:SetHeight(height)
+      panel.sourceNote:Show()
+      local extra = height + m.titleGap
+      m.headBottom, en.headBottom = top + extra, top + extra
+      m.metaBottom = m.headBottom + m.metaH + m.metaGap
+    else panel.sourceNote:Hide() end
+  end
 
   chromeFont(panel.title, "GameFontNormalLarge", "heading", m.scale)
   panel.title:SetHeight(m.titleH)
@@ -501,7 +518,8 @@ local function refreshPanel()
     -- Kept as separate blocks rather than one joined string. This pane places one
     -- token at a time, so a newline inside a joined string is discarded with the
     -- rest of the whitespace and the caveat runs straight into the quest text.
-    local enBlocks = { { text = "English text is not available for this quest." } }
+    local enBlocks = { { text = lastQuest.referenceKind and lastQuest.referenceKind ~= "quest"
+      and "English text is not available for this record." or "English text is not available for this quest." } }
     panel.enCanHighlight = entry ~= nil
     if entry then
       enTitle = entry.title or LABELS.englishHeader
@@ -516,6 +534,8 @@ local function refreshPanel()
         passageText = entry.progress
       elseif lastQuest.passage == "reward" then
         passageText = entry.completion
+      elseif lastQuest.passage == "sourceObjective" then
+        passageText = entry.sourceObjective
       end
       if passageText and passageText ~= "" then
         enBlocks[#enBlocks + 1] = { text = passageText }
@@ -1334,6 +1354,10 @@ function Addon.createPanel()
   panel.title:SetJustifyH("LEFT")
   panel.title:SetMaxLines(1)
   panel.title:SetWordWrap(false)
+  panel.sourceNote = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  panel.sourceNote:SetJustifyH("LEFT")
+  panel.sourceNote:SetWordWrap(true)
+  panel.sourceNote:Hide()
 
   panel.meta = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   panel.meta:SetJustifyH("LEFT")
@@ -1441,6 +1465,7 @@ function Addon.createPanel()
   phase:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
   panel.catalogPhaseButton = phase
   panel.actions = { copyQuest, wordsBtn, statsBtn }
+  panel.copyQuestButton = copyQuest
   panel.catalogActions = { copyQuest, wordsBtn, statsBtn, phase }
 
   function Addon.ApplyIntegratedLayout()
