@@ -536,6 +536,8 @@ local function refreshPanel()
         passageText = entry.completion
       elseif lastQuest.passage == "sourceObjective" then
         passageText = entry.sourceObjective
+      elseif lastQuest.passage == "title" then
+        passageText = entry.title
       end
       if passageText and passageText ~= "" then
         enBlocks[#enBlocks + 1] = { text = passageText }

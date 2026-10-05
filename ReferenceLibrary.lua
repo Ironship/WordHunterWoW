@@ -30,6 +30,7 @@ local function body(row, kind, phase)
     local name, text = row.name or "", row.text or row.role or ""
     return name .. (name ~= "" and text ~= "" and text ~= name and "\n\n" or "") .. (text ~= name and text or "")
   end
+  if phase == "title" then return row.title or "" end
   if phase ~= "offer" then return row[phase] or "" end
   local desc, obj = row.description or "", row.objectives or ""
   return desc .. (desc ~= "" and obj ~= "" and "\n\n" or "") .. obj
@@ -55,12 +56,25 @@ function Addon.ResolveReferenceQuest(value, locale, phase)
   if phase == "reward" then phase = "completion" end
   local localized, sourceLocale = record(languages, locale, id)
   local english = record(languages, "enUS", id)
-  local phases = {}
-  for _, candidate in ipairs(kind == "quest" and { "offer", "progress", "completion", "sourceObjective" } or { "offer" }) do
+  local phases, candidates = {}, kind == "quest" and { "offer", "progress", "completion", "sourceObjective" } or { "offer" }
+  if kind == "quest" then
+    for _, row in ipairs({ localized or {}, english or {} }) do
+      if (row.title or "") ~= "" and body(row, kind, "offer") == ""
+        and body(row, kind, "progress") == "" and body(row, kind, "completion") == ""
+        and body(row, kind, "sourceObjective") == "" then
+        table.insert(candidates, 1, "title")
+        break
+      end
+    end
+  end
+  for _, candidate in ipairs(candidates) do
     if body(localized, kind, candidate) ~= "" or body(english, kind, candidate) ~= "" then
       phases[#phases + 1] = candidate
-      if not phase and body(localized, kind, candidate) ~= "" then phase = candidate end
+      if not phase and candidate ~= "title" and body(localized, kind, candidate) ~= "" then phase = candidate end
     end
+  end
+  if not phase and kind == "quest" and body(localized, kind, "title") ~= "" then
+    for _, candidate in ipairs(phases) do if candidate == "title" then phase = candidate end end
   end
   phase = phase or phases[1]
   local valid = false
@@ -81,7 +95,8 @@ function Addon.ResolveReferenceQuest(value, locale, phase)
     sourceLocale = sourceLocale, wordLocale = not readOnly and locale or nil, readOnly = readOnly,
     referenceSource = source, referenceKind = kind, source = label, phaseSource = label,
     sourceFlavor = source, voiceUnavailable = true,
-    referenceNote = (label or source) .. ": static source; versions and DE/EN text may differ." }
+    referenceNote = (label or source) .. ": static source; versions and DE/EN text may differ."
+      .. (phase == "title" and " Title-only study; this view contains no quest dialogue." or "") }
 end
 
 function Addon.GetLibraryViews()
