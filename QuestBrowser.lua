@@ -29,6 +29,10 @@ local function questID(value)
 end
 
 local function buildCatalog()
+  if Addon.CollectReferenceCatalog then
+    local reference = Addon.CollectReferenceCatalog()
+    if reference then return reference end
+  end
   local byId = {}
   local function include(id, title, titleLocale, titleSource)
     id = questID(id)
@@ -171,7 +175,7 @@ local function paintRows()
     row.name:SetWidth(width - 166)
     row.name:SetText(q.title)
     row.name:SetTextColor(unpack(COLORS.text))
-    local state = q.inLog and L.inLog or q.completed and L.completed or q.accepted and L.accepted or L.inDatabase
+    local state = q.reference and "Source reference" or q.inLog and L.inLog or q.completed and L.completed or q.accepted and L.accepted or L.inDatabase
     local locale = Addon.GetCatalogLocale and Addon.GetCatalogLocale() or Addon.GetTargetLocale()
     local language = q.titleLocale and q.titleLocale ~= locale and " · " .. string.upper(Addon.WH_LANGUAGE_MAP[q.titleLocale] or q.titleLocale) or ""
     row.meta:SetText("#" .. q.idStr .. language .. "  ·  " .. state)
@@ -209,7 +213,18 @@ local function refreshView(resetPage)
   for name, button in pairs(f.filterButtons) do
     Addon.styleFlatButton(button, COLORS.new, name == f.filter)
   end
-  f.note:SetText(L.note)
+  local view = Addon.GetLibraryView and Addon.GetLibraryView()
+  local reference = view and view.source
+  if f.catalogTitle then f.catalogTitle:SetText(view and view.kind and view.kind ~= "quest" and "WORD HUNTER LIBRARY" or L.title) end
+  f.note:SetText(reference and "Static source material; versions and DE/EN text may differ from the current game." or L.note)
+  if f.sourceButton then
+    f.sourceButton:SetText((view and view.label or "Game quests") .. " >")
+    if f.sourceButton.SetEnabled then f.sourceButton:SetEnabled(Addon.GetLibraryViews and #Addon.GetLibraryViews() > 1 or false) end
+  end
+  for name, button in pairs(f.filterButtons) do
+    if button.SetEnabled then button:SetEnabled(not reference or name == "database") end
+    if name == "database" then button:SetText(reference and "All records" or L.database) end
+  end
   f.questScroll:SetVerticalScroll(0)
   paintRows()
 end
@@ -223,6 +238,8 @@ end
 
 function Addon.SetQuestCatalogFilter(filter)
   if not questsFrame or not questsFrame.filterButtons[filter] then return end
+  local view = Addon.GetLibraryView and Addon.GetLibraryView()
+  if view and view.source and filter ~= "database" then return end
   questsFrame.filter = filter
   refreshView(true)
 end
@@ -266,13 +283,26 @@ function Addon.toggleQuestBrowser()
     title:SetPoint("TOPLEFT", 18, -14)
     title:SetPoint("TOPRIGHT", -162, -14)
     title:SetText(L.title)
+    f.catalogTitle = title
     local language = Addon.CreateCatalogLanguageButton(f)
     language:SetPoint("TOPRIGHT", -36, -12)
     local hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     hint:SetPoint("TOPLEFT", 18, -37)
-    hint:SetPoint("TOPRIGHT", -30, -37)
+    hint:SetPoint("TOPRIGHT", -218, -37)
     hint:SetJustifyH("LEFT")
     hint:SetText(L.hint)
+    local source = Addon.createFlatButton(f, "Game quests >", COLORS.new)
+    source:SetSize(186, 21)
+    source:SetPoint("TOPRIGHT", -20, -33)
+    source:SetScript("OnClick", function()
+      if not Addon.GetLibraryViews then return end
+      local views = Addon.GetLibraryViews()
+      local current = Addon.GetLibraryView()
+      for index, view in ipairs(views) do
+        if view.key == current.key then Addon.SetLibraryView(views[index % #views + 1].key) return end
+      end
+    end)
+    f.sourceButton = source
     local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", -2, -2)
     close:SetScript("OnClick", function() f:Hide() end)

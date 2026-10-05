@@ -19,5 +19,6 @@ QuestBrowser.lua
 Harvest.lua
 QuestHistory.lua
 QuestReader.lua
+ReferenceLibrary.lua
 Settings.lua
 Init.lua

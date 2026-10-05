@@ -42,7 +42,7 @@ do
 end
 
 local TOC = manifest("WordHunterWoW_Mainline.toc")
-assert(#TOC == 15, "the manifest names " .. #TOC .. " lua files, expected 15")
+assert(#TOC == 16, "the manifest names " .. #TOC .. " lua files, expected 16")
 -- The Classic manifest is a second copy of the same list. A file added to one
 -- and not the other loads on Retail and is nil on Classic Era, and nothing
 -- else here reads the second file at all.
