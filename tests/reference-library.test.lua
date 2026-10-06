@@ -70,4 +70,22 @@ assert(A.lastQuest.referenceSource==key)
 assert(A.SetLibraryView('multilanguage-classic:item') and #A.CollectQuestCatalog()==1)
 assert(not A.SetLibraryView('unknown') and A.GetLibraryView().kind=='item')
 assert(A.SetLibraryView('game') and A.CollectQuestCatalog()[1].title=='Nativ')
+WordHunterWoW_EntityDataBySource['multilanguage-retail'] = {viewLabel='ML Retail', kinds={
+  item={deDE={[7]={name='Anderer Gegenstand',text='Neue Geschichte.'}},
+    enUS={[7]={name='Another item',text='A new story.'}}}, spell={deDE={},enUS={}}}}
+WordHunterWoW_QuestSources['multilanguage-wrath'] = {viewLabel='ML Wrath',locales={
+  enUS={[7]={title='Wrath source',description='English source only.'}}}}
+WordHunterWoW_QuestSources['bad:key'] = {locales={deDE={[1]={title='Invalid namespace'}}}}
+local seen, stable = {}, {}
+for index, view in ipairs(A.GetLibraryViews()) do seen[view.key]=true; stable[index]=view.key end
+assert(seen['multilanguage-retail:item'] and seen['multilanguage-wrath:quest'])
+assert(not seen['multilanguage-retail:spell'] and not seen['bad:key:quest'])
+for index, view in ipairs(A.GetLibraryViews()) do assert(stable[index]==view.key) end
+assert(A.SetLibraryView('multilanguage-retail:item') and A.CollectQuestCatalog()[1].title=='Anderer Gegenstand')
+assert(A.OpenCatalogQuest(ref('item',7,'multilanguage-retail'),'deDE'))
+assert(A.lastQuest.text=='Anderer Gegenstand\n\nNeue Geschichte.' and A.panel.enPlain=='Another item\n\nA new story.')
+assert(A.OpenCatalogQuest(ref('item',7,'multilanguage-classic'),'deDE') and A.lastQuest.text=='Ein Gegenstand\n\nEin Hund.')
+assert(A.OpenCatalogQuest(ref('quest',7,'multilanguage-wrath'),'deDE') and A.lastQuest.readOnly and not A.lastQuest.wordLocale)
+assert(A.lastQuest.text=='English source only.' and A.lastQuest.voiceUnavailable)
+assert(A.SetLibraryView('game') and A.CollectQuestCatalog()[1].title=='Nativ')
 print('reference-library: source/version/locale/phase/ID isolation + real reader/editor + catalog controls PASS')

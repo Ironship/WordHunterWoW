@@ -100,18 +100,34 @@ function Addon.ResolveReferenceQuest(value, locale, phase)
 end
 
 function Addon.GetLibraryViews()
-  local views = { { key = "game", label = "Game quests" } }
-  for _, source in ipairs({ "multilanguage-classic-master", "multilanguage-tbc", "multilanguage-retail" }) do
-    local languages = edition(source, "quest")
-    if languages then views[#views + 1] = { key = source .. ":quest", source = source, kind = "quest",
-      label = source == "multilanguage-classic-master" and "ML Classic quests" or source == "multilanguage-tbc" and "ML TBC quests" or "ML Retail quests" } end
+  local views = {}
+  local labels = { ["multilanguage-classic-master"] = "ML Classic", ["multilanguage-classic"] = "ML Classic",
+    ["multilanguage-tbc"] = "ML TBC", ["multilanguage-retail"] = "ML Retail",
+    ["multilanguage-wrath"] = "ML Wrath", ["multilanguage-cata"] = "ML Cata",
+    ["multilanguage-mop-classic"] = "ML Pandaria", ["multilanguage-forever"] = "ML Forever" }
+  local order, suffix = { quest = 1, item = 2, spell = 3, npc = 4 },
+    { quest = "quests", item = "items", spell = "spells", npc = "NPCs" }
+  local function append(source, kind, bucket)
+    if type(source) ~= "string" or source:find(":", 1, true) or type(bucket) ~= "table" then return end
+    local languages = edition(source, kind)
+    if type(languages) ~= "table" then return end
+    local de, en = languages.deDE, languages.enUS
+    if not (type(de) == "table" and next(de) or type(en) == "table" and next(en)) then return end
+    local label = bucket.viewLabel or labels[source] or bucket.sourceLabel or bucket.label or source
+    if type(label) ~= "string" or label == "" then label = source end
+    views[#views + 1] = { key = source .. ":" .. kind, source = source, kind = kind,
+      label = label .. " " .. suffix[kind] }
   end
-  for _, item in ipairs({ { "item", "Classic items" }, { "spell", "Classic spells" }, { "npc", "Classic NPCs" } }) do
-    if edition("multilanguage-classic", item[1]) then
-      views[#views + 1] = { key = "multilanguage-classic:" .. item[1], source = "multilanguage-classic",
-        kind = item[1], label = item[2] }
-    end
+  for source, bucket in pairs(WordHunterWoW_QuestSources or {}) do append(source, "quest", bucket) end
+  for source, bucket in pairs(WordHunterWoW_EntityDataBySource or {}) do
+    for _, kind in ipairs({ "item", "spell", "npc" }) do append(source, kind, bucket) end
   end
+  table.sort(views, function(a, b)
+    if a.kind ~= b.kind then return order[a.kind] < order[b.kind] end
+    if a.label ~= b.label then return a.label < b.label end
+    return a.key < b.key
+  end)
+  table.insert(views, 1, { key = "game", label = "Game quests" })
   return views
 end
 
