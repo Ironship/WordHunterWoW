@@ -5,10 +5,11 @@ local LABELS = Addon.LABELS
 local unpack = unpack or table.unpack
 
 local listFrame
-local listRows = {}
 local listFilter = "all"
 
-local function updateListFilters()
+local function updateListFilters(view)
+  local listFrame = view or listFrame
+  local listFilter = view and view.wordFilter or listFilter
   if not listFrame then return end
   for mode, button in pairs(listFrame.filterButtons) do
     local color = mode == "all" and COLORS.neutral or COLORS[mode]
@@ -16,7 +17,7 @@ local function updateListFilters()
   end
 end
 
-local function refreshWordList()
+local function refreshWordListView(listFrame)
   if not listFrame then return end
   -- And not while it is closed. Rebuilding walks every entry in the dictionary,
   -- around 74,000 of them, sorts the survivors and lays out the rows. Saving a
@@ -25,6 +26,11 @@ local function refreshWordList()
   -- stuttering on Save, for the rest of the session, because you glanced at the
   -- word list an hour earlier.
   if not listFrame:IsShown() then return end
+  local listRows = rawget(listFrame, "rows") or {}
+  listFrame.rows = listRows
+  local listFilter = rawget(listFrame, "wordFilter") or "all"
+  local locale = rawget(listFrame, "wordLocale") or Addon.GetTargetLocale()
+  updateListFilters(listFrame)
   local query = Addon.utf8Lower(Addon.trim(listFrame.search:GetText()))
   local hideIgnored = WordHunterWoWDB.settings.hideIgnored == true
   local items = {}
@@ -41,7 +47,7 @@ local function refreshWordList()
       if not haystack:find(query, 1, true) then return end
     end
     items[#items + 1] = { key = key, entry = entry, status = status, sortKey = sortKey }
-  end)
+  end, locale)
   table.sort(items, function(a, b) return a.sortKey < b.sortKey end)
   for _, row in ipairs(listRows) do row:Hide() end
   -- Reachable from outside so a test can measure a row's letters. The rows
@@ -80,12 +86,13 @@ local function refreshWordList()
       row.meta:SetWordWrap(false)
       row:SetScript("OnClick", function(self)
         local entry = self.entry
-        Addon.openEditor(entry.word or self.key, entry.context, entry.questId, entry.questTitle)
+        Addon.openEditor(entry.word or self.key, entry.context, entry.questId, entry.questTitle, { locale = self.wordLocale })
       end)
       listRows[index] = row
     end
     row.key = item.key
     row.entry = item.entry
+    row.wordLocale = locale
     local color = COLORS[item.status] or COLORS.new
     row.name:SetText(item.entry.word or item.key)
     row.name:SetTextColor(unpack(COLORS.text))
@@ -109,6 +116,15 @@ local function refreshWordList()
       listFrame.truncated:Hide()
     end
   end
+end
+Addon.RefreshWordListView = refreshWordListView
+local function refreshWordList()
+  if listFrame then
+    listFrame.wordFilter = listFilter
+    refreshWordListView(listFrame)
+  end
+  local library = Addon.questsFrame
+  if library and library:IsShown() and library.tab == "words" then refreshWordListView(library.wordsView) end
 end
 Addon.refreshWordList = refreshWordList
 

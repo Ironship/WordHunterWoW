@@ -1,5 +1,5 @@
 -- lua5.1 tests/catalog-language-ui.test.lua [before-ui-directory]
--- Real catalog/reader/editor callbacks, with one shared word key in DE and EN.
+-- Bilingual default UI, explicit locale API and isolated DE/EN word state.
 dofile('tests/wowstub.lua')
 -- Blizzard creates child buttons shown; the generic base stub starts hidden.
 local create = CreateFrame
@@ -28,6 +28,7 @@ assert(A.Compat.GameFlavor() == 'forever')
 UnitGUID = function() return 'Player-catalog-language' end
 UnitName = function() return 'Learner' end
 C_QuestLog, GetQuestLogQuestText = nil, nil
+A.Compat.QuestLogEntries = function() return {} end
 SelectQuestLogEntry = function() error('offline catalog must not select a game quest') end
 WordHunterWoWDB = { settings = { targetLocale = 'deDE', harvestCorpus = true, integratedLayout = true,
   recallCheck = true, frames = {} }, wordsByLocale = {} }
@@ -77,17 +78,13 @@ end
 
 A.toggleQuestBrowser()
 local f = A.questsFrame
-local libraryLanguage = rawget(f, 'catalogLanguageButton')
-assert(libraryLanguage and libraryLanguage:IsShown() and libraryLanguage:GetText() == 'German',
-  'library needs a real German/English control, initially German')
+assert(rawget(f, 'catalogLanguageButton') == nil, 'bilingual library must not create a language switch')
 assert(A.GetCatalogLocale() == 'deDE')
-click(f.filterButtons.completed)
-assert(f.resultCount == 1 and row(783).name:GetText() == 'Die Bedrohung von innen',
-  'Completed must use this character history and the selected German title')
+assert(f.tab == 'my' and f.resultCount == 1 and row(783).name:GetText() == 'A Threat Within\nDie Bedrohung von innen',
+  'My quests must use character completion history and show both quest titles')
 assert(not A.GetCharacterQuestHistory()[7].completed)
 click(row(783))
-local readerLanguage = rawget(A.panel, 'catalogLanguageButton')
-assert(readerLanguage and readerLanguage:IsShown() and readerLanguage:GetText() == 'DE')
+assert(rawget(A.panel, 'catalogLanguageButton') == nil, 'bilingual reader must not create a language switch')
 assert(A.lastQuest.wordLocale == 'deDE' and not A.lastQuest.readOnly and A.lastQuest.sourceFlavor == 'classic')
 assert(A.lastQuest.text:find('Deutschwort', 1, true) and not A.lastQuest.text:find('Deathwing', 1, true))
 assert(A.panel.enTitle:GetText() == 'A Threat Within', 'German companion column must also ignore the old Retail ID collision')
@@ -106,10 +103,9 @@ assert(A.GetRecallRow('wolf', false, 'enUS') == nil)
 assert(WordHunterWoWCorpus.byLocale.deDE['forever:word:Deutschwort'])
 independent()
 
--- The compact reader control changes the real open quest, and keeps its geometry.
+-- The existing explicit locale API still preserves geometry and word isolation.
 local width, height = A.panel:GetSize()
-click(readerLanguage)
-assert(A.GetCatalogLocale() == 'enUS' and readerLanguage:GetText() == 'EN')
+assert(A.SetCatalogLocale('enUS') and A.GetCatalogLocale() == 'enUS')
 assert(A.lastQuest.sourceLocale == 'enUS' and A.lastQuest.wordLocale == 'enUS'
   and not A.lastQuest.readOnly and A.lastQuest.voiceUnavailable)
 assert(A.lastQuest.text:find('Englishword', 1, true) and not A.lastQuest.text:find('Deathwing', 1, true))
@@ -136,16 +132,16 @@ independent()
 
 click(A.libraryReturnButton)
 assert(f:IsShown() and not A.panel:IsShown() and A.GetCatalogLocale() == 'enUS')
-assert(libraryLanguage:GetText() == 'English (US)' and row(783).name:GetText() == 'A Threat Within')
-click(libraryLanguage)
-assert(A.GetCatalogLocale() == 'deDE' and row(783).name:GetText() == 'Die Bedrohung von innen')
-click(libraryLanguage)
+assert(row(783).name:GetText() == 'A Threat Within\nDie Bedrohung von innen')
+assert(A.SetCatalogLocale('deDE'))
+assert(A.GetCatalogLocale() == 'deDE' and row(783).name:GetText() == 'A Threat Within\nDie Bedrohung von innen')
+assert(A.SetCatalogLocale('enUS'))
 click(row(783))
 assert(A.lastQuest.wordLocale == 'enUS' and A.panel.title:GetText() == 'A Threat Within', 'English library row must open the actual English reader')
 independent()
 
 -- English obtained implicitly while German is requested remains read-only.
-click(readerLanguage)
+assert(A.SetCatalogLocale('deDE'))
 assert(A.OpenCatalogQuest(777))
 assert(A.lastQuest.readOnly and A.lastQuest.sourceLocale == 'enUS' and A.lastQuest.wordLocale == nil)
 local fallback = word('Fallbackword')
@@ -161,8 +157,17 @@ GetQuestText = function() return 'Die Kobolde warten.' end
 GetObjectiveText = function() return 'Findet die Kobolde.' end
 QuestFrame:Show()
 A.readCurrentQuest()
-assert(not A.lastQuest.catalog and not readerLanguage:IsShown(), 'native reader must hide catalog-only language control')
+assert(not A.lastQuest.catalog and rawget(A.panel, 'catalogLanguageButton') == nil)
+assert(not A.libraryReturnButton:IsShown(), 'NPC dialogue must hide catalog-only return tab')
 assert(A.GetCharacterQuestHistory()[783].completed and not A.GetCharacterQuestHistory()[7].completed,
   'studying either language must preserve actual completion state')
 independent()
-print('catalog-language-ui: real DE/EN library and reader controls, flavor-safe text, isolated word save/recall/harvest, read-only fallback and native hiding: ok')
+assert(A.OpenCatalogQuest(783,'deDE'))
+A.SetTargetLocale('enUS')
+assert(A.GetTargetLocale()=='enUS' and A.GetCatalogLocale()=='enUS' and A.lastQuest.wordLocale=='enUS',
+  'changing Settings language must update an open catalog reader without a language button')
+assert(en.translation=='English saved meaning' and de.translation=='German saved meaning')
+A.SetTargetLocale('deDE')
+assert(A.GetCatalogLocale()=='deDE' and A.lastQuest.wordLocale=='deDE' and A.panel.enPlain,
+  'restoring German must restore the bilingual reader')
+print('catalog-language-ui: bilingual default, no language buttons, explicit locale API, isolated vocabulary and native hiding: ok')

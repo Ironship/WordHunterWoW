@@ -236,3 +236,19 @@ end
 Addon.SetTextScale(1.0)
 
 print(string.format('settings-panel: %d frames, %d rows over %d tabs at two sizes', #placed, rowsSeen / 2, #window.tabs))
+
+window:Show()
+local voiceAuto = assert(window.questVoiceAutoCheck)
+assert(not Addon.GetQuestVoiceAutoPlay() and not voiceAuto:GetChecked(), 'quest speech must default to manual')
+voiceAuto:SetChecked(true); voiceAuto:GetScript('OnClick')(voiceAuto)
+assert(Addon.GetQuestVoiceAutoPlay() and WordHunterWoWDB.settings.questVoiceAutoPlay == true)
+Addon.SetQuestVoiceAutoPlay(false)
+assert(not voiceAuto:GetChecked(), 'external setting changes must refresh the checkbox')
+print('settings-panel: quest speech autoplay defaults off and persists explicit choices: ok')
+
+local npcAuto = assert(window.npcReaderAutoCheck)
+assert(not Addon.GetNpcReaderAutoOpen() and not npcAuto:GetChecked(), 'NPC Reader defaults to manual')
+npcAuto:SetChecked(true); npcAuto:GetScript('OnClick')(npcAuto)
+assert(Addon.GetNpcReaderAutoOpen() and WordHunterWoWDB.settings.npcReaderAutoOpen == true)
+Addon.SetNpcReaderAutoOpen(false)
+assert(not npcAuto:GetChecked(), 'NPC auto-open setting refreshes its checkbox')

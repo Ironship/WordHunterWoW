@@ -40,6 +40,16 @@ Addon.initializeDatabase()
 Addon.RegisterDictionaryProvider("deDE", "test", { hund = { word = "Hund", translation = "dog", note = "" } })
 
 Addon.createPanel()
+local createFrame = CreateFrame
+CreateFrame = function(...)
+  local frame = createFrame(...)
+  local setPoint = frame.SetPoint
+  function frame:SetPoint(...)
+    self.testAnchor = { ... }
+    setPoint(self, ...)
+  end
+  return frame
+end
 Addon.createEditor()
 local editor = Addon.editor
 assert(editor.cover and editor.cover.buttons and #editor.cover.buttons == 5, "the editor needs a cover with five buttons")
@@ -290,3 +300,28 @@ assert(editor.cover:GetParent() == editor, "the cover is part of the editor")
 assert(editor.cover.buttons[1]:GetHeight() == Addon.RoleButtonHeight(), "one button height, like every other button")
 
 print("recall-cover: ok")
+
+-- Ratings keep their original width; declining sits next to Copy word.
+local later = editor.cover.show
+local anchor = later.testAnchor
+local copy = anchor[2]
+assert(anchor[1] == 'LEFT' and anchor[3] == 'RIGHT' and anchor[4] == 8 and anchor[5] == 0,
+  'Not now must sit in the Copy word row')
+assert(copy.testAnchor[2] == editor.resetDictionary and copy.testAnchor[3] == 'RIGHT',
+  'Not now must follow the actual Copy word button')
+local laterRight = 20 + editor.resetDictionary:GetWidth() + 8 + copy:GetWidth() + 8 + later:GetWidth()
+for _, width in ipairs({ 420, 430, 550, 650 }) do
+  for _, scale in ipairs({ 0.8, 1, 1.7, 2 }) do
+    editor:SetWidth(width); editor:SetScale(scale)
+    local right = 20
+    for _, button in ipairs(editor.cover.buttons) do
+      local a = rawget(button, '_points').TOPLEFT
+      assert(a and a.x >= right and a.y == -36)
+      assert(button:GetWidth() == 70, 'ratings must retain their original width')
+      right = a.x + button:GetWidth()
+    end
+    assert(right <= width - 20 and laterRight <= width - 20, 'both rows must fit inside the editor')
+    assert(later:GetEffectiveScale() == copy:GetEffectiveScale(), 'both row buttons must share the editor scale')
+  end
+end
+print('recall-strip: full-width scores, Not now beside Copy word, both rows fit: ok')

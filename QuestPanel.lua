@@ -10,7 +10,7 @@ local unpack = unpack or table.unpack
 -- tooltip and the switch that governs it are one feature, and wording them
 -- apart is how a control and its setting end up calling the same thing by two
 -- different names.
-LABELS.questLogButton = "Word Hunter"
+LABELS.questLogButton = "WordHunterWoW - Reader"
 LABELS.questLogButtonTip = "Show this quest's text side by side."
 LABELS.questLogAutoLabel = "Open the quest panel automatically from the quest log"
 -- Its two neighbours, enOfferOnly and enNoOffer, each name the passage that is
@@ -297,9 +297,6 @@ local function layoutChrome()
     m.metaFootY = m.footPad + actionRows * (m.buttonH + m.buttonGap)
     m.legendBottom = m.metaFootY + m.metaH + m.legendGap
   end
-  local titleInset = Addon.lastQuest and Addon.lastQuest.catalog
-    and (panel.catalogLanguageButton and -120 or -72)
-
   local rows = layoutLegend(m)
   local legendTop = m.legendBottom + rows * m.legendRowH + (rows - 1) * m.legendRowGap
   local footerY = legendTop + m.footerGap
@@ -312,7 +309,7 @@ local function layoutChrome()
 
   if panel.integratedLayout then
     panel.title:SetPoint("TOPLEFT", panel, "TOP", 12, -m.topPad)
-    panel.title:SetPoint("TOPRIGHT", titleInset or -40, -m.topPad)
+    panel.title:SetPoint("TOPRIGHT", -40, -m.topPad)
     panel.meta:SetPoint("BOTTOMLEFT", 18, m.metaFootY)
     -- Bounded on the right by the buttons it shares the footer with. Left
     -- unbounded, as it was, a long progress line at a large size runs straight
@@ -340,7 +337,7 @@ local function layoutChrome()
     panel.chromeHeight = math.max(m.headBottom, en.headBottom) + bandTop
   else
     panel.title:SetPoint("TOPLEFT", 18, -m.topPad)
-    panel.title:SetPoint("TOPRIGHT", titleInset or -18, -m.topPad)
+    panel.title:SetPoint("TOPRIGHT", -40, -m.topPad)
     panel.meta:SetPoint("TOPLEFT", 18, -m.headBottom)
     panel.meta:SetPoint("TOPRIGHT", Addon.lastQuest and Addon.lastQuest.readOnly and -18 or -140, -m.headBottom)
     panel.scroll:SetPoint("TOPLEFT", 18, -m.metaBottom)
@@ -484,7 +481,6 @@ local function refreshPanel()
   local lastQuest = Addon.lastQuest
   local readOnly = lastQuest.readOnly == true
   local wordLocale = lastQuest.wordLocale or Addon.GetTargetLocale()
-  if Addon.RefreshCatalogLanguageControls then Addon.RefreshCatalogLanguageControls() end
   if Addon.libraryReturnButton then
     if lastQuest.catalog then Addon.libraryReturnButton:Show() else Addon.libraryReturnButton:Hide() end
   end
@@ -890,6 +886,30 @@ function Addon.SetQuestLogAutoOpen(value)
   if Addon.RefreshSettingsWindow then Addon.RefreshSettingsWindow() end
 end
 
+function Addon.GetQuestVoiceAutoPlay()
+  local settings = WordHunterWoWDB and WordHunterWoWDB.settings
+  return settings and settings.questVoiceAutoPlay == true or false
+end
+
+function Addon.GetNpcReaderAutoOpen()
+  local settings = WordHunterWoWDB and WordHunterWoWDB.settings
+  return settings and settings.npcReaderAutoOpen == true or false
+end
+
+function Addon.SetNpcReaderAutoOpen(value)
+  if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
+  if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
+  WordHunterWoWDB.settings.npcReaderAutoOpen = not not value
+  if Addon.RefreshSettingsWindow then Addon.RefreshSettingsWindow() end
+end
+
+function Addon.SetQuestVoiceAutoPlay(value)
+  if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
+  if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
+  WordHunterWoWDB.settings.questVoiceAutoPlay = not not value
+  if Addon.RefreshSettingsWindow then Addon.RefreshSettingsWindow() end
+end
+
 -- `requested` is the player having pressed the quest log's own button. It is
 -- the only thing that opens the panel from the log while the setting above is
 -- off, and it is deliberately not inferred from anything: a rule that guessed
@@ -909,7 +929,8 @@ local function readCurrentQuest(questLogId, requested)
   -- QuestInfoFrame is Retail's; Classic shows the same thing in its own quest
   -- log window. The Classic arm is guarded by flavour rather than folded in, so
   -- that opening the world map on Retail keeps behaving exactly as it did.
-  elseif (QuestInfoFrame and QuestInfoFrame.questLog) or (Compat.IsClassic() and Compat.QuestLogShown()) then
+  elseif not Compat.NpcQuestFrameShown() and ((QuestInfoFrame and QuestInfoFrame.questLog)
+      or (Compat.IsClassic() and Compat.QuestLogShown())) then
     nativeNPC = false
     questId = Compat.SelectedQuestID() or questId
     description, objectives = Compat.QuestLogText(Compat.QuestLogIndexForID(questId))
@@ -992,11 +1013,7 @@ local function readCurrentQuest(questLogId, requested)
   -- This only ever declines to open the panel; it never closes one. A panel the
   -- player opened by hand stays where it is and keeps being refreshed above.
   --
-  -- The quest giver's window and the quest log are two different cases now. At
-  -- an NPC the panel opens with the window, as it always has. From the log it
-  -- waits to be asked -- see Addon.GetQuestLogAutoOpen above for what reading
-  -- the log used to cost -- unless the player pressed the button hung on the
-  -- log, which is what `requested` carries.
+  -- NPC conversations and the quest log have separate opt-in auto-open settings.
   --
   -- The test is which window the text came from and never which of Blizzard's
   -- functions fired. Showing the map's quest details runs
@@ -1005,7 +1022,8 @@ local function readCurrentQuest(questLogId, requested)
   -- and the panel would have landed on the log through it regardless.
   local Compat = Addon.Compat
   local atQuestGiver = not Compat or Compat.NpcQuestFrameShown()
-  if atQuestGiver or requested or (Compat.QuestLogShown() and Addon.GetQuestLogAutoOpen()) then
+  if requested or (atQuestGiver and Addon.GetNpcReaderAutoOpen())
+      or (not atQuestGiver and Compat and Compat.QuestLogShown() and Addon.GetQuestLogAutoOpen()) then
     panel:Show()
   end
   -- Laid out after the decision to show, never before it. refreshPanel declines
@@ -1016,7 +1034,7 @@ local function readCurrentQuest(questLogId, requested)
 end
 Addon.readCurrentQuest = readCurrentQuest
 
-function Addon.readGossip()
+function Addon.readGossip(requested)
   local text = C_GossipInfo and C_GossipInfo.GetText and C_GossipInfo.GetText()
   if (not text or text == "") and GetGossipText then text = GetGossipText() end
   text = Addon.trim(tostring(text or ""))
@@ -1026,13 +1044,15 @@ function Addon.readGossip()
   Addon.lastQuest = { id = 0, title = Addon.trim(title), text = text, passage = "gossip" }
   if Addon.ApplyIntegratedLayout then Addon.ApplyIntegratedLayout() end
   if not panel then return end
-  panel:Show()
+  if requested or Addon.GetNpcReaderAutoOpen() then panel:Show() end
   refreshPanel()
 end
 
 -- The quest log's own way in -------------------------------------------------
 
 local logButton
+local questsLogButton
+local questsLogRoot
 
 -- A Blizzard global can be absent on one game and be something other than a
 -- frame on the other, so nothing below indexes one without asking first. Same
@@ -1042,28 +1062,13 @@ local function usableFrame(frame)
   return nil
 end
 
--- What the button hangs on. Retail keeps the quest log inside the world map and
--- swaps in a details pane once a quest is picked; Classic Era has a window of
--- its own. Both are frames this suite already trusts in the live game --
--- Compat.QuestLogFrame and the English panel between them watch every one.
---
--- Asked by flavour rather than by probing both, unlike Compat.QuestLogFrame,
--- which wants whichever of them is open at this instant. This picks a parent
--- once and never rehomes the button, so a leftover global of the other game's
--- name would capture it for the whole session and the button would sit on a
--- window that never opens.
---
--- Retail's details pane is preferred over the map around it because it is on
--- screen exactly while a quest is being read: hung there, the button comes and
--- goes with the thing it acts on and needs no showing or hiding of its own.
---
--- Published because which frame this picks is the whole of the Classic half of
--- the feature, and it cannot be read back off the button afterwards.
+-- Retail/Forever can load the quest list before its details pane.
 local function questLogHost()
   local Compat = Addon.Compat
-  if not Compat or Compat.IsRetail() then
+  if not Compat or Compat.IsRetail() or Compat.IsForever() then
     if type(QuestMapFrame) ~= "table" then return nil end
-    return usableFrame(QuestMapFrame.DetailsFrame)
+    return usableFrame(rawget(QuestMapFrame, "DetailsFrame"))
+      or usableFrame(rawget(QuestMapFrame, "QuestsFrame"))
   end
   return usableFrame(QuestLogFrame)
 end
@@ -1091,52 +1096,134 @@ function Addon.ToggleQuestFromLog()
   if questId and questId > 0 then
     readCurrentQuest(questId, true)
   else
-    readCurrentQuest(nil, true)
+    print("|cff66ccffWordHunterWoW:|r Select a quest in the quest log to open Reader.")
   end
 end
 
--- Idempotent, and called again at every moment the log could have arrived:
--- Retail builds the map's quest log in Blizzard_WorldMap and Classic keeps its
--- own in Blizzard_QuestLog, both load-on-demand, so at the addon's own
--- ADDON_LOADED there is usually nothing here yet to hang anything on.
+local function createQuestSideTab(icon, toggle, parent)
+  local b
+  parent = parent or UIParent
+  if type(SidePanelTabButtonMixin) == "table" then
+    b = CreateFrame("Frame", nil, parent, "LargeSideTabButtonTemplate")
+    b.Icon:SetTexture(icon)
+    if type(b.SetFillToInterior) == "function" then
+      b:SetFillToInterior(true, 24)
+    else
+      b.Icon:SetTexCoord(0.03125, 0.96875, 0.03125, 0.96875)
+      b.Icon:SetSize(24, 24)
+    end
+    -- Retail's native SetChecked requires atlases; this tab keeps its file texture.
+    function b:SetChecked(checked)
+      self.SelectedTexture:SetShown(checked)
+    end
+    b:EnableMouse(true)
+    b:SetCustomOnMouseUpHandler(function(_, button, upInside)
+      if button == "LeftButton" and upInside then toggle() end
+    end)
+  else
+    b = CreateFrame("CheckButton", nil, parent, "SpellBookSkillLineTabTemplate")
+    b:SetSize(32, 32)
+    b:SetNormalTexture(icon)
+    local texture = b:GetNormalTexture()
+    texture:ClearAllPoints()
+    texture:SetPoint("CENTER")
+    texture:SetSize(24, 24)
+    b:SetScript("OnClick", toggle)
+  end
+  return b
+end
+Addon.CreateBookSideTab = createQuestSideTab
+
+local function frameVisible(frame)
+  if not frame then return false end
+  if type(frame.IsVisible) == "function" then return frame:IsVisible() end
+  return frame:IsShown()
+end
+
+local npcReaderButton
+local npcReaderHosts = {}
+
+local function npcReaderHost()
+  if frameVisible(usableFrame(QuestFrame)) then return QuestFrame end
+  if frameVisible(usableFrame(GossipFrame)) then return GossipFrame end
+end
+
+function Addon.ToggleReaderFromNpc()
+  if not panel or not npcReaderHost() then return end
+  if panel:IsShown() then
+    panel:Hide()
+    if Addon.editor then Addon.editor:Hide() end
+  elseif frameVisible(usableFrame(QuestFrame)) then
+    readCurrentQuest(nil, true)
+  else
+    Addon.readGossip(true)
+  end
+end
+
+function Addon.RefreshNpcReaderButton()
+  if not npcReaderButton then return end
+  local host = npcReaderHost()
+  if not host then npcReaderButton:Hide(); return end
+  npcReaderButton:ClearAllPoints()
+  npcReaderButton:SetPoint("TOPLEFT", host, "TOPRIGHT", 2, -110)
+  npcReaderButton:SetScale(host:GetEffectiveScale() / UIParent:GetEffectiveScale())
+  npcReaderButton:SetChecked(panel and panel:IsShown() or false)
+  npcReaderButton:Show()
+end
+
+function Addon.AttachNpcReaderButton()
+  for _, name in ipairs({ "QuestFrame", "GossipFrame" }) do
+    local host = usableFrame(_G[name])
+    if host and not npcReaderHosts[host] then
+      npcReaderHosts[host] = true
+      host:HookScript("OnShow", Addon.RefreshNpcReaderButton)
+      host:HookScript("OnHide", Addon.RefreshNpcReaderButton)
+    end
+  end
+  if not npcReaderButton and next(npcReaderHosts) then
+    npcReaderButton = createQuestSideTab("Interface\\Icons\\INV_Misc_Book_11", Addon.ToggleReaderFromNpc)
+    Addon.npcReaderButton = npcReaderButton
+    npcReaderButton:SetFrameStrata("FULLSCREEN_DIALOG")
+    npcReaderButton:SetFrameLevel(40)
+    npcReaderButton:SetScript("OnEnter", function(self)
+      if not GameTooltip then return end
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(LABELS.questLogButton)
+      GameTooltip:AddLine(LABELS.questLogButtonTip, 0.8, 0.82, 0.88, true)
+      GameTooltip:Show()
+    end)
+    npcReaderButton:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+  end
+  Addon.RefreshNpcReaderButton()
+  return npcReaderButton
+end
+
+function Addon.RefreshQuestLogButton()
+  Addon.RefreshNpcReaderButton()
+  if not logButton then return end
+  if not questsLogButton or not questsLogRoot then logButton:Hide(); return end
+  logButton:ClearAllPoints()
+  logButton:SetPoint("TOPLEFT", questsLogButton, "BOTTOMLEFT", 0, -8)
+  logButton:SetScale(questsLogButton:GetScale())
+  logButton:SetChecked(panel and panel:IsShown() or false)
+  if (frameVisible(questLogHost()) or frameVisible(Addon.QuestsLogButtonHost()))
+      and frameVisible(questsLogRoot) then
+    logButton:Show()
+  else
+    logButton:Hide()
+  end
+end
+
 function Addon.AttachQuestLogButton()
   if logButton then return logButton end
   local host = questLogHost()
   if not host then return nil end
-  local button = Addon.createActionButton(host, LABELS.questLogButton)
-  button:SetSize(104, 22)
-  -- Just outside the log's top-right corner, not in among Blizzard's own
-  -- buttons. Which children the quest log has, and where it has room for
-  -- another, differs between the two games -- Retail's details pane ends in
-  -- Abandon/Share/Track, Classic's window carries its close button in that
-  -- corner -- and both have moved between patches. The outer edge is the one
-  -- part of the frame Blizzard never draws on, so it is the only anchor that
-  -- can be got right for both without a client of each to try it on. The
-  -- English panel already sits beside the log at this offset, which is where
-  -- the 4 comes from.
-  button:SetPoint("TOPLEFT", host, "TOPRIGHT", 4, -8)
-  -- Above this addon's own quest panel, which is the only thing that covers it.
-  --
-  -- The panel is FULLSCREEN_DIALOG at level 20 with SetToplevel; the quest log
-  -- lives in the world map, which sits lower, so a button hung off the map is
-  -- drawn under the panel. On a live realm the panel opens right beside the log
-  -- -- that is the whole point of it -- and it left this button as a red sliver
-  -- with two letters of its name showing.
-  --
-  -- Raising it is right rather than merely convenient: this button's one job is
-  -- to toggle that panel, so it is the one control that has to stay reachable
-  -- while the panel is up. It is raised within FULLSCREEN_DIALOG rather than
-  -- put in a strata above it, so it still goes behind a true modal -- a
-  -- confirmation, or the game's own menus.
+  local button = createQuestSideTab("Interface\\Icons\\INV_Misc_Book_11", Addon.ToggleQuestFromLog)
   button:SetFrameStrata("FULLSCREEN_DIALOG")
   button:SetFrameLevel(40)
-  button:SetScript("OnClick", Addon.ToggleQuestFromLog)
   button:SetScript("OnEnter", function(self)
     if not GameTooltip then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    -- Written to, never read back. Text taken off one of the game's own frames
-    -- can be a secret value on current Retail, and touching one taints the
-    -- addon and stops everything else it does, nowhere near this line.
     GameTooltip:SetText(LABELS.questLogButton)
     GameTooltip:AddLine(LABELS.questLogButtonTip, 0.8, 0.82, 0.88, true)
     GameTooltip:Show()
@@ -1146,22 +1233,14 @@ function Addon.AttachQuestLogButton()
   end)
   logButton = button
   Addon.questLogButton = button
+  host:HookScript("OnShow", Addon.RefreshQuestLogButton)
+  host:HookScript("OnHide", Addon.RefreshQuestLogButton)
+  Addon.RefreshQuestLogButton()
   return button
 end
 
-local questsLogButton
-local questsLogRoot
-
--- The library's host: the quest LIST, never the reader's details pane. The
--- reader hangs on Retail's QuestMapFrame.DetailsFrame, which exists only while
--- a quest is picked; hung there, the library would vanish exactly when the
--- player is browsing the list with nothing selected.
---
--- Probed by frame rather than by flavour, unlike questLogHost above: Forever
--- hosts the same map list while answering Classic to every flavour question,
--- so asking the flavour would send its button to a QuestLogFrame window
--- Forever does not have. The QuestsFrame field is read with rawget so the
--- probe never creates the field as a side effect.
+-- The library follows the quest list, even when no quest is selected.
+-- Probe frames because Forever shares the map UI while using a Classic flavor.
 local function questsLogHost()
   if type(QuestMapFrame) == "table" then
     local list = rawget(QuestMapFrame, "QuestsFrame")
@@ -1197,12 +1276,8 @@ function Addon.RefreshQuestsLogButton()
     b:SetScale(questsLogRoot:GetEffectiveScale() / UIParent:GetEffectiveScale())
   end
   b:SetChecked(Addon.questsFrame and Addon.questsFrame:IsShown() or false)
-  local function visible(frame)
-    if not frame then return false end
-    if type(frame.IsVisible) == "function" then return frame:IsVisible() end
-    return frame:IsShown()
-  end
-  if visible(host) and visible(questsLogRoot) then b:Show() else b:Hide() end
+  if frameVisible(host) and frameVisible(questsLogRoot) then b:Show() else b:Hide() end
+  Addon.RefreshQuestLogButton()
 end
 
 function Addon.AttachQuestsLogButton()
@@ -1214,21 +1289,7 @@ function Addon.AttachQuestsLogButton()
   local function toggle()
     if Addon.toggleQuestBrowser then Addon.toggleQuestBrowser() end
   end
-  local b
-  if type(SidePanelTabButtonMixin) == "table" then
-    b = CreateFrame("Frame", nil, UIParent, "LargeSideTabButtonTemplate")
-    b.Icon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
-    b:SetFillToInterior(true, 40)
-    b:EnableMouse(true)
-    b:SetCustomOnMouseUpHandler(function(_, button, upInside)
-      if button == "LeftButton" and upInside then toggle() end
-    end)
-  else
-    b = CreateFrame("CheckButton", nil, UIParent, "SpellBookSkillLineTabTemplate")
-    b:SetSize(32, 32)
-    b:SetNormalTexture("Interface\\Icons\\INV_Misc_Book_09")
-    b:SetScript("OnClick", toggle)
-  end
+  local b = createQuestSideTab("Interface\\Icons\\INV_Misc_Book_09", toggle)
   b:SetFrameStrata("FULLSCREEN_DIALOG")
   b:SetFrameLevel(40)
   b:SetScript("OnEnter", function(self)
@@ -1266,6 +1327,7 @@ end
 -- the player is looking at; the reading itself is the same on every game.
 function Addon.hookQuestUi()
   local Compat = Addon.Compat
+  Addon.AttachNpcReaderButton()
   Addon.AttachQuestLogButton()
   if Addon.AttachQuestsLogButton then Addon.AttachQuestsLogButton() end
   return Compat.HookQuestUi(function(name)
@@ -1322,9 +1384,11 @@ function Addon.createPanel()
   -- once here, every path is covered including the ones not written yet.
   panel:HookScript("OnShow", function()
     if Addon.ApplyReadingDim then Addon.ApplyReadingDim() end
+    Addon.RefreshQuestLogButton()
   end)
   panel:HookScript("OnHide", function()
     if Addon.ApplyReadingDim then Addon.ApplyReadingDim() end
+    Addon.RefreshQuestLogButton()
   end)
   local panelDef = Addon.LAYOUT_DEFAULTS.npc.panel
   panel:SetSize(panelDef.w, panelDef.h)
@@ -1371,12 +1435,6 @@ function Addon.createPanel()
     panel:Hide()
     if Addon.editor then Addon.editor:Hide() end
   end)
-  if Addon.CreateCatalogLanguageButton then
-    local language = Addon.CreateCatalogLanguageButton(panel, true)
-    language:SetPoint("TOPRIGHT", -68, -5)
-    language:Hide()
-  end
-
   panel.enTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   panel.enTitle:SetJustifyH("LEFT")
   panel.enTitle:SetMaxLines(1)

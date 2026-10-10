@@ -42,6 +42,7 @@ WordHunterWoW_QuestEN = {
   },
 }
 
+Addon.SetNpcReaderAutoOpen(true)
 Addon.createPanel()
 local panel = Addon.panel
 QuestFrame:Show()

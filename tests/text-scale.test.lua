@@ -44,6 +44,7 @@ WordHunterWoWDB.settings.textScale = 1.25
 
 -- Now the part that matters on screen. Render the same quest at two sizes and
 -- compare what the panel actually laid out.
+Addon.SetNpcReaderAutoOpen(true)
 Addon.createPanel()
 local panel = Addon.panel
 -- Long enough to wrap, which is what makes the row height observable.

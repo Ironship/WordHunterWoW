@@ -99,6 +99,33 @@ function Addon.ResolveReferenceQuest(value, locale, phase)
       .. (phase == "title" and " Title-only study; this view contains no quest dialogue." or "") }
 end
 
+-- Only quest editions matching this client may supplement its learning library.
+function Addon.GetQuestLibrarySources()
+  local flavor = Addon.Compat and Addon.Compat.GameFlavor() or "retail"
+  local sources = {}
+  for key, pack in pairs(WordHunterWoW_QuestSources or {}) do
+    if type(key) == "string" and type(pack) == "table" then
+      local family = pack.sourceFlavor or key:gsub("^multilanguage%-", "")
+      local matching = family == flavor or ((flavor == "forever" or flavor == "classic" or flavor == "sod")
+        and (family == "classic" or family == "classic-master"))
+      if matching and not key:find(":", 1, true) and type(pack.locales) == "table" then
+        sources[#sources + 1] = { key = key, pack = pack }
+      end
+    end
+  end
+  table.sort(sources, function(a, b) return a.key < b.key end)
+  return sources
+end
+
+function Addon.GetLibraryQuestSourceRecord(id, locale)
+  if locale == "enGB" then locale = "enUS" end
+  for _, source in ipairs(Addon.GetQuestLibrarySources()) do
+    local rows = source.pack.locales[locale]
+    local row = type(rows) == "table" and (rows[id] or rows[tostring(id)])
+    if type(row) == "table" then return row, source.pack.label or source.key end
+  end
+end
+
 function Addon.GetLibraryViews()
   local views = {}
   local labels = { ["multilanguage-classic-master"] = "ML Classic", ["multilanguage-classic"] = "ML Classic",
@@ -119,9 +146,6 @@ function Addon.GetLibraryViews()
       label = label .. " " .. suffix[kind] }
   end
   for source, bucket in pairs(WordHunterWoW_QuestSources or {}) do append(source, "quest", bucket) end
-  for source, bucket in pairs(WordHunterWoW_EntityDataBySource or {}) do
-    for _, kind in ipairs({ "item", "spell", "npc" }) do append(source, kind, bucket) end
-  end
   table.sort(views, function(a, b)
     if a.kind ~= b.kind then return order[a.kind] < order[b.kind] end
     if a.label ~= b.label then return a.label < b.label end

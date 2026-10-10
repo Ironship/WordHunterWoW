@@ -675,12 +675,14 @@ function Addon.SetTargetLocale(locale)
   if Addon.settingsPanel and Addon.settingsPanel.refresh then
     Addon.settingsPanel.refresh()
   end
-  if Addon.listFrame and Addon.listFrame:IsShown() then Addon.refreshWordList() end
+  if Addon.refreshWordList then Addon.refreshWordList() end
   if Addon.statsFrame and Addon.statsFrame:IsShown() then Addon.statsFrame:Hide() end
   -- Close the editor's old-language context too; its frozen locale still keeps
   -- any delayed save or rating in the correct language bucket.
   if Addon.editor and Addon.editor:IsShown() then Addon.editor:Hide() end
-  if Addon.panel and Addon.panel:IsShown() and Addon.lastQuest then Addon.refreshPanel() end
+  if Addon.SetCatalogLocale then Addon.SetCatalogLocale(locale) end
+  if Addon.panel and Addon.panel:IsShown() and Addon.lastQuest
+      and not (Addon.SetCatalogLocale and Addon.lastQuest.catalog) then Addon.refreshPanel() end
 end
 
 function Addon.GetWordsTable(locale)
@@ -708,7 +710,7 @@ function Addon.RegisterDictionaryProvider(locale, providerId, entries)
     Addon.DictionaryProviderOrder[locale][#Addon.DictionaryProviderOrder[locale] + 1] = providerId
   end
   Addon.DictionaryProviders[locale][providerId] = entries
-  if Addon.listFrame and Addon.listFrame:IsShown() and Addon.refreshWordList then Addon.refreshWordList() end
+  if Addon.refreshWordList then Addon.refreshWordList() end
   if Addon.panel and Addon.panel:IsShown() and Addon.lastQuest and Addon.refreshPanel then Addon.refreshPanel() end
   return true
 end
@@ -828,11 +830,11 @@ end
 -- GetEffectiveWords has to — allocates a table per entry every call, and the word
 -- list calls it on each keystroke in the search box.
 -- The callback gets the entry as stored; read its status through EffectiveStatus.
-function Addon.ForEachEffectiveWord(fn)
-  local locale = Addon.GetTargetLocale()
+function Addon.ForEachEffectiveWord(fn, locale)
+  locale = locale or Addon.GetTargetLocale()
   local providers = Addon.DictionaryProviders[locale] or {}
   local order = Addon.DictionaryProviderOrder[locale] or {}
-  local user = Addon.GetWordsTable()
+  local user = Addon.GetWordsTable(locale)
   -- Later providers win, so walk backwards and keep the first hit. With a single
   -- provider — the normal case — no bookkeeping table is needed at all.
   local emitted = (#order > 1) and {} or nil

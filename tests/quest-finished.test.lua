@@ -20,6 +20,7 @@ assert(Addon.createPanel and Addon.readCurrentQuest, "QuestPanel.lua must provid
 
 WordHunterWoWDB = { settings = { targetLocale = "deDE", frames = {} }, words = {}, wordsByLocale = {} }
 Addon.initializeDatabase()
+Addon.SetNpcReaderAutoOpen(true)
 Addon.createPanel()
 local panel = Addon.panel
 assert(panel, "createPanel should expose the panel")

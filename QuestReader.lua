@@ -72,6 +72,7 @@ Addon.PersonalizeQuestText = personalize
 local FIELDS = { "title", "description", "objectives", "progress", "completion" }
 local function passage(record, phase)
   if type(record) ~= "table" then return "" end
+  if phase == "title" then return plain(record.title) end
   if phase == "progress" or phase == "completion" then return plain(record[phase]) end
   local desc, obj = plain(record.description), plain(record.objectives)
   return desc .. (desc ~= "" and obj ~= "" and "\n\n" or "") .. obj
@@ -240,6 +241,10 @@ function Addon.GetEnglishQuestRecord(value)
     record, locale = recordFor(WordHunterWoW_QuestEN, id), "enUS"
   end
   record = databaseRecord(record, flavor, locale)
+  if Addon.GetLibraryQuestSourceRecord then
+    local imported, label = Addon.GetLibraryQuestSourceRecord(id, "enUS")
+    if type(record) ~= "table" then record = imported else record = fillMissing(record, imported, label) end
+  end
   for _, nativeLocale in ipairs({ "enUS", "enGB" }) do
     local observed = Addon.GetObservedQuestTexts and Addon.GetObservedQuestTexts(nativeLocale)
     local native = recordFor(observed, id)
@@ -262,7 +267,7 @@ function Addon.ResolveCatalogQuest(value, locale, phase)
   locale = locale or Addon.GetCatalogLocale()
   if not Addon.SUPPORTED_LOCALES[locale] then return nil end
   if phase == "reward" then phase = "completion" end
-  if phase and phase ~= "offer" and phase ~= "progress" and phase ~= "completion" then return nil end
+  if phase and phase ~= "offer" and phase ~= "progress" and phase ~= "completion" and phase ~= "title" then return nil end
   local flavor = Addon.Compat and Addon.Compat.GameFlavor() or "retail"
   local localized, databaseFlavor, _, databaseLocale = Addon.GetQuestDatabase(locale)
   local sourceFlavor, sourceLocale = flavor, locale
@@ -305,11 +310,25 @@ function Addon.ResolveCatalogQuest(value, locale, phase)
       progressSource = database.progressSource, completionSource = database.completionSource,
       progressSourceFlavor = database.progressSourceFlavor, completionSourceFlavor = database.completionSourceFlavor }, "database")
   end
+  local importedLabel
+  if Addon.GetLibraryQuestSourceRecord and incomplete(record) then
+    local imported, label = Addon.GetLibraryQuestSourceRecord(id, locale)
+    local supplemented = fillMissing(record or {}, imported, label)
+    if supplemented ~= record and (hasText(imported) or passage(imported, "title") ~= "") then importedLabel = label end
+    if not hasText(record) and (hasText(imported) or passage(imported, "title") ~= "") then
+      record, source, sourceFlavor, sourceLocale = supplemented, label, flavor, locale
+    elseif supplemented ~= record then
+      record = supplemented
+    end
+  end
   local englishRecord, englishFlavor, englishLocale, englishSource = Addon.GetEnglishQuestRecord(id)
   local available = {}
   for _, candidate in ipairs(PHASES) do
     if passage(record, candidate) ~= "" or passage(englishRecord, candidate) ~= "" then available[#available + 1] = candidate end
   end
+  local titleOnly = not hasText(record) and passage(record, "title") ~= ""
+    or not hasText(englishRecord) and passage(englishRecord, "title") ~= ""
+  if titleOnly then table.insert(available, 1, "title") end
   if not phase then
     for _, candidate in ipairs(PHASES) do
       if passage(record, candidate) ~= "" then phase = candidate break end
@@ -317,6 +336,7 @@ function Addon.ResolveCatalogQuest(value, locale, phase)
     phase = phase or available[1]
   end
   if not phase then return nil end
+  if phase == "title" and not titleOnly then return nil end
   if passage(record, phase) == "" then
     record, sourceFlavor, sourceLocale, source = englishRecord, englishFlavor, englishLocale, englishSource
   end
@@ -326,7 +346,12 @@ function Addon.ResolveCatalogQuest(value, locale, phase)
   local readOnly = sourceLocale ~= locale and not (english(sourceLocale) and englishTarget)
   local title = plain(record.title)
   if title == "" then title = "Quest " .. id end
-  local phaseSource = phase ~= "offer" and (record[phase .. "Source"] or source) or source
+  local phaseSource = phase ~= "offer" and (record[phase .. "Source"] or source)
+    or record.descriptionSource or record.objectivesSource or source
+  local importedPassage = importedLabel and (phaseSource == importedLabel
+    or (phase == "offer" and record.objectivesSource == importedLabel))
+  local referenceNote = importedPassage and (importedLabel .. ": stored quest text.") or nil
+  if phase == "title" then referenceNote = "Title-only study: no quest dialogue is stored in this language." end
   if phase ~= "offer" then sourceFlavor = record[phase .. "SourceFlavor"] or sourceFlavor end
   -- A reference is deliberately not a voice-pack passage. Existing optional
   -- voice hooks still get their cleanup callback, but have no clip to attach.
@@ -337,18 +362,15 @@ function Addon.ResolveCatalogQuest(value, locale, phase)
     wordLocale = not readOnly and locale or nil, source = source, readOnly = readOnly,
     descriptionSource = record.descriptionSource or source, objectivesSource = record.objectivesSource or source,
     originFlavor = record.originFlavor or sourceFlavor, sourceBuild = record.sourceBuild,
-    voiceUnavailable = readOnly or sourceLocale ~= "deDE"
-      or (phase ~= "offer" and type(phaseSource) == "string" and phaseSource:find("MultiLanguage", 1, true) ~= nil) }
+    referenceNote = referenceNote,
+    voiceUnavailable = readOnly or sourceLocale ~= "deDE" or phase == "title"
+      or not not importedPassage
+      or (type(phaseSource) == "string" and phaseSource:find("MultiLanguage", 1, true) ~= nil) }
 end
 
 local function libraryNavigation()
   if Addon.libraryReturnButton then return end
-  local button = CreateFrame("Button", nil, Addon.panel)
-  button:SetSize(24, 24)
-  button:SetPoint("TOPRIGHT", -36, -5)
-  if button.SetNormalTexture then button:SetNormalTexture("Interface\\Icons\\INV_Misc_Book_09") end
-  if button.SetHighlightTexture then button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD") end
-  button:SetScript("OnClick", function()
+  local button = Addon.CreateBookSideTab("Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Up", function()
     Addon.panel:Hide()
     if Addon.editor then Addon.editor:Hide() end
     -- Show, don't toggle: the library may already be open under the reader,
@@ -358,7 +380,10 @@ local function libraryNavigation()
     elseif Addon.toggleQuestBrowser then
       Addon.toggleQuestBrowser()
     end
-  end)
+  end, Addon.panel)
+  button:SetPoint("BOTTOMLEFT", Addon.panel, "BOTTOMRIGHT", -6, 12)
+  button:SetFrameLevel(Addon.panel:GetFrameLevel() + 2)
+  button:SetChecked(false)
   button:SetScript("OnEnter", function(self)
     if not GameTooltip then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -396,7 +421,6 @@ function Addon.OpenCatalogQuest(value, locale, phase)
   if not quest then return false end
   if locale and Addon.catalogLocale ~= quest.requestedLocale then
     Addon.catalogLocale = quest.requestedLocale
-    if Addon.RefreshCatalogLanguageControls then Addon.RefreshCatalogLanguageControls() end
     if Addon.refreshQuestBrowser then Addon.refreshQuestBrowser() end
   end
   if not Addon.panel then Addon.createPanel() end
@@ -416,7 +440,6 @@ end
 function Addon.SetCatalogLocale(locale)
   if not Addon.SUPPORTED_LOCALES[locale] then return false end
   Addon.catalogLocale = locale
-  if Addon.RefreshCatalogLanguageControls then Addon.RefreshCatalogLanguageControls() end
   if Addon.editor then Addon.editor:Hide() end
   if Addon.confirmDialog then Addon.confirmDialog:Hide() end
   Addon.selected = nil

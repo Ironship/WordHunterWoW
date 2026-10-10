@@ -26,37 +26,48 @@ Buttons stay in English. Quest text stays in the language you set in WoW.
 ## Quest library
 
 Open `/whw quests`, or click the **WordHunterWoW book side tab** beside the Quest Log.
-The language button switches between your learning language and English in both
-the library and the reader. Words and recall ratings are saved separately for
-each language; this does not change your normal learning-language setting.
+The library follows your learning language from Settings. The reader displays
+English alongside that language when both texts are available. Words and recall
+ratings are saved separately for each language.
 The **German Dictionary** includes German and English Classic quest texts,
 plus native Forever cache records; no separate quest-data addon is needed.
 Text actually seen in your client takes
 precedence, and offers are archived immediately so you can study them after a
 fast party has completed the quest.
-No quest needs to be selected. The library has name/ID search, pagination, and
-filters for the database, your current log, completed quests, and this character's
-history. The database is a text catalog, not a promise that every quest is currently
+No quest needs to be selected. The library opens on **My quests**, containing
+this character's current and completed quests. **Show only current quests in
+quest log** hides the completed-only entries. The **All in game quests** tab
+contains all quest records stored for this game client. Both tabs display English
+and learning-language titles, with search in either language or by ID and pagination.
+Same-title variants are collapsed into one entry. Click **variants >** to choose
+another ID; its full dialogue remains independently readable. A current quest
+is preferred when opening a collapsed group. The footer separates entries from
+quest IDs, because the game's completion flags include multiple versions of a
+quest and are not a count of distinct stories or reading sessions.
+The three tabs attach to the right edge of the library: characters for **My quests**,
+a book for **All in game quests**, and a quill for **Words**.
+All WordHunter side-tab icons use 24 px inside their native tab frames.
+**Words** shows vocabulary in the same window, with its own
+search and status filters; clicking a word opens the normal editor.
+The database is a text catalog, not a promise that every quest is currently
 available from an NPC.
 
-Click a quest to open its description and objectives in the normal reader. Its book
-button returns to the library. Reading a catalog entry does not select it in
+Click a quest to open its description and objectives in the normal reader. The
+arrow side tab at its bottom-right edge returns to the library. Reading a catalog entry does not select it in
 Blizzard's log or mark it completed.
 
 The footer's **Offer / Progress / Completion** button cycles through stored quest
-passages. The language button keeps the selected passage when switching DE/EN.
+passages.
 Quests with only dialogue open on their first available passage; words remain
 clickable in the selected language. Imported dialogue has no audio until a
 matching recording is provided.
 
-The library's **Game quests >** button cycles through the installed source
-editions, Classic items, spells and NPCs. These references use the same DE/EN
-reader and word editor, with a source notice. They include historical/seasonal
-material; their versions, language pairs and static numerical values may differ
-from your client. Reference IDs remain separate from native quest IDs and
-character completion history. **Source field** displays an original field whose
-role as an objective was not independently confirmed. Retail/TBC quest source
-tables load only on the matching client family.
+Matching MultiLanguage quest sources supplement missing text, including German
+text for completed quests, without replacing native observations. Items, spells
+and NPC records are excluded from the quest library; their tooltip addons remain
+separate. Imported quest text carries a source notice and can differ from the
+current game. A title-only record opens for learning with an explicit note that
+quest dialogue is missing. An unverified source field is not used as an objective.
 
 The reader uses native quest-log text, a localized database when installed, or your
 locally collected text. With **English Quest Panel** installed, English database
@@ -76,6 +87,14 @@ their missing descriptions.
 
 Completion history is stored per character. There is no upload. After updating
 the addon, use `/reload` to load the new files.
+
+## What changed in 1.21
+
+The library has **My quests**, **All in game quests** and **Words** book side tabs, bilingual titles,
+and a current-log checkbox. Completed quests use matching German source text
+when available, opening the same learning reader as native quests. Returning to
+the library preserves its tab, search and page. Items, spells and NPCs no longer
+appear among quests.
 
 ## What changed in 1.20
 
@@ -114,6 +133,17 @@ rated in later. They go into the export beside the word.
 The ratings and sentences are stored beside your word list, not in it, so the
 file the desktop Word Hunter imports is unchanged.
 
+## Reader controls in 1.20.7
+
+The **WordHunterWoW - Reader** book tab opens and closes Reader. In the quest
+log it sits below **QUESTS**; NPC quest and dialogue windows have their own
+Reader tab. Reader stays closed until clicked by default.
+
+In `/whw settings`, **Quest panel** has separate switches for opening Reader
+automatically from the quest log or when talking to NPCs. **Automatically read
+quests when Reader opens** controls narration separately; when off, the narrator
+appears ready and waits for Play. A closed Reader does not summon the narrator.
+
 ## What changed in 1.17
 
 **The quest log no longer opens the panel by itself.** On a live realm the quest
@@ -137,7 +167,7 @@ Unzip into `_retail_\Interface\AddOns\`, or `_classic_era_\Interface\AddOns\`
 — the download carries a build for each, then:
 
 1. Set WoW's language and the addon's **Target language** to the same thing — `/whw lang`
-2. Accept a quest, or press **Word Hunter** on a quest in the Quest Log
+2. Open a quest or NPC dialogue, then click the **WordHunterWoW - Reader** book tab
 3. Click a word, give it a meaning, save
 
 `/whw` closes whichever of the addon's windows is open — the word list first,
