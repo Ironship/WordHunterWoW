@@ -75,6 +75,7 @@ Addon.COLORS.known = { 0.30, 0.88, 0.48 }   -- undo the tamper above
 
 WordHunterWoWDB = { settings = { targetLocale = "deDE", frames = {} }, words = {}, wordsByLocale = {} }
 Addon.initializeDatabase()
+Addon.SetNpcReaderAutoOpen(true)
 Addon.createPanel()
 
 GetQuestText = function() return "Zul Zul Zul Zul kennen lernen neu" end

@@ -172,6 +172,8 @@ Addon.SETTINGS = {
   { key = "statsScale", tab = "sizes", reset = "default", default = 1.0, set = "SetStatsScale" },
   { key = "integratedLayout", tab = "panel", reset = "default", default = true, set = "SetIntegratedLayout" },
   { key = "questLogAutoOpen", tab = "panel", reset = "clear" },
+  { key = "questVoiceAutoPlay", tab = "panel", reset = "clear" },
+  { key = "npcReaderAutoOpen", tab = "panel", reset = "clear" },
   { key = "readingMode", tab = "panel" },
   { key = "targetLocale", tab = "learning" },
   { key = "targetLocaleChosen", where = "by picking a language, on the Learning tab or with /whw lang" },
@@ -813,6 +815,12 @@ function Addon.CreateSettingsPanel()
   -- over the quest that had just been clicked.
   window.questLogAutoCheck = check(panelTab, "WordHunterWoWQuestLogAutoCheck", "questLogAutoOpen",
     LABELS.questLogAutoLabel, Addon.GetQuestLogAutoOpen, Addon.SetQuestLogAutoOpen)
+  window.questVoiceAutoCheck = check(panelTab, "WordHunterWoWQuestVoiceAutoCheck", "questVoiceAutoPlay",
+    "Automatically read quests when Reader opens", Addon.GetQuestVoiceAutoPlay, Addon.SetQuestVoiceAutoPlay)
+  note(panelTab, "When off, the narrator window waits for Play. Requires German voice packs.")
+  window.npcReaderAutoCheck = check(panelTab, "WordHunterWoWNpcReaderAutoCheck", "npcReaderAutoOpen",
+    "Open Reader automatically when talking to NPCs", Addon.GetNpcReaderAutoOpen, Addon.SetNpcReaderAutoOpen)
+  note(panelTab, "Quests and dialogue. When off, use the Reader tab beside the NPC window.")
   -- It also has a slash command and a pad button, which are what a player
   -- will actually use; the box is here so somebody who has never read the
   -- command list can find out it exists.

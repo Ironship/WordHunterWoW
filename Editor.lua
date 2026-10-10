@@ -556,7 +556,7 @@ function Addon.createEditor()
   -- meaning already on screen what is left is to put the question away.
   cover.show = Addon.createActionButton(cover, LABELS.recallLater)
   cover.show:SetSize(90, Addon.RoleButtonHeight())
-  cover.show:SetPoint("TOPLEFT", 20 + 5 * 76 + 10, -36)
+  cover.show:SetPoint("LEFT", copyWord, "RIGHT", 8, 0)
   cover.show:SetScript("OnClick", function() reveal() end)
 
   -- The number keys, on the cover's own frame. The keys 1 to 5 are the action

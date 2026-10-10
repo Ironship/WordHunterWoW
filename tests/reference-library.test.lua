@@ -60,16 +60,20 @@ assert(WordHunterWoWDB.questTexts==nil and WordHunterWoWCorpus==nil)
 local history=A.GetCharacterQuestHistory()
 assert(not history[7] or not history[7].completed, 'source study must not award native quest completion')
 A.toggleQuestBrowser()
-assert(A.SetLibraryView(key..':quest'))
+assert(A.SetQuestLibraryTab('all'))
 assert(A.questsFrame.resultCount==7 and A.questsFrame.filter=='database')
-A.SetQuestCatalogFilter('completed')
-assert(A.questsFrame.filter=='database', 'native history filters cannot claim source-version completion')
-local row=A.questsFrame.rows[1]
+local row
+for _, candidate in ipairs(A.questsFrame.rows) do
+  if candidate:IsShown() and candidate.item.id==8 then row=candidate end
+end
+assert(row and row.name:GetText()=='Nur Deutsch')
 row:GetScript('OnClick')(row)
-assert(A.lastQuest.referenceSource==key)
-assert(A.SetLibraryView('multilanguage-classic:item') and #A.CollectQuestCatalog()==1)
-assert(not A.SetLibraryView('unknown') and A.GetLibraryView().kind=='item')
-assert(A.SetLibraryView('game') and A.CollectQuestCatalog()[1].title=='Nativ')
+assert(A.lastQuest.id==8 and A.lastQuest.text=='Ein Hund.' and A.lastQuest.wordLocale=='deDE')
+assert(not A.SetLibraryView('multilanguage-classic:item') and not A.SetLibraryView('unknown'),
+  'entity views must not appear in the quest library')
+local byID={}
+for _, entry in ipairs(A.CollectQuestCatalog()) do byID[entry.id]=entry end
+assert(byID[7].title=='Nativ' and byID[7].englishTitle=='Native', 'native titles take precedence over imported titles')
 WordHunterWoW_EntityDataBySource['multilanguage-retail'] = {viewLabel='ML Retail', kinds={
   item={deDE={[7]={name='Anderer Gegenstand',text='Neue Geschichte.'}},
     enUS={[7]={name='Another item',text='A new story.'}}}, spell={deDE={},enUS={}}}}
@@ -78,14 +82,17 @@ WordHunterWoW_QuestSources['multilanguage-wrath'] = {viewLabel='ML Wrath',locale
 WordHunterWoW_QuestSources['bad:key'] = {locales={deDE={[1]={title='Invalid namespace'}}}}
 local seen, stable = {}, {}
 for index, view in ipairs(A.GetLibraryViews()) do seen[view.key]=true; stable[index]=view.key end
-assert(seen['multilanguage-retail:item'] and seen['multilanguage-wrath:quest'])
+assert(not seen['multilanguage-retail:item'] and seen['multilanguage-wrath:quest'])
 assert(not seen['multilanguage-retail:spell'] and not seen['bad:key:quest'])
 for index, view in ipairs(A.GetLibraryViews()) do assert(stable[index]==view.key) end
-assert(A.SetLibraryView('multilanguage-retail:item') and A.CollectQuestCatalog()[1].title=='Anderer Gegenstand')
+assert(not A.SetLibraryView('multilanguage-retail:item'))
 assert(A.OpenCatalogQuest(ref('item',7,'multilanguage-retail'),'deDE'))
 assert(A.lastQuest.text=='Anderer Gegenstand\n\nNeue Geschichte.' and A.panel.enPlain=='Another item\n\nA new story.')
 assert(A.OpenCatalogQuest(ref('item',7,'multilanguage-classic'),'deDE') and A.lastQuest.text=='Ein Gegenstand\n\nEin Hund.')
 assert(A.OpenCatalogQuest(ref('quest',7,'multilanguage-wrath'),'deDE') and A.lastQuest.readOnly and not A.lastQuest.wordLocale)
 assert(A.lastQuest.text=='English source only.' and A.lastQuest.voiceUnavailable)
-assert(A.SetLibraryView('game') and A.CollectQuestCatalog()[1].title=='Nativ')
+byID={}
+for _, entry in ipairs(A.CollectQuestCatalog()) do byID[entry.id]=entry end
+assert(byID[7].title=='Nativ' and #A.CollectQuestCatalog()==7,
+  'matching quest sources enrich native IDs without duplicate entities or foreign editions')
 print('reference-library: source/version/locale/phase/ID isolation + real reader/editor + catalog controls PASS')

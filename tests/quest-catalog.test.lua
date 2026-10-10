@@ -22,6 +22,9 @@ A.GetCharacterQuestHistory = function()
   return { [777] = { completed = true }, [900] = { accepted = true, title = 'Abandoned quest' } }
 end
 A.toggleQuestBrowser()
+assert(A.questsFrame.tab == 'my' and A.questsFrame.resultCount == 2,
+  'My quests must show current and completed quests, excluding abandoned and unrelated records')
+A.SetQuestLibraryTab('all')
 local titles = {}
 for _, row in ipairs(A.questsFrame.rows) do
   if row:IsShown() then titles[row.item.id] = row.name:GetText() end

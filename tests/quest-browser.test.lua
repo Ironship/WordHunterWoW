@@ -16,6 +16,8 @@ A.OpenCatalogQuest = function(id) opened = id return true end
 A.toggleQuestBrowser()
 local f = A.questsFrame
 assert(f and f:IsShown(), 'the catalog must open')
+assert(f.tab == 'my' and f.resultCount == 0, 'the first view must contain only current and completed quests')
+f.libraryTabs.all:GetScript('OnClick')(f.libraryTabs.all)
 local row = f.rows[1]
 assert(row and row:IsShown() and row.item.id == 61, 'database row is missing')
 row:GetScript('OnClick')(row)

@@ -156,6 +156,7 @@ local GET = {
   textScale = Addon.GetTextScale, enPanelTextScale = Addon.GetEnPanelTextScale,
   editorScale = Addon.GetEditorScale, listScale = Addon.GetListScale, statsScale = Addon.GetStatsScale,
   integratedLayout = Addon.GetIntegratedLayout, questLogAutoOpen = Addon.GetQuestLogAutoOpen,
+  questVoiceAutoPlay = Addon.GetQuestVoiceAutoPlay, npcReaderAutoOpen = Addon.GetNpcReaderAutoOpen,
   readingMode = Addon.GetReadingMode, targetLocale = Addon.GetTargetLocale,
   recallCheck = Addon.GetRecallCheck, readyAfter = Addon.GetReadyAfter,
   difficultMinRatings = Addon.GetDifficultMinRatings, harvestCorpus = Addon.GetHarvestEnabled,
@@ -200,7 +201,7 @@ for _, row in ipairs(window.rows) do
     driven = driven + 1
   end
 end
-assert(driven == 17, "drove " .. driven .. " controls, expected 17")
+assert(driven == 19, "drove " .. driven .. " controls, expected 19")
 print("  every control writes its setting and redraws the preview")
 
 -- ---------------------------------------------------------------------------

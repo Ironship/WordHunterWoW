@@ -69,6 +69,9 @@ de.locale = 'deDE'
 WordHunterWoWDB.questTexts = nil
 de.description, de.objectives = '', ''
 q = assert(A.ResolveCatalogQuest(901, 'deDE'))
+assert(q.catalogPhase == 'title' and q.text == de.title and not q.readOnly and q.voiceUnavailable,
+  'a known German title remains learnable when German dialogue is absent')
+q = assert(A.ResolveCatalogQuest(901, 'deDE', 'offer'))
 assert(q.readOnly and q.sourceLocale == 'enUS' and not q.wordLocale and q.voiceUnavailable, 'English-only fallback keeps the read-only and voice guards')
 assert(WordHunterWoWCorpus == nil and not WordHunterWoWDB.questTexts)
 print('quest-record-completion: DE/EN missing fields, actual reader/editor, native priority, compatibility and no archive/database mutation: ok')

@@ -27,6 +27,7 @@ local Addon = WordHunterWoW_Addon
 WordHunterWoW_QuestEN = {}
 WordHunterWoWDB = { settings = { targetLocale = "deDE", frames = {} }, words = {}, wordsByLocale = {} }
 Addon.initializeDatabase()
+Addon.SetNpcReaderAutoOpen(true)
 Addon.createPanel()
 local panel = Addon.panel
 

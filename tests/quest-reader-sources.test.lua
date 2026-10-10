@@ -25,7 +25,10 @@ WordHunterWoWCorpus = { byLocale = { deDE = {
 q = A.ResolveCatalogQuest(61)
 assert(q and q.text == 'Retail-Text' and q.title == 'Gespeicherter Titel', 'corpus must not mix clients sharing the same quest ID')
 WordHunterWoW_QuestEN = { [62] = { title = 'Title only' }, [63] = { title = 'An objective', objectives = 'Find the dog.' } }
-assert(A.ResolveCatalogQuest(62) == nil, 'a bare title must not impersonate quest text')
+q = assert(A.ResolveCatalogQuest(62))
+assert(q.catalogPhase == 'title' and q.text == 'Title only' and q.readOnly and q.voiceUnavailable
+  and q.referenceNote:find('Title-only', 1, true), 'a title-only record must open with an explicit absence of dialogue')
+assert(not A.ResolveCatalogQuest(62, 'deDE', 'offer'), 'a bare title must not impersonate quest dialogue')
 q = A.ResolveCatalogQuest(63)
 assert(q and q.readOnly and q.text == 'Find the dog.', 'objective-only English records are still readable')
 for _, invalid in ipairs({ 0, -1, 1.5, math.huge, 'bad', {} }) do assert(A.ResolveCatalogQuest(invalid) == nil, 'invalid quest IDs must be rejected') end

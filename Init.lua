@@ -75,7 +75,8 @@ events:SetScript("OnEvent", function(_, event, a1, a2)
         print(string.format("|cff66ccffWordHunterWoW:|r " .. LABELS.german, name, name))
       end
     elseif loadedAddon == "Blizzard_UIPanels_Game" or loadedAddon == "Blizzard_WorldMap"
-        or loadedAddon == "Blizzard_QuestLog" then
+        or loadedAddon == "Blizzard_QuestLog" or loadedAddon == "Blizzard_GossipUI"
+        or loadedAddon == "Blizzard_QuestUI" then
       -- Classic's quest log is a load-on-demand addon of its own, so the names
       -- worth hooking may not exist until the player first opens it.
       Addon.hookQuestUi()
@@ -97,6 +98,7 @@ events:SetScript("OnEvent", function(_, event, a1, a2)
     if Addon.PlayerName then Addon.PlayerName() end
     if Addon.SyncCharacterQuestHistory then Addon.SyncCharacterQuestHistory() end
   elseif event == "GOSSIP_SHOW" then
+    Addon.AttachNpcReaderButton()
     Addon.lastPassage = "gossip"
     if Addon.HarvestGossip then Addon.HarvestGossip() end
     if Addon.readGossip then Addon.readGossip() end
@@ -133,6 +135,7 @@ events:SetScript("OnEvent", function(_, event, a1, a2)
     if Addon.SyncCharacterQuestHistory then Addon.SyncCharacterQuestHistory() end
     refreshCatalogSoon()
   else
+    Addon.AttachNpcReaderButton()
     if event == "QUEST_DETAIL" and Addon.CaptureNativeQuestOffer then Addon.CaptureNativeQuestOffer() end
     if event == "QUEST_PROGRESS" then
       Addon.lastPassage = "progress"

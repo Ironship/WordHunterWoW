@@ -32,6 +32,9 @@ local function node()
   function t:SetScript(name, fn) self.scripts[name] = fn end
   function t:HookScript(name, fn) self.scripts[name] = fn end
   function t:GetScript(name) return self.scripts[name] end
+  function t:SetSize(w, h) self.width, self.height = w, h end
+  function t:SetWidth(w) self.width = w end
+  function t:GetWidth() return rawget(self, "width") or 420 end
   return setmetatable(t, {
     __index = function(self, key)
       local made = node()

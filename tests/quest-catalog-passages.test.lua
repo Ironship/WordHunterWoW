@@ -46,11 +46,11 @@ phaseButton:GetScript('OnClick')(phaseButton)
 assert(A.lastQuest.catalogPhase == 'completion' and A.lastQuest.passage == 'reward' and A.lastQuest.text == de.completion)
 assert(A.panel.enPlain == en.completion and not A.editor:IsShown() and A.selected == nil,
   'phase switching must clear the old word context and match the English completion')
-local languageButton = A.panel.catalogLanguageButton
-languageButton:GetScript('OnClick')(languageButton)
+assert(rawget(A.panel, 'catalogLanguageButton') == nil)
+assert(A.SetCatalogLocale('enUS'))
 assert(A.lastQuest.catalogPhase == 'completion' and A.lastQuest.wordLocale == 'enUS' and A.lastQuest.text == en.completion)
 assert(A.GetTargetLocale() == 'deDE' and A.lastQuest.voiceUnavailable, 'English study must not change the German learning profile or play German audio')
-languageButton:GetScript('OnClick')(languageButton)
+assert(A.SetCatalogLocale('deDE'))
 assert(A.lastQuest.catalogPhase == 'completion' and A.lastQuest.wordLocale == 'deDE' and A.lastQuest.text == de.completion)
 assert(A.GetWordsTable('deDE').hund.status == 'known' and A.GetCharacterQuestHistory()[900].completed,
   'switching languages/phases must preserve vocabulary and actual completion history')

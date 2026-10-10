@@ -1,4 +1,4 @@
--- Run from the addon root:  lua tests/quest-log-button.test.lua
+-- Run from the addon root: lua tests/quest-log-button.test.lua [forever]
 --
 -- The panel opened itself whenever the player looked at a quest. At a quest
 -- giver that is the point; from the quest log it was the fault. On a live realm
@@ -12,6 +12,12 @@
 -- break: it is what the addon is mostly used for.
 
 local node = dofile("tests/wowstub.lua")
+UIParent = node()
+local forever = arg and arg[1] == "forever"
+if forever then
+  GetBuildInfo = function() return "1.60.1", "70235", "", 16001 end
+end
+local mapBuildInfo = GetBuildInfo
 
 dofile("Core.lua")
 dofile("Compat.lua")
@@ -29,6 +35,8 @@ QuestMapFrame_GetDetailQuestID = function() return 184 end
 
 WordHunterWoWDB = { settings = { targetLocale = "deDE", frames = {} }, words = {}, wordsByLocale = {} }
 Addon.initializeDatabase()
+assert(Addon.Compat.GameFlavor() == (forever and "forever" or "retail"),
+  "shared map UI must preserve the game's separate corpus flavor")
 Addon.createPanel()
 local panel = Addon.panel
 
@@ -41,11 +49,22 @@ assert(Addon.GetQuestLogAutoOpen() == false,
 -- map's quest log in Blizzard_WorldMap and Classic keeps its own in
 -- Blizzard_QuestLog, both load-on-demand. Nothing to hang the button on is a
 -- reason to come back later, not an error and not a button hung on nothing.
+QuestMapFrame.DetailsFrame = node()
+QuestMapFrame.QuestsFrame = node()
 local mapFrame = QuestMapFrame
+if forever then QuestLogFrame = node() end -- An unrelated legacy global must not capture the button.
 QuestMapFrame = nil
 assert(Addon.QuestLogButtonHost() == nil, "no quest log yet means no host")
 assert(Addon.AttachQuestLogButton() == nil, "and no button until there is one")
+QuestMapFrame = {} -- No fabricated DetailsFrame while the map loads in stages.
+assert(Addon.QuestLogButtonHost() == nil and Addon.AttachQuestLogButton() == nil,
+  "a map without its details pane must wait, even if a legacy log global exists")
 QuestMapFrame = mapFrame
+local detailsFrame = QuestMapFrame.DetailsFrame
+QuestMapFrame.DetailsFrame = nil
+assert(Addon.QuestLogButtonHost() == QuestMapFrame.QuestsFrame,
+  "the quest list must host Reader before the details pane loads")
+QuestMapFrame.DetailsFrame = detailsFrame
 
 -- Retail hangs the button on the map's quest details pane, which is on screen
 -- exactly while a quest is being read there.
@@ -57,7 +76,9 @@ assert(Addon.QuestLogButtonHost() == QuestMapFrame.DetailsFrame,
 Addon.hookQuestUi()
 local button = Addon.questLogButton
 assert(button, "hookQuestUi should have put the button on the quest log")
-assert(button:GetText() == Addon.LABELS.questLogButton, "the button should be labelled")
+assert(button:GetParent() == UIParent, "reader side-tab must escape quest-log clipping")
+assert(button:GetObjectType() == "CheckButton", "missing native template uses a side-tab fallback")
+assert(Addon.LABELS.questLogButton == "WordHunterWoW - Reader", "reader tooltip must identify its purpose")
 assert(Addon.AttachQuestLogButton() == button, "attaching again must not build a second button")
 
 -- Reading a quest in the log. -------------------------------------------------
@@ -89,7 +110,14 @@ QuestMapFrame:Hide()
 QuestFrame:Show()
 panel:Hide()
 Addon.readCurrentQuest()
-assert(panel:IsShown(), "a quest giver's window must still open the panel by itself")
+assert(not panel:IsShown(), "NPC Reader defaults to manual opening")
+Addon.ToggleReaderFromNpc()
+assert(panel:IsShown(), "the NPC tab opens Reader even with a stale selected log quest")
+Addon.ToggleReaderFromNpc()
+Addon.SetNpcReaderAutoOpen(true)
+Addon.readCurrentQuest()
+assert(panel:IsShown(), "NPC auto-open remains available as an option")
+Addon.SetNpcReaderAutoOpen(false)
 assert(Addon.lastQuest.text:find("Wolfsfleisch", 1, true),
   "and on the NPC's text, not the log's: " .. tostring(Addon.lastQuest.text))
 
@@ -130,6 +158,7 @@ Addon.lastPassage = nil
 -- picking by whichever global happens to be lying about would strand it on a
 -- window that never opens.
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 2, 1
+GetBuildInfo = function() return "1.15.9", "62222", "", 11509 end
 Addon.Compat.Refresh()
 QuestLogFrame = node()
 assert(Addon.QuestLogButtonHost() == QuestLogFrame,
@@ -148,8 +177,9 @@ assert(Addon.QuestLogButtonHost() == nil, "no quest log yet means no host")
 -- absence means an older game, not an unknown one. Compat answers Classic for
 -- that now, and a test that leant on the old answer was pinning the bug.
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
+GetBuildInfo = mapBuildInfo
 Addon.Compat.Refresh()
-assert(Addon.QuestLogButtonHost() == QuestMapFrame.DetailsFrame, "back on Retail")
+assert(Addon.QuestLogButtonHost() == QuestMapFrame.DetailsFrame, "back on the shared map UI")
 
 -- And it is drawn above the panel it opens.
 --
@@ -166,4 +196,4 @@ assert(button:GetFrameLevel() > Addon.panel:GetFrameLevel(),
   "the button draws at level " .. button:GetFrameLevel()
   .. ", under the panel at " .. Addon.panel:GetFrameLevel())
 print("  and stays visible over the panel it opens")
-print("quest-log-button: ok")
+print("quest-log-button: " .. (forever and "Forever" or "Retail") .. ": ok")
