@@ -228,7 +228,7 @@ local function fillMissing(record, fallback, source)
   return result
 end
 
-function Addon.GetEnglishQuestRecord(value)
+local function englishRecord(value)
   if type(value) == "string" and value:find("^reference:") then
     return Addon.GetReferenceEnglishRecord and Addon.GetReferenceEnglishRecord(value)
   end
@@ -256,6 +256,43 @@ function Addon.GetEnglishQuestRecord(value)
     if hasText(native) then return fillMissing(native, record, "database"), currentFlavor, nativeLocale, "collected text" end
   end
   return record, record and (record.sourceFlavor or record.flavor) or flavor, locale, "database"
+end
+
+-- The English column, with the client's own substitutions applied.
+--
+-- The German column gets its text from the game, which has already made them:
+-- "$C!" arrives as "Krieger!". This one comes out of the stored corpus, where
+-- the macro is kept exactly as Blizzard wrote it and nothing had resolved it,
+-- so the same quest read "Ihr habt bewiesen, dass Ihr als Krieger..." on the
+-- right and "$C! I thought I would die out here with none to know of it." on
+-- the left. Every field the reader can put on screen goes through the same
+-- substitution the catalog's own records do.
+--
+-- The record itself is returned untouched when it carries no macro, which is
+-- almost always: this runs on every render, and a copy of the quest database's
+-- own table per render is a cost nobody asked for. Copied when something did
+-- change, because that table is read again for the next quest.
+local ENGLISH_TEXT_FIELDS = { "title", "description", "objectives", "progress",
+  "completion", "sourceObjective" }
+
+function Addon.GetEnglishQuestRecord(value)
+  local record, flavor, locale, source = englishRecord(value)
+  if type(record) ~= "table" then return record, flavor, locale, source end
+  local personalized
+  for _, field in ipairs(ENGLISH_TEXT_FIELDS) do
+    local text = record[field]
+    if type(text) == "string" then
+      local resolved = personalize(text, locale or "enUS")
+      if resolved ~= text then
+        if not personalized then
+          personalized = {}
+          for name, entry in pairs(record) do personalized[name] = entry end
+        end
+        personalized[field] = resolved
+      end
+    end
+  end
+  return personalized or record, flavor, locale, source
 end
 
 function Addon.ResolveCatalogQuest(value, locale, phase)
