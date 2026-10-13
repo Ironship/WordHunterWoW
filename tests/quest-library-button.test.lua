@@ -139,20 +139,23 @@ click(book)
 assert(not Addon.questsFrame:IsShown(), "a second press closes it again, like /whw quests")
 assert(not Addon.panel:IsShown(), "the book opens the library, never the reader panel")
 
--- And it stays clickable above this addon's own windows: the panel opens
--- right beside the log and the browser is a window of its own, and the one
--- control whose job is to toggle the browser has to stay reachable while
--- either is up. The reading dimmer is FULLSCREEN, below FULLSCREEN_DIALOG.
+-- The library tab shares its outer window's layer rather than floating over all windows.
+Addon.panel:Hide()
+if Addon.questsFrame then Addon.questsFrame:Hide() end
+local owner = rawget(book, "wordHunterLayerHost")
+assert(owner, "library must follow its outer window")
+owner:SetFrameStrata("HIGH")
+owner:SetFrameLevel(10)
+book:GetScript("OnUpdate")(book)
+assert(book:GetFrameStrata() == "HIGH" and book:GetFrameLevel() == 11)
+owner:SetFrameStrata("MEDIUM")
+owner:SetFrameLevel(25)
+book:GetScript("OnUpdate")(book)
+assert(book:GetFrameStrata() == "MEDIUM" and book:GetFrameLevel() == 26,
+  "tab must follow later strata and level changes")
 Addon.panel:Show()
 Addon.toggleQuestBrowser()
-assert(Addon.questsFrame:IsShown(), "the browser is up for the draw-order check")
-assert(book:GetFrameStrata() == "FULLSCREEN_DIALOG", "the book lives in FULLSCREEN_DIALOG, above the dimmer")
-assert(book:GetFrameLevel() > Addon.panel:GetFrameLevel(),
-  "the book draws at level " .. book:GetFrameLevel()
-  .. ", under the panel at " .. Addon.panel:GetFrameLevel())
-assert(book:GetFrameLevel() > Addon.questsFrame:GetFrameLevel(),
-  "the book draws at level " .. book:GetFrameLevel()
-  .. ", under the browser at " .. Addon.questsFrame:GetFrameLevel())
+assert(Addon.questsFrame:IsShown())
 click(book)
 assert(not Addon.questsFrame:IsShown(), "the book still toggles with the panel and browser up")
 Addon.panel:Hide()
