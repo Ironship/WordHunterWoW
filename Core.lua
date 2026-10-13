@@ -1064,6 +1064,53 @@ local function stripMark(value, mark)
   return value
 end
 
+-- U+2026, the single-character ellipsis, by its three bytes: Lua patterns are
+-- byte-oriented and this cannot be written as a character class safely -- a
+-- class holding it would exclude any other character sharing its first byte,
+-- which is every dash and both curly quotes.
+local ELLIPSIS = "\226\128\166"
+
+-- One run of non-space characters, split where an ellipsis joins two words.
+--
+-- "befinden...es" is two words with a pause between them, and the walk handed it
+-- on as one: the reader marked it as a single word, the editor opened on it, and
+-- no dictionary can have an entry for it. An ellipsis is never part of a word,
+-- in German or in English, and it is written both as a single character and as
+-- three dots.
+--
+-- Only an ellipsis *between* two words splits. One at the end of a word --
+-- "Wartet..." -- is punctuation that word already wears, and the layout keeps
+-- it as one button: punctuation inside a token must not shift the index of
+-- every button after it, which is what english-sentence.test.lua holds. One at
+-- the start is the same case mirrored.
+--
+-- A single dot is deliberately left alone. It is the thousands separator
+-- ("10.000") and the inside of an abbreviation ("z.B.", "R.C.V.K"), and
+-- splitting on it would turn those into pieces of nothing. Two or more dots is
+-- only ever an ellipsis.
+local function splitWords(chunk, tokens)
+  local at = 1
+  while at <= #chunk do
+    local charStart, charEnd = chunk:find(ELLIPSIS, at, true)
+    local dotsStart, dotsEnd = chunk:find("%.%.+", at)
+    local start, stop
+    if charStart and (not dotsStart or charStart <= dotsStart) then
+      start, stop = charStart, charEnd
+    elseif dotsStart then
+      start, stop = dotsStart, dotsEnd
+    else
+      break
+    end
+    if not (start > 1 and stop < #chunk) then break end
+    -- The ellipsis is kept as it was written: text that uses the character goes
+    -- on showing the character, not three dots.
+    if start > at then tokens[#tokens + 1] = chunk:sub(at, start - 1) end
+    tokens[#tokens + 1] = chunk:sub(start, stop)
+    at = stop + 1
+  end
+  if at <= #chunk then tokens[#tokens + 1] = chunk:sub(at) end
+end
+
 -- Quest text arrives with its paragraphs in it. Both columns of the panel have
 -- to walk it the same way -- line by line, then word by word -- or the German
 -- and the English stop lining up with each other, which is the whole point of
@@ -1077,7 +1124,7 @@ function Addon.TextLines(text)
   local lines = {}
   for line in body:gmatch("([^\n]*)\n") do
     local tokens = {}
-    for token in line:gmatch("%S+") do tokens[#tokens + 1] = token end
+    for chunk in line:gmatch("%S+") do splitWords(chunk, tokens) end
     lines[#lines + 1] = tokens
   end
   return lines

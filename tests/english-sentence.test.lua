@@ -119,6 +119,36 @@ local tricky = 'Wartet... "Ja!" 3.5 Gold.\n\nZur Zuflucht.'
 local tokenIndexes = Addon.TokenSentenceIndexes(tricky)
 assert(#tokenIndexes == #Addon.FlattenTokens(tricky), "punctuation shifted layout token indexes")
 assert(tokenIndexes[#tokenIndexes] == #Addon.SplitSentences(tricky), "last token lost its sentence")
+
+-- And an ellipsis *between* two words does split. It is a pause, not part of
+-- either word, and the walk used to hand "befinden...es" on as one: the reader
+-- marked it as a single word, the editor opened on it, and no dictionary can
+-- have an entry for it. An ellipsis is written both ways, and both split.
+local function wordsOf(text)
+  local lines = Addon.TextLines(text)
+  assert(#lines == 1, "one line expected")
+  return lines[1]
+end
+local zwischen = wordsOf('zu befinden...es ist')
+assert(#zwischen == 5 and zwischen[2] == 'befinden' and zwischen[3] == '...'
+  and zwischen[4] == 'es',
+  "an ellipsis between two words must split them, got " .. table.concat(zwischen, "|"))
+-- The single-character spelling, and kept as it was written: a text that uses
+-- the character goes on showing the character, not three dots.
+local zeichen = wordsOf("zu befinden\226\128\166es ist")
+assert(#zeichen == 5 and zeichen[2] == 'befinden'
+  and zeichen[3] == "\226\128\166" and zeichen[4] == 'es',
+  "the character ellipsis must split the same way and survive, got " .. table.concat(zeichen, "|"))
+-- The three that must not split, which is what the contract above is for: a
+-- trailing ellipsis the word already wears, a word in quotes, and a decimal.
+local bleibt = wordsOf('Wartet... "Ja!" 3.5 Gold.')
+assert(#bleibt == 4 and bleibt[1] == 'Wartet...' and bleibt[3] == '3.5',
+  "a trailing ellipsis and a decimal must each stay one token, got " .. table.concat(bleibt, "|"))
+-- And the words either side of a split are still the words they were.
+assert(Addon.cleanWord(zwischen[2]) == 'befinden' and Addon.wordKey(zwischen[2]) == 'befinden',
+  "the word before the ellipsis must survive the split")
+assert(Addon.cleanWord(zwischen[3]) == '', "the ellipsis itself is not a word")
+print("  an ellipsis between two words splits; a trailing one does not")
 local sentences, spans = Addon.SplitSentences('Go!\n\nGo!')
 assert(spans and spans[2].start == 6 and spans[2].finish == 8, "repeated sentences need distinct byte spans")
 assert(#Addon.SplitSentences('Dr. Jones has 3.5 gold. Go!') == 2, "abbreviation or decimal split a sentence")
