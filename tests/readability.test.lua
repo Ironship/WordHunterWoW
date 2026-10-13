@@ -95,6 +95,82 @@ for _, client in ipairs({'retail', 'classic', 'sod'}) do
   end
   assert(window.textures == 1, 'theme changes leak textures')
 end
+
+-- The parchment palette, and the surface it is drawn on.
+--
+-- This is the section the progress line needed. The loop above measures
+-- Addon.COLORS against the reading surface, and for the Native (Blizzard)
+-- theme that surface is a fallback triple, not what the client draws: a native
+-- reader window is painted with Blizzard's QuestDetailsBackgrounds atlas, and
+-- the loop could not see it. So the light palette measured fine on paper while
+-- "6% known 21% learning 94% new" measured 1.06:1 on the actual parchment and
+-- was invisible there.
+--
+-- The atlas cannot be sampled outside the client, so the surface is written
+-- here from a screenshot of the Reader at 100% taken 2026-10-13: #ca9761 in
+-- the shadowed part of the texture, #e8b976 across the middle of it, #f7c986
+-- where it is brightest. The darkest of the three is the bar -- and it is
+-- where the English sentence's own wash sits, which is the tightest surface in
+-- the whole addon.
+local PARCHMENT = {
+  shadow = { 0.792, 0.592, 0.380 },
+  mid = { 0.910, 0.725, 0.463 },
+  bright = { 0.969, 0.788, 0.525 },
+}
+local washOver = over(Addon.COLORS_ON_LIGHT.enHighlightBackground, PARCHMENT.shadow)
+local parchmentMinimum = 100
+for key, color in pairs(Addon.COLORS_ON_LIGHT) do
+  if key ~= 'enHighlightBackground' then
+    -- Only the English two are drawn over the sentence wash. Everything else
+    -- -- the four statuses, and the ink the body is set in -- sits on the
+    -- bare parchment, and is held there rather than on the easier surface.
+    local surface = key:find('^en') and washOver or PARCHMENT.shadow
+    local ratio = contrast(color, surface)
+    parchmentMinimum = math.min(parchmentMinimum, ratio)
+    assert(ratio >= 4.5, 'parchment/' .. key .. ' at ' .. string.format('%.2f', ratio) .. ':1')
+  end
+end
+-- And the status four must clear it on the bright parchment too, where they
+-- are drawn as the legend swatches beside their labels.
+for _, key in ipairs({'new', 'learning', 'known', 'ignored'}) do
+  assert(contrast(Addon.COLORS_ON_LIGHT[key], PARCHMENT.bright) >= 4.5,
+    'parchment/' .. key .. ' on the bright part of the atlas')
+end
+
+-- Which palette a call answers with is decided by the surface, not by the
+-- caller's mood. Pinned as hex rather than as a triple, because a triple that
+-- is passed but never turned into a colour escape is the other way this goes
+-- wrong: the figure would be right and still drawn in the frame's default
+-- colour.
+local function hexOf(c)
+  return string.format('|cff%02x%02x%02x',
+    math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5))
+end
+assert(Addon.ColorHex('known', true) == hexOf(Addon.COLORS_ON_LIGHT.known),
+  'ColorHex on the parchment must draw from COLORS_ON_LIGHT')
+assert(Addon.ColorHex('known') == hexOf(Addon.COLORS.known),
+  'ColorHex with no surface must stay on the dark palette')
+assert(Addon.ColorHex('known', true) ~= Addon.ColorHex('known', false),
+  'the two palettes must not be the same colour')
+assert(Addon.FormatProgress({known = 1, learning = 1, new = 1}, true):find(
+  hexOf(Addon.COLORS_ON_LIGHT.known), 1, true), 'FormatProgress must pass the surface through')
+assert(not Addon.FormatProgress({known = 1, learning = 1, new = 1}):find(
+  hexOf(Addon.COLORS_ON_LIGHT.known), 1, true), 'FormatProgress with no surface must stay dark')
+-- ReaderInk is the body ink and it is the palette's own text colour, not a
+-- second copy of the same triple: the one calibration this surface has that
+-- is not invented is "the status figures are drawn at the same level as the
+-- sentence above them", and two tables saying what that level is will drift.
+Addon.SetBackgroundStyle('native')
+local nativeInk = Addon.ReaderInk({whwNativeStyle = 'reader'})
+assert(nativeInk[1] == Addon.COLORS_ON_LIGHT.text[1]
+  and nativeInk[2] == Addon.COLORS_ON_LIGHT.text[2]
+  and nativeInk[3] == Addon.COLORS_ON_LIGHT.text[3],
+  'ReaderInk must be the parchment palette\'s text colour, not a second copy of it')
+-- The body ink has to clear the floor as well, or the sentence the whole
+-- panel exists to show is the thing that is unreadable.
+assert(contrast(nativeInk, PARCHMENT.shadow) >= 4.5, 'body ink on the parchment')
+Addon.SetBackgroundStyle('dialog')
+
 local button = frame()
 button.label = { SetTextColor = function(self, ...) self.color = {...} end }
 local function styled(status, active)
@@ -147,4 +223,6 @@ for _, locale in ipairs({'deDE', 'frFR', 'esES', 'itIT', 'ptBR'}) do
   assert(Addon.GetEffectiveWord('test').translation == 'my meaning', 'theme overwrote user entry')
   assert(words.test.translation == 'meaning' and words.test.status == 'known', 'theme changed dictionary')
 end
-print(string.format('readability: 4 themes x 3 clients; panel at 100%%, dialogs at 3 opacity levels; minimum text contrast %.2f:1', minimum))
+print(string.format(
+  'readability: 4 themes x 3 clients; panel at 100%%, dialogs at 3 opacity levels; minimum text contrast %.2f:1; parchment palette %.2f:1 on the shadowed atlas',
+  minimum, parchmentMinimum))

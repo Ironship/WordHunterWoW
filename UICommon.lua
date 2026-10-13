@@ -2,6 +2,204 @@ local Addon = WordHunterWoW_Addon
 local LABELS = Addon.LABELS
 local unpack = unpack or table.unpack
 
+-- Shared native chrome; clients without these atlases keep the existing skin.
+local function hasAtlas(name)
+  return C_Texture and type(C_Texture.GetAtlasInfo) == "function"
+    and C_Texture.GetAtlasInfo(name) ~= nil
+end
+Addon.HasUIAtlas = hasAtlas
+
+function Addon.CreateNativeWindow(name, kind, title, parent)
+  parent = parent or UIParent
+  local atlas = kind == "reader" and "QuestDetailsBackgrounds" or "collections-background-tile"
+  if hasAtlas(atlas) then
+    -- ButtonFrameTemplate for both kinds, the reader included. It is the one
+    -- template on this client that brings a close button and draws it: the word
+    -- editor is built from it, asks for no close button at all, and its cross is
+    -- the only one in this addon that has ever shown. The flat reader template
+    -- the reader used to wear brings none, and every attempt to supply one
+    -- instead came out clickable and invisible. `kind` still decides how the
+    -- window is painted, below and everywhere else.
+    local template = "ButtonFrameTemplate"
+    local ok, frame = pcall(CreateFrame, "Frame", name, parent, template .. ",BackdropTemplate")
+    if ok and frame and type(frame.SetTitle) == "function" then
+      frame.whwNativeStyle = kind
+      if type(ButtonFrameTemplate_HidePortrait) == "function" then
+        ButtonFrameTemplate_HidePortrait(frame)
+      end
+      local inset = rawget(frame, "Inset")
+      if inset then inset:Hide() end
+      frame:SetTitle(title)
+      return frame
+    end
+    -- A partially supported template must not leave an orphaned visible window.
+    if ok and frame then frame:Hide() end
+  end
+  return CreateFrame("Frame", name, parent, "BackdropTemplate")
+end
+
+function Addon.PaintNativeWindow(frame, alpha)
+  if not rawget(frame, "whwNativeStyle") or Addon.GetBackgroundStyle() ~= "native" then return false end
+  local parchment = frame.whwNativeStyle == "reader" and Addon.GetBackgroundStyle() == "native"
+  local atlas = parchment and "QuestDetailsBackgrounds" or "collections-background-tile"
+  if not rawget(frame, "whwReadingBackground") then
+    frame.whwReadingBackground = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
+  end
+  local bg = frame.whwReadingBackground
+  bg:ClearAllPoints()
+  bg:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -30)
+  bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -8, 8)
+  if hasAtlas(atlas) then
+    bg:SetAtlas(atlas)
+    bg:SetHorizTile(not parchment); bg:SetVertTile(not parchment)
+    local tint = parchment and 1 or .32
+    bg:SetVertexColor(tint, tint, tint, 1)
+    bg:SetAlpha(alpha or Addon.GetOpacity())
+  else
+    local c = parchment and { .90, .77, .55 } or { .10, .08, .06 }
+    bg:SetColorTexture(c[1], c[2], c[3], alpha or Addon.GetOpacity())
+  end
+  return true
+end
+
+-- True when this frame is drawn as the game's own quest parchment: a native
+-- reader window under the Native (Blizzard) theme. That is the one surface in
+-- this addon whose text is dark on light, so every colour on it comes from
+-- Addon.COLORS_ON_LIGHT rather than from Addon.COLORS -- the two are the same
+-- meanings at opposite brightnesses, and picking the wrong one is either
+-- invisible text or a panel that looks lit from within.
+--
+-- The pair of conditions is the whole answer and is deliberately not
+-- simplified: a window is built with whwNativeStyle once, at creation, and
+-- keeps it when the player changes to one of the dark themes, where it is
+-- painted dark and must wear the dark palette. Conversely a reader window
+-- built before this addon knew about native chrome has neither.
+function Addon.UsesLightSurface(frame)
+  return frame ~= nil
+    and rawget(frame, "whwNativeStyle") == "reader"
+    and Addon.GetBackgroundStyle() == "native"
+end
+
+function Addon.ReaderInk(frame)
+  return Addon.PaletteFor(Addon.UsesLightSurface(frame)).text
+end
+
+function Addon.EnglishHighlightColors(frame)
+  local palette = Addon.PaletteFor(Addon.UsesLightSurface(frame))
+  return palette.enHighlight, palette.enWordHighlight, palette.enHighlightBackground
+end
+function Addon.NativeCloseButton(frame)
+  -- The template's own button, and nothing else. It is the only kind that has
+  -- ever drawn here: the word editor is built from ButtonFrameTemplate and never
+  -- asks for a close button at all, and its cross is the one that shows. Two
+  -- attempts at supplying one instead -- a bare UIPanelCloseButton, then one
+  -- with the Classic bitmap's texture coordinates put right -- both came out
+  -- clickable and invisible in every window that asked. At fault was the
+  -- replacing, not the button being replaced, so nothing is replaced now.
+  local close = rawget(frame, "CloseButton")
+  if close then
+    rawset(frame, "closeButton", close)
+    return close
+  end
+  -- A frame with no inherited button still has to have a way out. Sized, since
+  -- a template-less button has no size of its own.
+  close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+  close:SetSize(24, 24)
+  rawset(frame, "closeButton", close)
+  return close
+end
+
+-- A window's heading, in whichever place its chrome keeps one. A native window
+-- has a title bar of its own and the frame's own font string would sit over it
+-- twice; a plain one has nothing but the font string. The copy and confirm
+-- dialogs are pooled and rename themselves on every use, so this has to be
+-- callable after creation, not only at it.
+function Addon.SetWindowTitle(frame, title, fontString)
+  if rawget(frame, "whwNativeStyle") and type(frame.SetTitle) == "function" then
+    frame:SetTitle(title)
+    if fontString then fontString:Hide() end
+  elseif fontString then
+    fontString:SetText(title)
+    if fontString.Show then fontString:Show() end
+  end
+end
+
+function Addon.CreateSearchBox(parent)
+  if not hasAtlas("common-search-magnifyingglass") then return Addon.createEditBox(parent) end
+  local ok, box = pcall(CreateFrame, "EditBox", nil, parent, "SearchBoxTemplate")
+  if not ok then return Addon.createEditBox(parent) end
+  box.whwNativeSearch = true
+  box:SetAutoFocus(false); box:SetHeight(28)
+  Addon.ApplyFontRole(box, "body")
+  return box
+end
+
+function Addon.SetSearchChanged(box, handler)
+  if rawget(box, 'whwNativeSearch') then box:HookScript('OnTextChanged', handler)
+  else box:SetScript('OnTextChanged', handler) end
+end
+
+-- `parent` is what the inset belongs to and is hidden with, `scroll` is what it
+-- frames, and `native` is the window whose chrome decides whether there is an
+-- inset at all. Three frames rather than one because the library's word view is
+-- a plain container inside a native window: the inset has to go away with the
+-- container, and the container has no chrome of its own to ask.
+function Addon.CreateContentInset(parent, scroll, native)
+  native = native or parent
+  if not rawget(native, "whwNativeStyle") then return end
+  local ok, inset = pcall(CreateFrame, "Frame", nil, parent, "InsetFrameTemplate")
+  if not ok then return end
+  inset:SetPoint("TOPLEFT", scroll, "TOPLEFT", -6, 6)
+  -- Flush with the scroll's own bottom rather than six pixels below it.
+  -- InsetFrameTemplate's border is thick enough to draw inward from there, and
+  -- anything that sits under the scroll -- the word list's "showing 200 of
+  -- 114181" line, the library's pagination row -- had a rule drawn straight
+  -- through it. Every caller would otherwise have to leave room for an overhang
+  -- it cannot see, and two of them did not.
+  inset:SetPoint("BOTTOMRIGHT", scroll, "BOTTOMRIGHT", 14, 0)
+  -- The window's level, not the container's: this draws *behind* the scroll it
+  -- frames, and a level of the container's own would put it over the content.
+  inset:SetFrameLevel(native:GetFrameLevel())
+  inset:EnableMouse(false)
+  local bg = rawget(inset, "Bg")
+  if bg then bg:Hide() end
+  return inset
+end
+
+function Addon.CreateStyledScrollFrame(parent)
+  local scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
+  local bar = rawget(scroll, "ScrollBar")
+  if not bar or not hasAtlas("minimal-scrollbar-track-top") then return scroll end
+  bar:SetWidth(8)
+  bar:ClearAllPoints()
+  bar:SetPoint("TOPLEFT", scroll, "TOPRIGHT", 6, 0)
+  bar:SetPoint("BOTTOMLEFT", scroll, "BOTTOMRIGHT", 6, 0)
+  for _, name in ipairs({ "ScrollUpButton", "ScrollDownButton", "Top", "Bottom", "Middle" }) do
+    local region = rawget(bar, name)
+    if region then region:Hide() end
+  end
+  local function threePieces(anchor, layer, names)
+    local top = bar:CreateTexture(nil, layer)
+    local mid = bar:CreateTexture(nil, layer)
+    local bottom = bar:CreateTexture(nil, layer)
+    top:SetAtlas(names[1]); mid:SetAtlas(names[2]); bottom:SetAtlas(names[3])
+    top:SetSize(8, 8); bottom:SetSize(8, 8)
+    top:SetPoint("TOPLEFT", anchor, "TOPLEFT"); top:SetPoint("TOPRIGHT", anchor, "TOPRIGHT")
+    bottom:SetPoint("BOTTOMLEFT", anchor, "BOTTOMLEFT"); bottom:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT")
+    mid:SetPoint("TOPLEFT", top, "BOTTOMLEFT"); mid:SetPoint("BOTTOMRIGHT", bottom, "TOPRIGHT")
+    return { top, mid, bottom }
+  end
+  threePieces(bar, "BACKGROUND", { "minimal-scrollbar-track-top", "!minimal-scrollbar-track-middle", "minimal-scrollbar-track-bottom" })
+  local thumb = bar:GetThumbTexture()
+  if thumb and hasAtlas("minimal-scrollbar-small-thumb-top") then
+    thumb:SetTexture("Interface\\Buttons\\WHITE8X8")
+    thumb:SetVertexColor(1, 1, 1, 0)
+    thumb:SetSize(8, 24)
+    threePieces(thumb, "ARTWORK", { "minimal-scrollbar-small-thumb-top", "minimal-scrollbar-small-thumb-middle", "minimal-scrollbar-small-thumb-bottom" })
+  end
+  return scroll
+end
+
 function Addon.setBackdrop(frame, alpha)
   if Addon.ApplyBackground then
     Addon.ApplyBackground(frame, alpha)
@@ -134,7 +332,7 @@ end
 
 function Addon.showConfirm(title, body, actionText, onConfirm, opener)
   if not confirmDialog then
-    confirmDialog = CreateFrame("Frame", "WordHunterWoWConfirmDialog", UIParent, "BackdropTemplate")
+    confirmDialog = Addon.CreateNativeWindow("WordHunterWoWConfirmDialog", "library", "")
     Addon.confirmDialog = confirmDialog
     confirmDialog:SetSize(460, 260)
     confirmDialog:SetPoint("CENTER")
@@ -180,7 +378,7 @@ function Addon.showConfirm(title, body, actionText, onConfirm, opener)
     Addon.SetupEscapeClose(confirmDialog)
   end
 
-  confirmDialog.title:SetText(title or "")
+  Addon.SetWindowTitle(confirmDialog, title or "", confirmDialog.title)
   confirmDialog.body:SetText(body or "")
   confirmDialog.action:SetText(actionText or LABELS.confirmAction)
   confirmDialog.onConfirm = onConfirm
@@ -197,7 +395,7 @@ end
 -- harvest export does, so that one caller passes its own.
 function Addon.showCopyText(title, value, hint, opener)
   if not copyDialog then
-    copyDialog = CreateFrame("Frame", "WordHunterWoWCopyDialog", UIParent, "BackdropTemplate")
+    copyDialog = Addon.CreateNativeWindow("WordHunterWoWCopyDialog", "library", "")
     Addon.copyDialog = copyDialog
     copyDialog:SetSize(520, 330)
     copyDialog:SetPoint("CENTER")
@@ -247,7 +445,7 @@ function Addon.showCopyText(title, value, hint, opener)
       Addon.CloseAll()
     end)
 
-    local close = CreateFrame("Button", nil, copyDialog, "UIPanelCloseButton")
+    local close = Addon.NativeCloseButton(copyDialog)
     close:SetPoint("TOPRIGHT", -2, -2)
     close:SetScript("OnClick", function()
       copyDialog.text:ClearFocus()
@@ -255,7 +453,7 @@ function Addon.showCopyText(title, value, hint, opener)
     end)
   end
 
-  copyDialog.title:SetText(title)
+  Addon.SetWindowTitle(copyDialog, title, copyDialog.title)
   copyDialog.hint:SetText(hint or LABELS.copyHint)
   -- A lone "|" is a UI escape (colours, links). The harvest blob is full of
   -- them, so SetText ate the string and the box came up empty. Doubling is

@@ -19,6 +19,54 @@ Addon.COLORS = {
   enHighlightBackground = { 0.18, 0.27, 0.36, 0.55 },
 }
 
+-- The same meanings again, for the one surface here whose text is dark on
+-- light: the native reader, which is painted with the game's own quest
+-- parchment. The palette above is light on dark and measures 1.06:1 on that
+-- parchment -- the status figures in the progress line were not faint, they
+-- were invisible, and the screenshot of that is what wrote this table.
+--
+-- Where the numbers come from. The parchment is Blizzard's
+-- QuestDetailsBackgrounds atlas at tint 1, which cannot be sampled outside the
+-- client, so it was measured off a screenshot of the Reader at 100%: #ca9761
+-- in the shadowed part of the texture, #e8b976 in the middle of it, #f7c986
+-- where it is brightest. Every row below clears the 4.5:1 floor the rest of
+-- the suite uses against the darkest of those three, so it clears it
+-- everywhere the texture is lighter -- and the darkest one is where the
+-- English sentence's own wash sits, which is the tightest case in the addon.
+--
+-- The hues are the dark palette's, kept and taken darker, so "blue is New" and
+-- "green is Known" still read across the two. Darkening costs the luminance
+-- difference between the four, which is the honest trade: on a light surface
+-- the hue carries the identity. tests/readability.test.lua holds every row
+-- here at the same floor, on the same measured parchment.
+Addon.COLORS_ON_LIGHT = {
+  -- The body ink, and what every other line of reader text is drawn in. This
+  -- exact triple is ReaderInk's answer below; it is written here once so the
+  -- status colours can be held to "no lighter than the body text", which is
+  -- the one calibration this surface has that is not invented.
+  text = { 0.25, 0.16, 0.08 },
+  muted = { 0.25, 0.20, 0.14 },
+  new = { 0.10, 0.20, 0.38 },
+  learning = { 0.38, 0.12, 0.01 },
+  known = { 0.06, 0.24, 0.09 },
+  ignored = { 0.22, 0.21, 0.20 },
+  neutral = { 0.17, 0.21, 0.28 },
+  caveat = { 0.25, 0.20, 0.13 },
+  -- The English sentence is the same ink as the German body, and the word
+  -- that lights up is a deeper rust of it. These two are the only colours in
+  -- this table drawn over the sentence wash rather than on the bare
+  -- parchment, so they are held to the floor there and not here.
+  enHighlight = { 0.25, 0.16, 0.08 },
+  enWordHighlight = { 0.36, 0.08, 0.02 },
+  enHighlightBackground = { 0.55, 0.36, 0.10, 0.16 },
+}
+
+-- Which palette a surface draws with. `light` is what Addon.UsesLightSurface
+-- answers; anything else is the dark themes.
+function Addon.PaletteFor(light)
+  return light and Addon.COLORS_ON_LIGHT or Addon.COLORS
+end
+
 Addon.STATUS_LABELS = {
   new = "New",
   learning = "Learning",
@@ -174,6 +222,14 @@ Addon.LABELS = {
 }
 
 Addon.BACKGROUNDS = {
+  native = {
+    name = "Native (Blizzard)",
+    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+    edgeSize = 32, tile = true, tileSize = 32,
+    insets = { left = 11, right = 12, top = 12, bottom = 11 },
+    bgColor = { 1, 1, 1, 1 }, readingColor = { .10, .08, .06 },
+  },
   tooltip = {
     name = "Tooltip (Classic Dark)",
     bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
@@ -218,7 +274,7 @@ Addon.BACKGROUNDS = {
   },
 }
 
-Addon.BACKGROUND_ORDER = { "tooltip", "dialog", "solid", "midnight" }
+Addon.BACKGROUND_ORDER = { "native", "tooltip", "dialog", "solid", "midnight" }
 
 -- What the panel wears before the player has chosen anything: the parchment the
 -- game's own quest dialog is drawn on.
@@ -727,27 +783,56 @@ function Addon.GetDictionaryEntry(key, locale)
   end
 end
 
+-- What the player owns in a word entry whoever wrote the wording.
+--
+-- An entry carrying only these fields is what the editor leaves behind when a
+-- word is saved unchanged: the meaning and the status came from the pack, so an
+-- overlay holding them would freeze that wording against later pack updates --
+-- but the record of having met the word is the player's own, and there is
+-- nothing about it to unfreeze. Both walkers below put the pack's wording back
+-- for such an entry and lay these fields on top of it.
+Addon.ENCOUNTER_FIELDS = { "encounterCount", "encounteredQuests",
+  "firstSeenAt", "lastSeenAt", "statusChangedAt" }
+
+local function carriesEncounters(entry)
+  return type(entry) == "table" and entry.encounterOnly or nil
+end
+
 function Addon.GetEffectiveWord(key, locale)
   local user = Addon.GetWordsTable(locale)[key]
-  if user then return user, false end
+  if user and not carriesEncounters(user) then return user, false end
   local dict, providerId = Addon.GetDictionaryEntry(key, locale)
-  if not dict then return nil, false end
-  return {
+  -- Nothing knows this word but the player's own record of having met it.
+  if not dict then return user, false end
+  local entry = {
     word = dict.word or key,
     status = (dict.status == "ignored" or dict.status == "known" or dict.status == "learning" or dict.status == "new") and dict.status or "new",
     translation = dict.translation or "",
     note = dict.note or "",
     dictionaryProvider = providerId,
     builtInDictionary = true,
-  }, true
+  }
+  if user then
+    for _, field in ipairs(Addon.ENCOUNTER_FIELDS) do
+      if user[field] ~= nil then entry[field] = user[field] end
+    end
+  end
+  return entry, true
 end
 
 local VALID_STATUS = { new = true, learning = true, known = true, ignored = true }
 
 -- Colour escape for a status, taken from the same table the word buttons use so
 -- the figure in the progress line always matches the words it counts.
-function Addon.ColorHex(status)
-  local c = Addon.COLORS[status] or Addon.COLORS.neutral
+--
+-- `light` is the surface: true for the parchment reader, anything else for the
+-- dark themes. It is optional and defaults to the dark palette, which is what
+-- every caller that has no surface to ask used to get. A status colour is a
+-- different triple on the two -- see Addon.COLORS_ON_LIGHT for why -- so a
+-- caller that knows it is drawing on the parchment and does not pass this is
+-- the bug the table above was written to end.
+function Addon.ColorHex(status, light)
+  local c = Addon.PaletteFor(light)[status] or Addon.COLORS.neutral
   -- %x needs whole numbers, and the colour table holds fractions.
   return string.format("|cff%02x%02x%02x",
     math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5))
@@ -804,12 +889,12 @@ function Addon.ProgressShares(counts)
   return out
 end
 
-function Addon.FormatProgress(counts)
+function Addon.FormatProgress(counts, light)
   local shares = Addon.ProgressShares(counts)
   local L = Addon.LABELS
   if not shares then return L.progressNothing end
   local function tint(status, label, value)
-    return Addon.ColorHex(status) .. string.format(label, value) .. "|r"
+    return Addon.ColorHex(status, light) .. string.format(label, value) .. "|r"
   end
   return table.concat({
     string.format(L.progressWords, shares.total),
@@ -841,13 +926,34 @@ function Addon.ForEachEffectiveWord(fn, locale)
   for index = #order, 1, -1 do
     local providerId = order[index]
     for key, entry in pairs(providers[providerId] or {}) do
-      if user[key] == nil and (emitted == nil or emitted[key] == nil) then
+      local own = user[key]
+      if (own == nil or carriesEncounters(own)) and (emitted == nil or emitted[key] == nil) then
         if emitted then emitted[key] = true end
-        fn(key, entry, true, providerId)
+        if own then
+          -- The player's encounter record laid over the pack's wording. Copied
+          -- only for an entry that carries one -- what the editor leaves behind
+          -- for a word saved unchanged -- and the walk's whole point is to
+          -- allocate nothing for the tens of thousands that do not.
+          local merged = {}
+          for field, value in pairs(entry) do merged[field] = value end
+          for _, field in ipairs(Addon.ENCOUNTER_FIELDS) do
+            if own[field] ~= nil then merged[field] = own[field] end
+          end
+          fn(key, merged, true, providerId)
+        else
+          fn(key, entry, true, providerId)
+        end
       end
     end
   end
-  for key, entry in pairs(user) do fn(key, entry, false) end
+  for key, entry in pairs(user) do
+    if not carriesEncounters(entry) then
+      fn(key, entry, false)
+    elseif Addon.GetDictionaryEntry(key, locale) == nil then
+      -- No pack has it either: this record of meeting the word is all there is.
+      fn(key, entry, false)
+    end
+  end
 end
 
 function Addon.GetEffectiveWords()
@@ -880,6 +986,7 @@ function Addon.ApplyBackground(frame, alphaOverride)
   else
     alphaOverride = frame.whwOpaque
   end
+  if Addon.PaintNativeWindow and Addon.PaintNativeWindow(frame, alphaOverride or Addon.GetOpacity()) then return end
   local style = Addon.BACKGROUNDS[Addon.GetBackgroundStyle()] or Addon.BACKGROUNDS.midnight
   frame:SetBackdrop({
     bgFile = style.bgFile,
@@ -910,6 +1017,8 @@ function Addon.ApplyBackground(frame, alphaOverride)
     frame.whwReadingBackground = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
   end
   local surface = frame.whwReadingBackground
+  if type(surface.SetAlpha) == 'function' then surface:SetAlpha(1) end
+  if type(surface.SetVertexColor) == 'function' then surface:SetVertexColor(1,1,1,1) end
   local inset = style.insets or {}
   surface:ClearAllPoints()
   surface:SetPoint("TOPLEFT", frame, "TOPLEFT", inset.left or 0, -(inset.top or 0))
@@ -932,7 +1041,7 @@ function Addon.RefreshAllBackdrops()
   -- pairs, not ipairs: most of these are created the first time they are opened,
   -- so the list has holes. ipairs stops at the first one, and the English panel
   -- sits behind three lazily-created windows -- it never got its backdrop.
-  for _, f in pairs({ Addon.panel, Addon.editor, Addon.listFrame, Addon.statsFrame, Addon.copyDialog, Addon.confirmDialog, Addon.enPanel, Addon.settingsPanel, Addon.settingsPanel and Addon.settingsPanel.preview }) do
+  for _, f in pairs({ Addon.panel, Addon.editor, Addon.listFrame, Addon.statsFrame, Addon.copyDialog, Addon.confirmDialog, Addon.enPanel, Addon.questsFrame, Addon.settingsPanel, Addon.settingsPanel and Addon.settingsPanel.preview }) do
     if f and f.SetBackdrop then
       -- Editor, copy dialog, and confirm dialog are work windows that should stay
       -- opaque regardless of the opacity slider. Pass alphaOverride=1 to keep them at 100%.
@@ -1424,7 +1533,13 @@ function Addon.initializeDatabase()
       local target = WordHunterWoWDB.settings.targetLocale
       if not WordHunterWoWDB.wordsByLocale[target] then WordHunterWoWDB.wordsByLocale[target] = {} end
       for k, v in pairs(legacyWords) do
-        if type(v) == "table" and v.word then
+        if type(v) == "table" then
+          -- Copied by key rather than only when a .word field is present. The
+          -- word is the key for every entry this addon writes, so requiring the
+          -- field dropped hand-edited rows for no reason -- and then deleted
+          -- the source anyway. The entry is moved as it stands so its encounter
+          -- record travels with it; only the one missing field is filled in.
+          if v.word == nil then v.word = k end
           WordHunterWoWDB.wordsByLocale[target][k] = v
         end
       end
@@ -1440,7 +1555,26 @@ function Addon.initializeDatabase()
       end
       for _, migration in ipairs(migrations) do
         local oldKey, newKey, entry = migration[1], migration[2], migration[3]
-        if not words[newKey] then words[newKey] = entry end
+        local existing = words[newKey]
+        -- Merged rather than dropped. Two keys can fold together -- "HUND" and
+        -- "hund" -- and this used to keep whichever landed first and throw the
+        -- other away with its status, its note and its translation, which is
+        -- the player's own work. The version 10 block just below already merges
+        -- the same collision, so this one was destroying the data before the
+        -- merge that would have saved it ever ran.
+        if not existing then
+          words[newKey] = entry
+        elseif type(existing) == "table" and type(entry) == "table" then
+          if (existing.status == nil or existing.status == "new") and entry.status then
+            existing.status = entry.status
+          end
+          if (existing.note == nil or existing.note == "") and entry.note then
+            existing.note = entry.note
+          end
+          if (existing.translation == nil or existing.translation == "") and entry.translation then
+            existing.translation = entry.translation
+          end
+        end
         words[oldKey] = nil
       end
     end
@@ -1483,9 +1617,22 @@ function Addon.initializeDatabase()
   if (WordHunterWoWDB.version or 0) < 11 and Addon.Compat and Addon.Compat.IsClassic() then
     -- Earlier builds stamped "midnight" into the settings the first time they
     -- ran, before this addon had a Classic default at all. On a Classic client
-    -- that value can only be that stamp and never a choice -- the addon has
-    -- never been released for Classic -- so clearing it is safe, and it lets
-    -- the Classic default actually reach the player it was written for.
+    -- that value is the stamp far more often than it is a choice, so clearing
+    -- it once lets the Classic default reach the player it was written for --
+    -- at the cost of also clearing a midnight somebody on Classic picked on
+    -- purpose before 1.20. That trade is accepted and pinned in
+    -- tests/background-default.test.lua, which also pins the two things that
+    -- make it safe: it happens only below version 11, so a choice made after
+    -- the update is never touched again, and it does not run on Retail, where
+    -- midnight was both the stamp and a style worth choosing.
+    --
+    -- (An earlier comment here said the addon had never been released for
+    -- Classic, which is not true of this release -- it ships
+    -- WordHunterWoW_Vanilla.toc and WordHunterWoW_Camelot.toc -- and
+    -- Compat.IsClassic() covers Season of Discovery and Forever as well as
+    -- Era. The migration is one-shot and has already run for every profile
+    -- still on version 11 or older, so what it says matters less than what it
+    -- does.)
     if WordHunterWoWDB.settings.background == "midnight" then
       WordHunterWoWDB.settings.background = Addon.DefaultBackgroundStyle()
     end
@@ -1498,8 +1645,13 @@ function Addon.initializeDatabase()
   end
   Addon.GetWordsTable()
   WordHunterWoWDB.version = 12
-  -- The legacy copy has served its purpose; carrying it costs a second full
-  -- write of every word at every logout.
+  -- The legacy `words` key was an alias of the active locale's table: one table
+  -- in memory, but the saved-variables writer does not preserve identity, so
+  -- every word and its whole encounter set was written out twice. Cleared
+  -- whether or not the migration above ran, which is the point -- when it did
+  -- not run it is because the alias is already carried by wordsByLocale, and
+  -- keeping it would put every word back on disk twice. Nothing has read it
+  -- since that migration.
   WordHunterWoWDB.words = nil
   Addon.rebuildExport()
 end
@@ -1627,7 +1779,11 @@ local READING_DIM = 0.55
 -- FULLSCREEN dimmer covers it too and the reader sits darkened under its own
 -- close button. A name from the global table is all the base needs to lift it;
 -- with no voice addon installed the name answers nil and nothing happens.
-local DIM_LIFT_FRAMES = { "QuestFrame", "GossipFrame", "QuestLogFrame", "WorldMapFrame", "WordHunterWoWVoiceTalker", "WordHunterWoWQuests" }
+-- The readable-item and book frames go on the list for the same reason the
+-- quest and gossip windows do: the player in reading mode is reading *that*
+-- window, and dimming the very page the words came from defeats the setting.
+local DIM_LIFT_FRAMES = { "QuestFrame", "GossipFrame", "QuestLogFrame", "WorldMapFrame",
+  "ItemTextFrame", "BookFrame", "WordHunterWoWVoiceTalker", "WordHunterWoWQuests" }
 local DIM_LIFT_STRATA, DIM_LIFT_LEVEL = "FULLSCREEN_DIALOG", 10
 local liftedDimFrames = {}
 

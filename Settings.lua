@@ -33,6 +33,7 @@
 local Addon = WordHunterWoW_Addon
 local LABELS = Addon.LABELS
 local addonName = (...) or "WordHunterWoW"
+local unpack = unpack or table.unpack
 
 -- The window's own strings. English only, like every other label here: the
 -- quest text is in the language being learned, the buttons are not.
@@ -78,10 +79,17 @@ local PREVIEW_W = 300
 local MARGIN = 10
 local SCROLLBAR = 28
 -- The width a tab's rows are laid out in: the window less the preview, the
--- margins and the scroll bar. A constant because the window is not resizable
--- and no size setting may widen it -- the letters grow downwards, not across.
-local CONTENT_W = WINDOW_W - PREVIEW_W - 3 * MARGIN - SCROLLBAR - 6
-local ROW_W = CONTENT_W - 16
+-- margins and the scroll bar. Not a constant: the preview is only worth its
+-- slice of the window on the tabs that change what it draws, and on the rest
+-- the rows get that slice back. `layout` recomputes both before it lays a tab
+-- out, so the row builders below read whichever width is current.
+local CONTENT_W, ROW_W
+local function setLayoutWidths(showPreview)
+  local left = showPreview and (PREVIEW_W + 2 * MARGIN) or MARGIN
+  CONTENT_W = WINDOW_W - left - MARGIN - SCROLLBAR - 6
+  ROW_W = CONTENT_W - 16
+end
+setLayoutWidths(true)
 -- Measures at 100%, multiplied by the text size wherever they are used.
 local ROW_GAP = 10
 local CHECK = 24
@@ -197,6 +205,20 @@ local TABS = {
 }
 Addon.SETTINGS_TABS = TABS
 
+-- Which tabs show the live preview. It is a miniature of the quest panel, so it
+-- belongs to the tabs whose settings it actually draws: the theme, opacity and
+-- marking on Appearance, the letter sizes on Sizes, the integrated layout and
+-- the reading dimmer on Quest panel, the language, the recall cue and the
+-- ready-after line on Learning. Collecting, Controller and About change
+-- nothing in it, so those three give the width back to their rows instead of
+-- carrying a mock that cannot respond to anything on them.
+Addon.PREVIEW_TABS = {
+  appearance = true,
+  sizes = true,
+  panel = true,
+  learning = true,
+}
+
 local function tabResets(id)
   for _, spec in ipairs(Addon.SETTINGS) do
     if spec.tab == id and spec.reset then return true end
@@ -296,16 +318,19 @@ end
 -- The English line, with the sentence and the word a hover would light up in
 -- the panel's own two colours. The sample is one sentence, so the sentence is
 -- the whole line.
-local function englishLine(lit)
+local function englishLine(lit, frame)
+  local sentence, word = Addon.EnglishHighlightColors(frame)
+  local function hex(c) return string.format('|cff%02x%02x%02x', math.floor(c[1]*255+.5), math.floor(c[2]*255+.5), math.floor(c[3]*255+.5)) end
+  local sentenceHex, wordHex = hex(sentence), hex(word)
   local parts = {}
   for index, word in ipairs(ENGLISH.words) do
     if index == lit then
-      parts[#parts + 1] = Addon.ColorHex("enWordHighlight") .. word .. Addon.ColorHex("enHighlight")
+      parts[#parts + 1] = wordHex .. word .. sentenceHex
     else
       parts[#parts + 1] = word
     end
   end
-  return Addon.ColorHex("enHighlight") .. table.concat(parts, " ") .. "|r"
+  return sentenceHex .. table.concat(parts, " ") .. "|r"
 end
 
 -- ---------------------------------------------------------------------------
@@ -426,7 +451,7 @@ end
 function Addon.CreateSettingsPanel()
   if Addon.settingsPanel then return Addon.settingsPanel end
 
-  local window = CreateFrame("Frame", "WordHunterWoWSettingsWindow", UIParent, "BackdropTemplate")
+  local window = Addon.CreateNativeWindow("WordHunterWoWSettingsWindow", "library", "WordHunterWoW Settings")
   Addon.settingsPanel = window
   window:Hide()
   window:SetSize(WINDOW_W, WINDOW_H)
@@ -471,10 +496,11 @@ function Addon.CreateSettingsPanel()
 
   local title = window:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   title:SetText(LABELS.settingsTitle)
+  if rawget(window, 'whwNativeStyle') then title:Hide() end
   window.title = title
   chrome[#chrome + 1] = { fs = title, role = "heading" }
 
-  local close = CreateFrame("Button", nil, window, "UIPanelCloseButton")
+  local close = Addon.NativeCloseButton(window)
   close:SetPoint("TOPRIGHT", window, "TOPRIGHT", -6, -6)
   close:SetScript("OnClick", function() window:Hide() end)
   window.closeButton = close
@@ -983,8 +1009,10 @@ function Addon.CreateSettingsPanel()
   setColor(wash, 0, 0, 0, READING_DIM)
   window.previewWash = wash
 
-  local preview = CreateFrame("Frame", "WordHunterWoWSettingsPreview", pane, "BackdropTemplate")
+  local preview = Addon.CreateNativeWindow("WordHunterWoWSettingsPreview", "reader", "WordHunterWoW", pane)
   window.preview = preview
+  local previewClose = rawget(preview, 'CloseButton')
+  if previewClose then previewClose:Hide() end
   -- 200% text is cut off at the pane's edge rather than spilling over the tabs.
   if preview.SetClipsChildren then preview:SetClipsChildren(true) end
   Addon.ApplyBackground(preview)
@@ -1027,7 +1055,7 @@ function Addon.CreateSettingsPanel()
     word:SetScript("OnEnter", function(self)
       if self.en and window.previewEnglish then
         lit = self.en
-        window.previewEnglish:SetText(englishLine(lit))
+        window.previewEnglish:SetText(englishLine(lit, preview))
       end
     end)
     word:SetScript("OnLeave", function()
@@ -1068,25 +1096,38 @@ function Addon.CreateSettingsPanel()
     local marking = Addon.GetWordMarking and Addon.GetWordMarking() or "both"
     local sample = previewSample()
     local inner = MOCK_W - 2 * PREVIEW_PAD
+    local nativeTop = rawget(preview, 'whwNativeStyle') and 28 or 0
+    -- Which palette the mock draws with. The preview is a picture of the
+    -- reader, so it has to wear the reader's colours -- including on the
+    -- progress line, which is the thing the dark palette made invisible on
+    -- the parchment.
+    local light = Addon.UsesLightSurface(preview)
 
     Addon.ApplyBackground(preview)
     if Addon.GetReadingMode and Addon.GetReadingMode() then wash:Show() else wash:Hide() end
 
+    if rawget(preview, 'whwNativeStyle') then previewTitle:SetFontObject('QuestTitleFont') end
     Addon.ApplyFontRole(previewTitle, "heading", scale)
     previewTitle:SetText(sample.title)
+    if rawget(preview, 'whwNativeStyle') then
+      local ink = Addon.ReaderInk(preview)
+      for _, fs in ipairs({ previewTitle, badge, progress, ready, enHeader, enText, enOff }) do
+        fs:SetTextColor(unpack(ink)); fs:SetShadowColor(0, 0, 0, 0)
+      end
+    end
     previewTitle:ClearAllPoints()
-    previewTitle:SetPoint("TOPLEFT", preview, "TOPLEFT", PREVIEW_PAD, -PREVIEW_PAD)
+    previewTitle:SetPoint("TOPLEFT", preview, "TOPLEFT", PREVIEW_PAD, -PREVIEW_PAD - nativeTop)
     previewTitle:SetWidth(inner)
 
     local rowH = 18 * scale
-    local x, y = 0, -PREVIEW_PAD - lineHeight("heading", scale) - 6 * scale
+    local x, y = 0, -PREVIEW_PAD - nativeTop - lineHeight("heading", scale) - 6 * scale
     local counts = { known = 0, learning = 0, new = 0 }
     local learningWord
     local thickness = Addon.UnderlineThickness and Addon.UnderlineThickness(scale) or 2
     for index, word in ipairs(words) do
       local entry = sample.words[index]
       if entry then
-        if Addon.TokenFont then Addon.TokenFont(word.text, scale) end
+        if Addon.TokenFont then Addon.TokenFont(word.text, scale, preview) end
         word.text:SetText(entry[1])
         local width = math.min(inner, math.ceil(word.text:GetStringWidth()) + 6)
         if x > 0 and x + width > inner then
@@ -1098,7 +1139,8 @@ function Addon.CreateSettingsPanel()
         word:SetSize(width, rowH)
         x = x + width + 2
         word.status, word.en = entry[2], entry[3]
-        Addon.StyleWordButton(word, entry[2], marking, thickness)
+        Addon.StyleWordButton(word, entry[2], marking, thickness,
+          rawget(preview, 'whwNativeStyle') and Addon.ReaderInk(preview) or nil)
         local status = entry[2] or "new"
         if counts[status] then counts[status] = counts[status] + 1 end
         if entry[2] == "learning" then learningWord = word end
@@ -1117,7 +1159,7 @@ function Addon.CreateSettingsPanel()
     Addon.ApplyFontRole(badge, "meta", scale)
     badge:ClearAllPoints()
     if learningWord and Addon.GetRecallCheck and Addon.GetRecallCheck() then
-      badge:SetText(Addon.ColorHex("learning") .. string.format(LABELS.recallBadge,
+      badge:SetText(Addon.ColorHex("learning", light) .. string.format(LABELS.recallBadge,
         tostring(learningWord.text:GetText() or "")) .. "|r")
       badge:SetPoint("TOPLEFT", preview, "TOPLEFT", PREVIEW_PAD, y)
       badge:SetWidth(inner)
@@ -1128,7 +1170,7 @@ function Addon.CreateSettingsPanel()
     end
 
     Addon.ApplyFontRole(progress, "meta", scale)
-    progress:SetText(Addon.FormatProgress(counts))
+    progress:SetText(Addon.FormatProgress(counts, light))
     progress:ClearAllPoints()
     progress:SetPoint("TOPLEFT", preview, "TOPLEFT", PREVIEW_PAD, y)
     progress:SetWidth(inner)
@@ -1138,7 +1180,7 @@ function Addon.CreateSettingsPanel()
     y = y - math.max(progress:GetStringHeight() or 0, lineHeight("meta", scale)) - 2 * scale
 
     Addon.ApplyFontRole(ready, "meta", scale)
-    ready:SetText(Addon.ColorHex("known") .. LABELS.readyForKnown .. "|r  " ..
+    ready:SetText(Addon.ColorHex("known", light) .. LABELS.readyForKnown .. "|r  " ..
       string.format(LABELS.readyAfterValue, Addon.GetReadyAfter and Addon.GetReadyAfter() or 5))
     ready:ClearAllPoints()
     ready:SetPoint("TOPLEFT", preview, "TOPLEFT", PREVIEW_PAD, y)
@@ -1153,7 +1195,7 @@ function Addon.CreateSettingsPanel()
       enHeader:SetPoint("TOPLEFT", preview, "TOPLEFT", PREVIEW_PAD, y)
       y = y - lineHeight("label", enScale) - 2 * enScale
       Addon.ApplyFontRole(enText, "body", enScale)
-      enText:SetText(englishLine(lit or 5))
+      enText:SetText(englishLine(lit or 5, preview))
       enText:ClearAllPoints()
       enText:SetPoint("TOPLEFT", preview, "TOPLEFT", PREVIEW_PAD, y)
       enText:SetWidth(inner)
@@ -1193,6 +1235,13 @@ function Addon.CreateSettingsPanel()
   -- --- layout, tabs and refresh --------------------------------------------------
   local function layout()
     local scale = pageScale()
+    -- Which width this pass lays out in: the preview holds its slice only on
+    -- the tabs that draw it, and the rows below read the result through the
+    -- two upvalues set here.
+    local showPreview = window.activeTab ~= nil
+      and Addon.PREVIEW_TABS[window.activeTab.id] == true
+    setLayoutWidths(showPreview)
+    if showPreview then pane:Show() else pane:Hide() end
     for _, item in ipairs(chrome) do Addon.ApplyFontRole(item.fs, item.role, scale) end
 
     local headerHeight = lineHeight("heading", scale) + 20
@@ -1223,7 +1272,10 @@ function Addon.CreateSettingsPanel()
     -- Only the width here: refreshPreview sets the height, from the content.
     preview:SetWidth(MOCK_W)
     area:ClearAllPoints()
-    area:SetPoint("TOPLEFT", window, "TOPLEFT", PREVIEW_W + 2 * MARGIN, -top)
+    -- Without the preview the rows start at the window's own margin, and get
+    -- the 300 pixels back rather than leaving a blank column where it was.
+    local areaLeft = showPreview and (PREVIEW_W + 2 * MARGIN) or MARGIN
+    area:SetPoint("TOPLEFT", window, "TOPLEFT", areaLeft, -top)
     area:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -MARGIN, MARGIN)
 
     local buttonHeight = Addon.RoleButtonHeight(scale)
@@ -1267,6 +1319,13 @@ function Addon.CreateSettingsPanel()
       if on then other.button.selectedBar:Show() else other.button.selectedBar:Hide() end
     end
     if tabResets(tab.id) then reset:Show() else reset:Hide() end
+    -- The preview holds its slice of the window only on the tabs that change
+    -- what it draws (Addon.PREVIEW_TABS), so the whole width moves with the
+    -- tab. Laid out again here rather than left to refresh: the rows are
+    -- wider on the tabs without it, and leaving them at the preview's width
+    -- would show as a third of the window empty down the side.
+    layout()
+    if window.refreshPreview then window.refreshPreview() end
   end
 
   -- The shoulder buttons' step, round the ends.

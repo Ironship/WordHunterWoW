@@ -102,7 +102,7 @@ local tooltip
 GameTooltip=CreateFrame('GameTooltip',nil,UIParent)
 GameTooltip.SetText=function(_,value) tooltip=value end
 assert(first:GetParent()==f and first._anchor[1]=='TOPLEFT' and first._anchor[2]==f and first._anchor[3]=='TOPRIGHT'
-  and first._anchor[4]==-6 and first._anchor[5]==-100, 'side tabs must overlap the frame border instead of floating beside it')
+  and first._anchor[4]==0 and first._anchor[5]==-100, 'side tabs must sit flush with the frame, not inside its border')
 assert(rawget(f,'catalogLanguageButton')==nil)
 local icons={my='INV_Misc_GroupLooking',all='INV_Misc_Book_09',words='INV_Inscription_Tradeskill01'}
 for index,key in ipairs({'my','all','words'}) do

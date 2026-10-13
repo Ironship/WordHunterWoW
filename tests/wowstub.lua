@@ -13,6 +13,12 @@
 -- optional companion addon's data, and its own private bookkeeping.
 -- tests/wowstub.test.lua holds that line.
 
+-- The client runs Lua 5.1, where these are globals. The suite may run on a
+-- newer interpreter, where they live on `table`, and every test that copies
+-- WoW's own Lua 5.1 habits -- unpacking a GetPoint() result, say -- would die
+-- on the interpreter rather than on the thing it is testing.
+unpack = unpack or table.unpack
+pack = pack or table.pack
 strlower = string.lower
 strtrim = function(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
 time = os.time
@@ -42,10 +48,32 @@ C_Timer = {
 }
 
 local function node()
-  local t = { scripts = {}, shown = false }
+  local t = { scripts = {}, hooks = {}, shown = false }
   function t:SetScript(name, fn) self.scripts[name] = fn end
-  function t:HookScript(name, fn) self.scripts[name] = fn end
-  function t:GetScript(name) return self.scripts[name] end
+  -- Appended, as the client does. This used to assign, which is what SetScript
+  -- does -- so a frame with two hooks kept only the second and the first was
+  -- never run. That is invisible until something hooks the same event twice,
+  -- which is exactly what attaching the reader to a window and following the
+  -- page of a book both do. A test that wants just the hooks walks `hooks`.
+  function t:HookScript(name, fn)
+    self.hooks[name] = self.hooks[name] or {}
+    table.insert(self.hooks[name], fn)
+  end
+  -- What runs when this event fires. The client keeps the script and its hooks
+  -- apart and GetScript answers only the first, but a test reaching for this
+  -- wants the thing that runs -- and a frame this addon has only hooked has
+  -- nothing else to hand back. Where both exist the script wins, because a test
+  -- compares GetScript's answer against a handler it stored and must still see
+  -- that same function.
+  function t:GetScript(name)
+    local script = self.scripts[name]
+    if script ~= nil then return script end
+    local hooks = self.hooks[name]
+    if not hooks or #hooks == 0 then return nil end
+    return function(frame, ...)
+      for _, fn in ipairs(hooks) do fn(frame, ...) end
+    end
+  end
   function t:Show() self.shown = true end
   function t:Hide() self.shown = false end
   function t:IsShown() return self.shown end

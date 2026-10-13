@@ -14,10 +14,17 @@ test("dictionary words default to New and user words override them", () => {
   // coming from a dictionary file falls back to New rather than being trusted.
   assert.match(source, /and dict\.status or "new"/);
   // The overlay used to be an inline loop here; pinning its exact text is what
-  // went stale when it became ForEachEffectiveWord. What the walk actually
-  // produces is checked for real in tests/effective-words.test.lua.
-  assert.match(source, /function Addon\.ForEachEffectiveWord\(fn\)/);
-  assert.match(source, /if user\[key\] == nil/);
+  // went stale when it became ForEachEffectiveWord. It went stale again when the
+  // walk grew a locale argument, so the signature is matched only as far as the
+  // callback -- the part that says "this is the overlay, called once per word".
+  // What the walk actually produces is checked for real in
+  // tests/effective-words.test.lua.
+  assert.match(source, /function Addon\.ForEachEffectiveWord\(fn/);
+  // The walk has to read an entry carrying only the player's own encounter
+  // record as "no wording of theirs", or the pack's wording stays hidden behind
+  // a record that has no meaning in it. That entry is what the editor leaves
+  // when a word is saved unchanged.
+  assert.match(source, /if \(own == nil or carriesEncounters\(own\)\)/);
 });
 
 test("editor can reset translation and note to dictionary defaults", () => {

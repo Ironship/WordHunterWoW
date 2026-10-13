@@ -13,7 +13,7 @@ test("slash command opens a filterable word list", () => {
   // went on failing for a change that was correct. Pinned to the behaviour
   // instead: typing schedules a refresh, and a new keystroke cancels the one
   // already waiting.
-  assert.match(source, /listFrame\.search:SetScript\("OnTextChanged"/);
+  assert.match(source, /Addon\.SetSearchChanged\(listFrame\.search/);
   assert.match(source, /if debounce then debounce:Cancel\(\) end/);
   assert.match(source, /debounce = C_Timer\.NewTimer\([\d.]+, function\(\)/);
   assert.match(source, /if listFrame:IsShown\(\) then refreshWordList\(\) end/);

@@ -114,6 +114,20 @@ press()
 assert(copy:IsShown() and copy.text:GetText() == (blob:gsub('|', '||')),
   'a second export must offer the same blob again rather than claim there is nothing')
 
+-- And the case the guard above does not cover: the player keeps playing and
+-- collects more before the reload that would put the blob on disk. The first
+-- export's rows exist in one place only -- the blob -- and this used to rebuild
+-- the blob from the newly collected rows alone, so the first export's passages
+-- were gone from both the blob and the emptied table. Silently and for good.
+Addon.HarvestText('objectives', 185, 'Noch eine Passage.')
+assert(Addon.HarvestCount() > 0, 'the new passage has been collected')
+press()
+local merged = WordHunterWoWCorpusExport
+assert(type(merged) == 'string' and merged:sub(1, #blob) == blob,
+  'a second export before a reload must carry the first one\'s rows along, got: ' .. tostring(merged))
+assert(merged:find('185', 1, true),
+  'and the newly collected ones with them, got: ' .. tostring(merged))
+
 -- A dialog is the size of the window it came out of.
 --
 -- This is the owner's screenshot: the editor dragged to 150%, and the

@@ -228,20 +228,22 @@ function Addon.openEditor(word, context, questId, questTitle, opts)
   if not fromPanel then Addon.lastOpened = nil end
   if Addon.RefreshWordArrows then Addon.RefreshWordArrows() end
   if gated then
-    -- Nothing of the meaning reaches a box, and no box has focus: a focused
-    -- box would take the number keys as typing.
-    editor.translation:SetText("")
-    editor.note:SetText("")
-    -- Whatever holds the keyboard, not only these two: a click on a quest
-    -- word does not take focus from the word list's search box, and a digit
-    -- typed there is a filter, not a verdict.
+    -- The meaning goes in like any other word's. It used to be held back here
+    -- and written only on reveal, because the cover in front of it could be
+    -- read through; there is nothing in front of it now. The two empty SetText
+    -- calls this once led with are gone: they ran and were overwritten four
+    -- lines later, and the comment above them said the opposite of the one
+    -- below, in the one branch of this file where what the cover does and does
+    -- not hide matters most.
+    --
+    -- No box has focus: a focused box would take the number keys as typing.
     local focus = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus()
     if focus and focus.ClearFocus then focus:ClearFocus() end
     editor.translation:ClearFocus()
     editor.note:ClearFocus()
-    -- The meaning goes in like any other word's. It used to be held back here
-    -- and written only on reveal, because the cover in front of it could be
-    -- read through; there is nothing in front of it now.
+    -- Whatever holds the keyboard, not only these two: a click on a quest
+    -- word does not take focus from the word list's search box, and a digit
+    -- typed there is a filter, not a verdict.
     editor.translation:SetText(selected.translationText or "")
     editor.note:SetText(selected.noteText or "")
     showFields(true)
@@ -295,7 +297,26 @@ local function saveSelected()
   if dict and translation == Addon.trim(dict.translation or "")
       and note == Addon.trim(dict.note or "")
       and selected.status == dictStatus then
-    Addon.GetWordsTable(selected.locale)[key] = nil
+    -- The wording is the pack's, so none of it is written down -- an overlay
+    -- holding it would freeze that wording against later pack updates. What is
+    -- the player's is the record of having met the word: how many quests it has
+    -- turned up in, and when it was first and last seen. That used to go with
+    -- the wording, so saving a word unchanged dropped it out of "Most
+    -- encountered" and put its ready-for-Known count back to zero -- for having
+    -- pressed Save without changing anything.
+    --
+    -- Kept as an entry carrying only those fields, which both walkers read as
+    -- "the pack's wording, with this player's encounters on top". A word with
+    -- no encounters yet keeps nothing, exactly as before.
+    local record = Addon.GetWordsTable(selected.locale)[key]
+    local kept
+    for _, field in ipairs(Addon.ENCOUNTER_FIELDS) do
+      if record and record[field] ~= nil then
+        kept = kept or { word = selected.word, encounterOnly = true }
+        kept[field] = record[field]
+      end
+    end
+    Addon.GetWordsTable(selected.locale)[key] = kept
     Addon.rebuildExport()
     editor:Hide()
     Addon.refreshPanel()
@@ -339,7 +360,7 @@ function Addon.createEditor()
   -- Checked against the public handle rather than the upvalue, so a test that
   -- clears Addon.editor to start over still gets a new one.
   if Addon.editor then return Addon.editor end
-  editor = CreateFrame("Frame", "WordHunterWoWEditor", UIParent, "BackdropTemplate")
+  editor = Addon.CreateNativeWindow("WordHunterWoWEditor", "library", "Word Hunter - Word")
   Addon.editor = editor
   editor:SetSize(420, 400)
   editor:SetFrameStrata("FULLSCREEN_DIALOG")

@@ -14,12 +14,19 @@ events:RegisterEvent("QUEST_ACCEPTED")
 events:RegisterEvent("QUEST_TURNED_IN")
 events:RegisterEvent("QUEST_LOG_UPDATE")
 -- Legacy query completion is optional: Forever rejects this event and an
--- unconditional registration aborts this file before /whw can initialize.
+-- unconditional registration aborts this file before /whw can initialize. The
+-- same is true of the item-text event, which is how a readable item says its
+-- page is ready to be read, and neither name is worth losing the whole slash
+-- command tree over on a client that has not heard of it.
 local eventUtils = C_EventUtils
-if type(eventUtils) ~= "table" or type(eventUtils.IsEventValid) ~= "function"
-    or eventUtils.IsEventValid("QUEST_QUERY_COMPLETE") then
-  pcall(events.RegisterEvent, events, "QUEST_QUERY_COMPLETE")
+local function registerOptional(frame, name)
+  if type(eventUtils) ~= "table" or type(eventUtils.IsEventValid) ~= "function"
+      or eventUtils.IsEventValid(name) then
+    pcall(frame.RegisterEvent, frame, name)
+  end
 end
+registerOptional(events, "QUEST_QUERY_COMPLETE")
+registerOptional(events, "ITEM_TEXT_READY")
 events:RegisterEvent("GOSSIP_SHOW")
 events:RegisterEvent("GOSSIP_CLOSED")
 
@@ -67,6 +74,7 @@ events:SetScript("OnEvent", function(_, event, a1, a2)
       Addon.createPanel()
       Addon.createEditor()
       Addon.hookQuestUi()
+      if Addon.hookBookUi then Addon.hookBookUi() end
       if Addon.CreateSettingsPanel then Addon.CreateSettingsPanel() end
       local target = Addon.GetTargetLocale()
       local client = Addon.TextLocale()
@@ -80,12 +88,14 @@ events:SetScript("OnEvent", function(_, event, a1, a2)
       -- Classic's quest log is a load-on-demand addon of its own, so the names
       -- worth hooking may not exist until the player first opens it.
       Addon.hookQuestUi()
+      if Addon.hookBookUi then Addon.hookBookUi() end
     end
   elseif event == "PLAYER_LOGIN" then
     -- The season only answers reliably once the player is in the world, and
     -- Classic's quest log may have loaded since ADDON_LOADED.
     Addon.Compat.Refresh()
     Addon.hookQuestUi()
+    if Addon.hookBookUi then Addon.hookBookUi() end
     -- Remembered now, while the client is sure to answer it, so the collector
     -- still has it at a later moment that answers nothing or a secret value.
     if Addon.PlayerName then Addon.PlayerName() end
@@ -102,6 +112,12 @@ events:SetScript("OnEvent", function(_, event, a1, a2)
     Addon.lastPassage = "gossip"
     if Addon.HarvestGossip then Addon.HarvestGossip() end
     if Addon.readGossip then Addon.readGossip() end
+  elseif event == "ITEM_TEXT_READY" then
+    -- A journal, a letter, a page in a book: the client has the page and the
+    -- panel can have the words. Hooked here as well as on the frames, because
+    -- the frame may be showing before its text is in.
+    if Addon.hookBookUi then Addon.hookBookUi() end
+    if Addon.readBook then Addon.readBook() end
   elseif event == "GOSSIP_CLOSED" then
     if Addon.lastQuest and Addon.lastQuest.passage == "gossip" then
       if Addon.panel then Addon.panel:Hide() end
@@ -197,9 +213,13 @@ function Addon.PrintDiagnostics()
   end
   print(string.format("  manifest:   reader=%s  name=%s", reader, tostring(addonName)))
   print(string.format("              Interface=%s  Title=%s", tostring(iface), tostring(title)))
-  local version, _, _, build = GetBuildInfo and GetBuildInfo()
-  print(string.format("              GetBuildInfo=%s (%s)  PROJECT_ID=%s",
-    tostring(version), tostring(build), tostring(WOW_PROJECT_ID)))
+  -- The second return is the build string and the fourth is the interface
+  -- number. This took the fourth into a variable named `build`, so the
+  -- diagnostic in the one function whose job is telling clients apart printed
+  -- the interface number labelled as the build and threw the build away.
+  local version, build, _, interface = GetBuildInfo and GetBuildInfo()
+  print(string.format("              GetBuildInfo=%s (build %s, interface %s)  PROJECT_ID=%s",
+    tostring(version), tostring(build), tostring(interface), tostring(WOW_PROJECT_ID)))
   -- What the client answers for the player's own name right now, because on
   -- the Forever client the name got past both harvest guards and nobody knows
   -- what UnitName gave them. A secret value is described, never printed or
@@ -319,13 +339,19 @@ SlashCmdList.WORDHUNTERWOW = function(message)
       print("|cff66ccffWordHunterWoW:|r /whw settings <"
         .. table.concat(Addon.SettingsTabNames and Addon.SettingsTabNames() or {}, "|") .. ">")
     end
-  elseif command:match("^bg%s+") then
-    local key = strlower(strtrim(command:match("^bg%s+(.+)$") or ""))
+  elseif command:match("^bg%s*$") or command:match("^bg%s+") then
+    local key = strlower(strtrim(command:match("^%S+%s+(.+)$") or ""))
+    -- Bare /whw bg matched only "^bg%s+", so it fell through to the toggle
+    -- chain at the bottom of this function and hid whichever window was open
+    -- instead of saying what the command wants. The usage line also named the
+    -- styles by hand and was missing Native once that landed; it is generated
+    -- from BACKGROUND_ORDER now, so the next style cannot be left out of it.
     if Addon.BACKGROUNDS[key] then
       Addon.SetBackgroundStyle(key)
       print("|cff66ccffWordHunterWoW:|r Background: " .. Addon.BACKGROUNDS[key].name)
     else
-      print("|cff66ccffWordHunterWoW:|r /whw bg <tooltip|dialog|solid|midnight>  •  /whw settings")
+      print("|cff66ccffWordHunterWoW:|r /whw bg <" .. table.concat(Addon.BACKGROUND_ORDER or {}, "|")
+        .. ">    /whw settings")
     end
   elseif command:match("^opacity%s*") or command:match("^alpha%s*") then
     local valStr = strtrim(command:match("^%S+%s*(.*)$") or "")
