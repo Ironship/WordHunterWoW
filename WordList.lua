@@ -7,6 +7,16 @@ local unpack = unpack or table.unpack
 local listFrame
 local listFilter = "all"
 
+-- The saved variables are created at ADDON_LOADED, while the slash commands
+-- that reach this file are registered as it loads. A /whw typed on the loading
+-- screen therefore arrives before there is a settings table to read -- the
+-- same fault shape issues.test.lua records as its second entry, in the one
+-- remaining place that still read the table straight through.
+local function hideIgnoredSetting()
+  return type(WordHunterWoWDB) == "table" and type(WordHunterWoWDB.settings) == "table"
+    and WordHunterWoWDB.settings.hideIgnored == true
+end
+
 local function updateListFilters(view)
   local listFrame = view or listFrame
   local listFilter = view and view.wordFilter or listFilter
@@ -32,7 +42,7 @@ local function refreshWordListView(listFrame)
   local locale = rawget(listFrame, "wordLocale") or Addon.GetTargetLocale()
   updateListFilters(listFrame)
   local query = Addon.utf8Lower(Addon.trim(listFrame.search:GetText()))
-  local hideIgnored = WordHunterWoWDB.settings.hideIgnored == true
+  local hideIgnored = hideIgnoredSetting()
   local items = {}
   -- Fold the sort key once per surviving row. Doing it inside the comparator
   -- instead runs it O(n log n) times over a dictionary of ~74k entries.
@@ -130,7 +140,7 @@ Addon.refreshWordList = refreshWordList
 
 function Addon.toggleWordList()
   if not listFrame then
-    listFrame = CreateFrame("Frame", "WordHunterWoWList", UIParent, "BackdropTemplate")
+    listFrame = Addon.CreateNativeWindow("WordHunterWoWList", "library", LABELS.wordsTitle or "Word Hunter - Words")
     Addon.listFrame = listFrame
     listFrame:SetFrameStrata("FULLSCREEN_DIALOG")
     listFrame:SetFrameLevel(22)
@@ -169,8 +179,9 @@ function Addon.toggleWordList()
     local brand = listFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     brand:SetPoint("TOPLEFT", 18, -12)
     brand:SetText(LABELS.listTitle)
+    if rawget(listFrame, 'whwNativeStyle') then brand:Hide() end
 
-    local close = CreateFrame("Button", nil, listFrame, "UIPanelCloseButton")
+    local close = Addon.NativeCloseButton(listFrame)
     close:SetPoint("TOPRIGHT", -2, -2)
     close:SetScript("OnClick", function() listFrame:Hide() end)
 
@@ -178,7 +189,7 @@ function Addon.toggleWordList()
     searchLabel:SetPoint("TOPLEFT", 18, -40)
     searchLabel:SetText(LABELS.search)
 
-    listFrame.search = Addon.createEditBox(listFrame)
+    listFrame.search = Addon.CreateSearchBox(listFrame)
     listFrame.search:SetPoint("TOPLEFT", 18, -56)
     listFrame.search:SetPoint("TOPRIGHT", -18, -56)
     -- Debounced, like the resize above it and for the same reason: a rebuild
@@ -192,7 +203,7 @@ function Addon.toggleWordList()
     -- a typist notices between keystrokes either way.
     do
       local debounce
-      listFrame.search:SetScript("OnTextChanged", function(self)
+      Addon.SetSearchChanged(listFrame.search, function(self)
         if debounce then debounce:Cancel() end
         debounce = C_Timer.NewTimer(0.15, function()
           -- The box can be gone, or the panel closed, by the time this fires.
@@ -228,13 +239,16 @@ function Addon.toggleWordList()
     listFrame.hideIgnored:SetPoint("TOPLEFT", 16, -124)
     listFrame.hideIgnored:SetHitRectInsets(0, -80, 0, 0)
     _G[listFrame.hideIgnored:GetName() .. "Text"]:SetText(LABELS.hideIgnored)
-    listFrame.hideIgnored:SetChecked(WordHunterWoWDB.settings.hideIgnored == true)
+    listFrame.hideIgnored:SetChecked(hideIgnoredSetting())
     listFrame.hideIgnored:SetScript("OnClick", function(self)
-      WordHunterWoWDB.settings.hideIgnored = self:GetChecked() and true or false
+      local on = self:GetChecked() and true or false
+      if type(WordHunterWoWDB) == "table" and type(WordHunterWoWDB.settings) == "table" then
+        WordHunterWoWDB.settings.hideIgnored = on
+      end
       refreshWordList()
     end)
 
-    listFrame.scroll = CreateFrame("ScrollFrame", nil, listFrame, "UIPanelScrollFrameTemplate")
+    listFrame.scroll = Addon.CreateStyledScrollFrame(listFrame)
     listFrame.truncated = listFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     listFrame.truncated:SetPoint("BOTTOMLEFT", 18, 8)
     listFrame.truncated:SetPoint("BOTTOMRIGHT", -34, 8)
@@ -242,7 +256,12 @@ function Addon.toggleWordList()
     listFrame.truncated:Hide()
 
     listFrame.scroll:SetPoint("TOPLEFT", 18, -158)
-    listFrame.scroll:SetPoint("BOTTOMRIGHT", -34, 22)
+    -- Raised from 22 to clear the line under the list. The inset is flush with
+    -- the scroll now, so its border draws inside this edge -- but the footer
+    -- sits at 8 to 20, and a scroll ending at 22 still brings the rule down
+    -- across it.
+    listFrame.scroll:SetPoint("BOTTOMRIGHT", -34, 36)
+    listFrame.contentInset = Addon.CreateContentInset(listFrame, listFrame.scroll)
     if listFrame.scroll.SetClipsChildren then listFrame.scroll:SetClipsChildren(true) end
     listFrame.content = CreateFrame("Frame", nil, listFrame.scroll)
     listFrame.content:SetWidth(400)
@@ -255,7 +274,7 @@ function Addon.toggleWordList()
     listFrame:Hide()
   else
     updateListFilters()
-    listFrame.hideIgnored:SetChecked(WordHunterWoWDB.settings.hideIgnored == true)
+    listFrame.hideIgnored:SetChecked(hideIgnoredSetting())
     Addon.PlaceFrame(listFrame, "list")
     -- Show first, then fill. The refresh declines to work on a hidden window --
     -- that is what stops a closed list from walking the dictionary on every

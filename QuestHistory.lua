@@ -118,7 +118,12 @@ function Addon.RecordCharacterQuest(id, state, title, titleLocale)
   end
   if type(title) == "string" and trim(title) ~= "" then
     record.title = title
-    record.titleLocale = titleLocale == Addon.TextLocale() and titleLocale or nil
+    -- Written only when it is verified, and never a previously confirmed one
+    -- back to nil. The unconditional `... or nil` this replaces meant a second
+    -- capture without a matching locale -- from a client running another
+    -- language, say -- wiped the language an earlier capture had established,
+    -- and the library then grouped the title as unlocalized.
+    if titleLocale == Addon.TextLocale() then record.titleLocale = titleLocale end
   end
   return true
 end

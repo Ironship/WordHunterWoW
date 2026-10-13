@@ -87,8 +87,18 @@ assert(A.GetRecallRow('gift', nil, 'enUS').ratingCount == 1 and A.GetRecallRow('
 A.editor.translation:SetText('present')
 A.selected.status = 'new'
 A.editor.save:GetScript('OnClick')(A.editor.save)
-assert(A.GetWordsTable('enUS').gift == nil and A.GetWordsTable('deDE').gift.translation == 'poison',
-  'resetting an overlay to its dictionary must remove only the English entry')
+-- The wording goes -- it is the pack's, and holding it would freeze it against
+-- later pack updates -- but the player's own record of the word does not. It
+-- used to, so saving a word unchanged cost its encounter history.
+local kept = A.GetWordsTable('enUS').gift
+assert(kept and kept.encounterOnly and kept.translation == nil and kept.status == nil,
+  'resetting an overlay to its dictionary must drop the wording and keep the player record')
+assert(kept.statusChangedAt, 'and the record is the part that is kept')
+local effective = A.GetEffectiveWord('gift', 'enUS')
+assert(effective and effective.statusChangedAt == kept.statusChangedAt,
+  'whatever wording is shown over it, the record is the same one')
+assert(A.GetWordsTable('deDE').gift.translation == 'poison',
+  'and only the English entry was touched')
 assert(A.SetCatalogLocale('deDE') and A.lastQuest.wordLocale == 'deDE' and A.GetTargetLocale() == 'deDE')
 wordButton('Gift'):GetScript('OnClick')(wordButton('Gift'))
 assert(A.selected.locale == 'deDE' and A.editor.translation:GetText() == 'poison')

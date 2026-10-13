@@ -16,7 +16,13 @@ local function computeStats(now)
     local status = Addon.EffectiveStatus(entry)
     byStatus[status] = (byStatus[status] or 0) + 1
     if status == "learning" then
-      local learningSince = entry.statusChangedAt or entry.firstSeenAt or now
+      -- The same chain the editor reads, and it has to stay the same one: the
+      -- editor offers Known from `statusChangedAt or updatedAt`, and this
+      -- counted from `statusChangedAt or firstSeenAt`. For an entry the build
+      -- that wrote it gave no statusChangedAt, those are two different
+      -- fourteen-day marks, and the page said "3 ready" over a list the editor
+      -- offered on eleven of them. A bug with no error attached.
+      local learningSince = entry.statusChangedAt or entry.updatedAt or entry.firstSeenAt or now
       -- The same two conditions the editor uses, and they have to stay the same
       -- two: this count is the header of a page whose rows the editor labels
       -- one at a time, so a stats page saying "3 ready" over a list where the
@@ -60,7 +66,11 @@ end
 
 function Addon.toggleStats()
   if not statsFrame then
-    statsFrame = CreateFrame("Frame", "WordHunterWoWStats", UIParent, "BackdropTemplate")
+    -- The same chrome as the word list, the editor and the library, rather
+    -- than a plain frame wearing the DialogFrame border while every other
+    -- window here wears the native skin. The theme was reaching the reader and
+    -- the library and skipping this one, which is what made it look bolted on.
+    statsFrame = Addon.CreateNativeWindow("WordHunterWoWStats", "library", LABELS.statsTitle)
     Addon.statsFrame = statsFrame
     statsFrame:SetFrameStrata("FULLSCREEN_DIALOG")
     statsFrame:SetFrameLevel(22)
@@ -83,8 +93,10 @@ function Addon.toggleStats()
     local brand = statsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     brand:SetPoint("TOPLEFT", 18, -12)
     brand:SetText(LABELS.statsTitle)
+    -- Under a native title bar the window already says its own name.
+    if rawget(statsFrame, "whwNativeStyle") then brand:Hide() end
 
-    local close = CreateFrame("Button", nil, statsFrame, "UIPanelCloseButton")
+    local close = Addon.NativeCloseButton(statsFrame)
     close:SetPoint("TOPRIGHT", -2, -2)
     close:SetScript("OnClick", function() statsFrame:Hide() end)
 

@@ -172,7 +172,10 @@ b:GetScript('OnUpdate')(b)
 assert(b:GetFrameLevel() == 36, 'tab must clear the map content and native tabs')
 A.panel:SetFrameStrata('FULLSCREEN_DIALOG'); A.panel:SetFrameLevel(40); A.panel:Show()
 b:GetScript('OnUpdate')(b)
-assert(b:GetFrameStrata() == 'FULLSCREEN_DIALOG' and b:GetFrameLevel() == 41, 'visible Reader must not cover the tab')
+assert(b:GetFrameStrata() == 'HIGH' and b:GetFrameLevel() == 36, 'Reader must cover map tabs instead of raising them')
+A.questsFrame=fixture(UIParent); A.questsFrame:SetFrameStrata('FULLSCREEN_DIALOG'); A.questsFrame:SetFrameLevel(50); A.questsFrame:Show(); b:GetScript('OnUpdate')(b)
+assert(b:GetFrameStrata() == 'HIGH' and b:GetFrameLevel() == 36, 'library must also cover map tabs')
+A.questsFrame:Hide(); A.questsFrame=nil
 A.panel:Hide(); b:GetScript('OnUpdate')(b)
 assert(b:GetFrameStrata() == 'HIGH' and b:GetFrameLevel() == 36, 'closing Reader must restore the map layer')
 local artwork = fixture(root)
@@ -286,9 +289,10 @@ for _, key in ipairs({'my','all','words'}) do
     assert(point=='TOPLEFT' and relative==previous and edge=='BOTTOMLEFT' and x==0 and y==-6)
     assert(tab:GetTop()<=previous:GetBottom()-6, 'book tabs must not overlap')
   else
-    assert(point=='TOPLEFT' and relative==browser and edge=='TOPRIGHT' and x==-6 and y==-100)
+    assert(point=='TOPLEFT' and relative==browser and edge=='TOPRIGHT' and x==0 and y==-100)
   end
-  assert(tab:GetLeft()==browser:GetRight()-6, 'tabs must overlap the frame border to remove the visible gap')
+  assert(tab:GetLeft()==browser:GetRight(),
+    'tabs must sit flush with the frame edge: not inside its border, where they read as cut off, and not beside it, where they read as floating')
   assert(math.abs(tab:GetEffectiveScale()-browser:GetEffectiveScale())<0.00001, 'parent scale must reach each side tab exactly once')
   if classic then assert(tab:GetNormalTexture().width==24 and tab:GetNormalTexture().height==24)
   else assert(tab.Icon.width==24 and tab.Icon.height==24 and tab.Icon.atlas==nil) end
@@ -300,10 +304,7 @@ assert(math.abs(browser.libraryTabs.words:GetEffectiveScale()-browser:GetEffecti
 browser:SetScale(originalScale)
 assert(spellbookCalls == 0, 'Classic inherited spellbook OnClick must be replaced')
 if not classic then assert(not b._pressed, 'native mouse-up must preserve pressed-icon cleanup') end
-local close
-for _, frame in ipairs(frames) do
-  if frame:GetParent() == browser and frame._template == 'UIPanelCloseButton' then close = frame end
-end
+local close = rawget(browser, 'closeButton')
 assert(close and type(close:GetScript('OnClick')) == 'function', 'use the actual browser close button')
 emit(close, 'OnClick', 'LeftButton')
 assert(not browser:IsShown() and not checked(), 'browser X must clear selected tab state')

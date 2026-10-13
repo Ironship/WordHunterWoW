@@ -251,6 +251,9 @@ function Compat.QuestLogText(questLogIndex)
   if not questLogIndex then return GetQuestLogQuestText() end
   if type(GetQuestLogSelection) ~= "function" then return "", "" end
   local previous = GetQuestLogSelection()
+  -- 0 is a restorable state and not a missing one: it is how the legacy log
+  -- says nothing is selected, and tests/quest-text-capabilities.test.lua's
+  -- legacy-zero case pins that a read made in that state puts it back to 0.
   local moved = previous ~= questLogIndex
   if moved and (type(SelectQuestLogEntry) ~= "function" or type(previous) ~= "number" or previous < 0) then return "", "" end
   local ok, description, objectives = pcall(function()
@@ -258,8 +261,14 @@ function Compat.QuestLogText(questLogIndex)
     return GetQuestLogQuestText()
   end)
   if moved then
-    local restored, failure = pcall(SelectQuestLogEntry, previous)
-    if ok and not restored then error(failure, 0) end
+    -- The restore is bookkeeping and the text is the payload. Putting the
+    -- selection back can itself fail -- SelectQuestLogEntry does not accept 0
+    -- on every client, and 0 is what the legacy log answers when nothing is
+    -- selected -- and this used to turn that into a hard error for the caller,
+    -- throwing away a read that had already succeeded while leaving the
+    -- selection where it was either way. The text is returned; only the
+    -- failure to put the selection back is dropped.
+    pcall(SelectQuestLogEntry, previous)
   end
   if not ok then error(description, 0) end
   return description, objectives

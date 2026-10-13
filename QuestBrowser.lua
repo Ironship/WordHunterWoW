@@ -173,7 +173,7 @@ local function paintRows()
     if not row then
       row = CreateFrame("Button", nil, f.questContent)
       row:SetHighlightTexture("Interface\\Buttons\\WHITE8X8", "BLEND")
-      row:GetHighlightTexture():SetVertexColor(0.30, 0.42, 0.55, 0.20)
+      row:GetHighlightTexture():SetVertexColor(0.45, 0.57, 0.80, 0.28)
       row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
       Addon.ApplyFontRole(row.name, "body")
       row.name:SetPoint("TOPLEFT", 8, -6)
@@ -224,6 +224,8 @@ local function paintRows()
     end
     local q = entry.item
     row.item = q
+    if not row.band then row.band = row:CreateTexture(nil, 'BACKGROUND'); row.band:SetAllPoints() end
+    row.band:SetColorTexture(1, 1, 1, poolIndex % 2 == 0 and .035 or 0)
     row.name:ClearAllPoints()
     row.name:SetPoint("TOPLEFT", entry.child and 24 or 8, -6)
     row.name:SetWidth(width - (entry.child and 182 or 166))
@@ -270,12 +272,12 @@ local function createLibraryWords(f)
   local label = view:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   label:SetPoint("TOPLEFT", 0, -7)
   label:SetText("Word / meaning")
-  view.search = Addon.createEditBox(view)
+  view.search = Addon.CreateSearchBox(view)
   view.search:SetPoint("TOPLEFT", 92, 0)
   view.search:SetPoint("TOPRIGHT", 0, 0)
   view.search:SetText("")
   local timer
-  view.search:SetScript("OnTextChanged", function()
+  Addon.SetSearchChanged(view.search, function()
     if timer then timer:Cancel() end
     timer = C_Timer.NewTimer(0.15, function()
       if f:IsShown() and f.tab == "words" then Addon.RefreshWordListView(view) end
@@ -293,9 +295,17 @@ local function createLibraryWords(f)
     end)
     view.filterButtons[mode] = button
   end
-  view.scroll = CreateFrame("ScrollFrame", nil, view, "UIPanelScrollFrameTemplate")
+  view.scroll = Addon.CreateStyledScrollFrame(view)
   view.scroll:SetPoint("TOPLEFT", 0, -79)
   view.scroll:SetPoint("BOTTOMRIGHT", -16, 24)
+  -- A child of the view, not of the frame. It used to hang off the library
+  -- frame and be shown and hidden by hand from this view's OnShow and OnHide --
+  -- and on the quests tab it was left up, drawing its bottom border straight
+  -- across the pagination row: the words view's scroll ends 52 pixels above the
+  -- frame's bottom and the page label sits at 47 to 59, so the two crossed and
+  -- the line ran through the middle of "Page 1 / 4". A child of the view goes
+  -- away when the view does, and there is nothing left to keep in step.
+  view.contentInset = Addon.CreateContentInset(view, view.scroll, f)
   if view.scroll.SetClipsChildren then view.scroll:SetClipsChildren(true) end
   view.content = CreateFrame("Frame", nil, view.scroll)
   view.content:SetSize(500, 1)
@@ -383,8 +393,18 @@ local function layout()
   for _, key in ipairs({ "my", "all", "words" }) do
     local tab = f.libraryTabs[key]
     tab:ClearAllPoints()
-    if previous then tab:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -6)
-    else tab:SetPoint("TOPLEFT", f, "TOPRIGHT", -6, -100) end
+    if previous then
+      tab:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -6)
+    else
+      -- Flush with the frame's right edge. This sat at -6 -- six pixels
+      -- *inside* -- to close a visible gap, and that gap is not there any more:
+      -- ButtonFrameTemplate draws its border as a nine-slice that reaches a few
+      -- pixels past the frame's own rectangle, so a tab anchored to the
+      -- rectangle already meets the border with no gap to close. Six pixels
+      -- further in is six pixels of the tab's inner edge under that border,
+      -- which is what made them read as cut off rather than attached.
+      tab:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, -100)
+    end
     previous = tab
   end
   if f:IsShown() then
@@ -394,7 +414,7 @@ end
 
 function Addon.toggleQuestBrowser()
   if not questsFrame then
-    local f = CreateFrame("Frame", "WordHunterWoWQuests", UIParent, "BackdropTemplate")
+    local f = Addon.CreateNativeWindow("WordHunterWoWQuests", "library", "Word Hunter Library")
     questsFrame, Addon.questsFrame = f, f
     f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:SetFrameLevel(22)
@@ -421,6 +441,7 @@ function Addon.toggleQuestBrowser()
     title:SetPoint("TOPRIGHT", -40, -14)
     title:SetText("WORD HUNTER LIBRARY")
     f.catalogTitle = title
+    if rawget(f, 'whwNativeStyle') then title:Hide() end
     local hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     hint:SetPoint("TOPLEFT", 18, -37)
     hint:SetPoint("TOPRIGHT", -20, -37)
@@ -429,7 +450,7 @@ function Addon.toggleQuestBrowser()
     f.hint = hint
     f.viewTitle = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     f.viewTitle:SetPoint("TOPLEFT", 18, -65)
-    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    local close = Addon.NativeCloseButton(f)
     close:SetPoint("TOPRIGHT", -2, -2)
     close:SetScript("OnClick", function() f:Hide() end)
     for _, info in ipairs({ { "my", "My quests", "INV_Misc_GroupLooking" },
@@ -457,19 +478,25 @@ function Addon.toggleQuestBrowser()
     label:SetPoint("TOPLEFT", 18, -98)
     label:SetText(L.search)
     f.searchLabel = label
-    f.search = Addon.createEditBox(f)
+    f.search = Addon.CreateSearchBox(f)
     f.search:SetPoint("TOPLEFT", 110, -91)
     f.search:SetPoint("TOPRIGHT", -20, -91)
     f.search:SetText("")
     local searchTimer
-    f.search:SetScript("OnTextChanged", function()
+    Addon.SetSearchChanged(f.search, function()
       if searchTimer then searchTimer:Cancel() end
       searchTimer = C_Timer.NewTimer(0.15, function() refreshView(true) end)
     end)
     f.search:SetScript("OnEscapePressed", function() f:Hide() end)
-    f.questScroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+    f.questScroll = Addon.CreateStyledScrollFrame(f)
     f.questScroll:SetPoint("TOPLEFT", 18, -123)
-    f.questScroll:SetPoint("BOTTOMRIGHT", -34, 72)
+    -- Bottom raised to clear the pagination row. The content inset hangs 6px
+    -- below this and InsetFrameTemplate's border is thick enough to draw the
+    -- rest of the way, so at 72 it ran a line straight across the Previous and
+    -- Next buttons. There is a 23px band between them now.
+    f.questScroll:SetPoint("BOTTOMRIGHT", -34, 88)
+    f.contentInset = Addon.CreateContentInset(f, f.questScroll)
+    if f.contentInset then f.questScroll:HookScript('OnShow', function() f.contentInset:Show() end); f.questScroll:HookScript('OnHide', function() f.contentInset:Hide() end) end
     if f.questScroll.SetClipsChildren then f.questScroll:SetClipsChildren(true) end
     f.questContent = CreateFrame("Frame", nil, f.questScroll)
     f.questContent:SetSize(500, 1)

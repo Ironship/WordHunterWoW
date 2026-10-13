@@ -252,3 +252,37 @@ npcAuto:SetChecked(true); npcAuto:GetScript('OnClick')(npcAuto)
 assert(Addon.GetNpcReaderAutoOpen() and WordHunterWoWDB.settings.npcReaderAutoOpen == true)
 Addon.SetNpcReaderAutoOpen(false)
 assert(not npcAuto:GetChecked(), 'NPC auto-open setting refreshes its checkbox')
+
+-- Which tabs carry the live preview. It is a miniature of the quest panel, so
+-- it belongs to the tabs whose settings it draws -- the theme, opacity and
+-- marking on Appearance, the letter sizes on Sizes, the integrated layout and
+-- the reading dimmer on Quest panel, and the language, recall cue and
+-- ready-after line on Learning. Collecting, Controller and About change
+-- nothing in it; those three give the width back to their rows instead of
+-- carrying a mock that cannot respond to anything on them.
+--
+-- The preview used to sit in the window unconditionally, which is what made it
+-- look as though it had appeared on every tab after the native skin made it
+-- more visible than it had been.
+local pane = assert(rawget(window, 'previewPane'), 'the settings window has to have a preview pane')
+local widths = {}
+for _, tab in ipairs(window.tabs) do
+  window.selectTab(tab.id)
+  local expect = Addon.PREVIEW_TABS[tab.id] == true
+  assert(pane:IsShown() == expect,
+    tab.id .. ': the preview should be ' .. (expect and 'shown' or 'hidden')
+      .. ' and is ' .. (pane:IsShown() and 'shown' or 'hidden'))
+  -- And the rows take the space back when it is not there, rather than
+  -- leaving a third of the window empty down the side.
+  local row = tab.rows and tab.rows[1] and tab.rows[1].frame
+  if row then
+    local width = row:GetWidth()
+    widths[expect and 'with' or 'without'] = widths[expect and 'with' or 'without'] or width
+  end
+end
+assert(widths.with and widths.without,
+  'the preview has to be on some tabs and off others, or this is measuring nothing')
+assert(widths.without > widths.with,
+  'the rows must be wider on the tabs without the preview: '
+  .. tostring(widths.with) .. ' against ' .. tostring(widths.without))
+print('settings-panel: the preview follows the tab and the rows take its width back: ok')

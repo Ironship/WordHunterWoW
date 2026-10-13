@@ -359,7 +359,26 @@ function Addon.rebuildHarvestExport()
   -- existed carry no flavour and are Retail by definition, since that is the
   -- only game the addon ran on.
   if #rows == 0 then return 0 end
-  WordHunterWoWCorpusExport = "WHC2|" .. locale .. "|" .. table.concat(rows, ";")
+  local prefix = "WHC2|" .. locale .. "|"
+  local fresh = table.concat(rows, ";")
+  -- The blob is a SavedVariable and reaches disk only at logout or reload. The
+  -- bucket below is emptied as soon as the rows are in the blob, so until that
+  -- reload the blob is the only copy of them anywhere. This used to rebuild it
+  -- from the bucket alone: export, keep playing, export again, and the second
+  -- export replaced the first one's passages with the few collected since --
+  -- both copies gone, silently, and the "empty export must not wipe a blob"
+  -- guard above covered neither case. Appended instead, so what has not been
+  -- written down yet travels with what is still being collected.
+  --
+  -- Only for this locale's own blob: the format names one language per blob,
+  -- so a blob from another locale is left for the player to copy rather than
+  -- being mixed into this one.
+  local existing = WordHunterWoWCorpusExport
+  if type(existing) == "string" and existing:sub(1, #prefix) == prefix then
+    local carried = existing:sub(#prefix + 1)
+    if carried ~= "" then fresh = carried .. ";" .. fresh end
+  end
+  WordHunterWoWCorpusExport = prefix .. fresh
   -- The blob is already in WordHunterWoWCorpusExport and lands on disk with the
   -- next reload. Free this locale so collection can start again, matching
   -- what the full-cap message tells the player. An empty export must not wipe

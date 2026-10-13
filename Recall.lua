@@ -274,11 +274,19 @@ end
 -- as easy.
 function Addon.RecallAverage(row)
   if type(row) ~= "table" or type(row.ratings) ~= "table" or #row.ratings == 0 then return nil, 0 end
-  local n = math.min(DIFFICULT_WINDOW, #row.ratings)
-  local sum = 0
-  for i = #row.ratings - n + 1, #row.ratings do
-    sum = sum + (tonumber(row.ratings[i].score) or 0)
+  local first = #row.ratings - math.min(DIFFICULT_WINDOW, #row.ratings) + 1
+  local sum, n = 0, 0
+  for i = first, #row.ratings do
+    -- Each element checked. GetRecallRow settles a malformed row at the row
+    -- level, but a hand-edited file can put a scalar or a hole inside the
+    -- ratings list itself, and `row.ratings[i].score` then raises out of the
+    -- difficult-words list and the editor's history line. Only the scores
+    -- actually read go into n, since that is what n reports.
+    local rating = row.ratings[i]
+    local score = type(rating) == "table" and tonumber(rating.score) or nil
+    if score then sum = sum + score; n = n + 1 end
   end
+  if n == 0 then return nil, 0 end
   return sum / n, n
 end
 

@@ -71,13 +71,26 @@ end
 -- the player's marking choice. `status` is nil for a word nothing knows, which
 -- is drawn plain. Shared with the settings window's preview, so the picture of
 -- the panel there cannot drift from the panel itself.
-function Addon.StyleWordButton(button, status, marking, underlineHeight)
-  button.text:SetTextColor(unpack(COLORS.text))
+function Addon.StyleWordButton(button, status, marking, underlineHeight, textColor)
+  button.text:SetTextColor(unpack(textColor or COLORS.text))
   if not status then
     button.underline:Hide()
     return
   end
-  local color = COLORS[status] or COLORS.new
+  -- The surface picks the palette. `textColor` arriving is the caller saying
+  -- it has already resolved the ink for this frame, so it is the right place
+  -- to ask which of the two the frame is wearing -- and the answer needs the
+  -- theme as well, because a native window keeps its chrome when the player
+  -- switches to a dark theme and must then wear the dark palette.
+  --
+  -- This used to be the right colour multiplied by 0.45, which was a guess
+  -- that worked out: the result was dark enough on the parchment but its
+  -- contrast was never measured, and the same multiplication made the status
+  -- indistinguishable from the body ink. Addon.COLORS_ON_LIGHT is the measured
+  -- answer, and tests/readability.test.lua holds it to the same floor as
+  -- everything else.
+  local palette = Addon.PaletteFor(textColor ~= nil and Addon.GetBackgroundStyle() == "native")
+  local color = palette[status] or palette.new
   if marking ~= "underline" then
     button.text:SetTextColor(color[1], color[2], color[3])
   end
@@ -93,7 +106,7 @@ function Addon.StyleWordButton(button, status, marking, underlineHeight)
   end
 end
 
-local function tokenFont(fs, scale)
+local function tokenFont(fs, scale, surface)
   -- GameFontHighlight for the family and the white; the body role for the
   -- size. They are the same number here -- body is anchored to this very
   -- object -- which is exactly why the word list's rows and the editor's boxes
@@ -102,8 +115,21 @@ local function tokenFont(fs, scale)
   scale = scale or (Addon.GetTextScale and Addon.GetTextScale() or 1)
   local size = Addon.RoleSize("body", scale)
   if path then fs:SetFont(path, size or (12 * scale), flags) end
-  fs:SetShadowColor(0, 0, 0, 0.9)
-  fs:SetShadowOffset(1, -1)
+  -- `surface` is the window the words are drawn on, because it decides the
+  -- shadow as it decides the colour. On the dark themes the letters are light
+  -- over a translucent panel with the game showing through, and the drop
+  -- shadow is what separates them from it. On the parchment the letters are
+  -- dark ink on light, and the same shadow only smears them: this used to set
+  -- the shadow off and then immediately set it back on again in the next line,
+  -- so the parchment words kept the dark themes' shadow and the intention in
+  -- the `if` never happened.
+  if surface and Addon.UsesLightSurface(surface) then
+    fs:SetShadowColor(0, 0, 0, 0)
+    fs:SetShadowOffset(0, 0)
+  else
+    fs:SetShadowColor(0, 0, 0, 0.9)
+    fs:SetShadowOffset(1, -1)
+  end
 end
 -- The settings preview draws its sample words with this too.
 Addon.TokenFont = tokenFont
@@ -148,10 +174,12 @@ local function chromeMetrics(scale)
   scale = scale or (Addon.GetTextScale and Addon.GetTextScale() or 1)
   local m = { scale = scale }
   for key, base in pairs(CHROME_BASE) do m[key] = base * scale end
+  if panel and rawget(panel, 'whwNativeStyle') then m.topPad = m.topPad + 28 end
   -- Where the heading block ends, which is where the text under it starts in
   -- the two-column layout and where the progress line goes in the one-column
   -- one.
   m.headBottom = m.topPad + m.titleH + m.titleGap
+  if panel and rawget(panel, 'whwNativeStyle') then m.headBottom = m.headBottom + 12 end
   m.metaBottom = m.headBottom + m.metaH + m.metaGap
   m.legendBottom = m.footPad + m.buttonH + m.legendGap
   return m
@@ -216,10 +244,21 @@ end
 -- so the box has to be resized along with the letters or the caption grows out
 -- of the button it is in. Wrap instead of widening a reader the player sized.
 local function layoutActions(m)
+  if Addon.RefreshQuestAudioButton then Addon.RefreshQuestAudioButton() end
   local available = math.max(1, panel:GetWidth() - 36)
   local previous, used, rows = nil, 0, 1
   local actions = Addon.lastQuest and Addon.lastQuest.catalog and panel.catalogActions or panel.actions
-  for _, action in ipairs(actions) do
+  -- The Play button joins the row only when it is up, so a player without the
+  -- Spoken addon sees the row exactly as it has always been. Laid out anyway
+  -- it left a hole the width of a button and pushed everything beside it.
+  local playBtn = panel.questAudioButton
+  local row = actions
+  if playBtn and rawget(playBtn, "whwOptional") and playBtn:IsShown() then
+    row = {}
+    for index, action in ipairs(actions) do row[index] = action end
+    row[#row + 1] = playBtn
+  end
+  for _, action in ipairs(row) do
     if action.GetFontString then
       chromeFont(action:GetFontString(), "GameFontNormal", "body", m.scale)
     end
@@ -276,7 +315,7 @@ local function layoutChrome()
     else panel.sourceNote:Hide() end
   end
 
-  chromeFont(panel.title, "GameFontNormalLarge", "heading", m.scale)
+  chromeFont(panel.title, rawget(panel, "whwNativeStyle") and "QuestTitleFont" or "GameFontNormalLarge", "heading", m.scale)
   panel.title:SetHeight(m.titleH)
   panel.title:ClearAllPoints()
   chromeFont(panel.meta, "GameFontDisableSmall", "meta", m.scale)
@@ -284,6 +323,28 @@ local function layoutChrome()
   panel.meta:ClearAllPoints()
   chromeFont(panel.enTitle, "GameFontNormalLarge", "heading", en.scale)
   panel.enTitle:SetHeight(en.titleH)
+  if rawget(panel, 'whwNativeStyle') then
+    local ink = Addon.ReaderInk(panel)
+    -- The palette the surface is wearing, which is not the palette the legend
+    -- dots were built with if the theme has changed since. Recoloured here
+    -- rather than at construction for that reason: the swatches have to follow
+    -- the theme, the same as the words above them and the figures in the
+    -- progress line.
+    local palette = Addon.PaletteFor(Addon.UsesLightSurface(panel))
+    for _, text in ipairs({ panel.title, panel.enTitle, panel.meta, panel.sourceNote }) do
+      text:SetTextColor(unpack(ink)); text:SetShadowColor(0, 0, 0, 0)
+    end
+    for _, item in ipairs(panel.legend) do
+      item.text:SetTextColor(unpack(ink))
+      local dot = palette[item.status] or palette.new
+      item.dot:SetColorTexture(dot[1], dot[2], dot[3], 1)
+    end
+    panel.divider:SetColorTexture(ink[1], ink[2], ink[3], .25)
+    panel.footerLine:SetColorTexture(ink[1], ink[2], ink[3], .25)
+    panel.headingRule:ClearAllPoints()
+    panel.headingRule:SetPoint('TOPLEFT', panel, 'TOPLEFT', 18, -(math.max(m.headBottom, en.headBottom) - 10))
+    panel.headingRule:SetPoint('TOPRIGHT', panel, 'TOPRIGHT', -24, -(math.max(m.headBottom, en.headBottom) - 10))
+  end
   panel.enTitle:ClearAllPoints()
   panel.enTitle:SetPoint("TOPLEFT", 18, -en.topPad)
   panel.enTitle:SetPoint("RIGHT", panel, "CENTER", -12, 0)
@@ -385,14 +446,12 @@ local function sentenceForWord(text, word)
 end
 
 local function paintEnglishHighlight(sentenceIndex, wordTokens)
-  local hl = COLORS.enHighlight
-  local wordHl = COLORS.enWordHighlight
-  local bg = COLORS.enHighlightBackground
+  local hl, wordHl, bg = Addon.EnglishHighlightColors(panel)
   local first
   for _, bit in ipairs(enBits) do
     if bit:IsShown() then
       if bit.caveat then
-        local color = COLORS.caveat
+        local color = rawget(panel, "whwNativeStyle") and Addon.ReaderInk(panel) or COLORS.caveat
         bit.text:SetTextColor(color[1], color[2], color[3])
         if bit.glow then bit.glow:Hide() end
       elseif sentenceIndex and bit.sentenceIndex == sentenceIndex then
@@ -407,7 +466,7 @@ local function paintEnglishHighlight(sentenceIndex, wordTokens)
         bit.glow:Show()
         if not first then first = bit end
       else
-        bit.text:SetTextColor(unpack(COLORS.text))
+        bit.text:SetTextColor(unpack(Addon.ReaderInk(panel)))
         if bit.glow then bit.glow:Hide() end
       end
     end
@@ -508,14 +567,32 @@ local function refreshPanel()
       math.max(180, (integrated and (panel:GetWidth() / 2) or panel:GetWidth()) - 48))
     panel.enContent:SetWidth(enWidth)
     local qid = lastQuest.id
-    local entry = qid and (Addon.GetEnglishQuestRecord and Addon.GetEnglishQuestRecord(qid)
-      or not Addon.GetEnglishQuestRecord and WordHunterWoW_QuestEN and WordHunterWoW_QuestEN[tonumber(qid)])
+    -- Only ever a record or nil. The `and`/`or` chain this replaces fell
+    -- through to `false` whenever the lookup existed and had nothing to
+    -- return -- which is every quest the addon has no English for, and every
+    -- gossip line, since those arrive with no id at all. `entry ~= nil` then
+    -- read "found" for all of them, so hovering a word lit the placeholder
+    -- sentence below up as though it were that word's translation.
+    local entry
+    if qid then
+      if Addon.GetEnglishQuestRecord then
+        entry = Addon.GetEnglishQuestRecord(qid)
+      elseif WordHunterWoW_QuestEN then
+        entry = WordHunterWoW_QuestEN[tonumber(qid)]
+      end
+    end
+    if type(entry) ~= "table" then entry = nil end
     local enTitle = LABELS.englishHeader
     -- Kept as separate blocks rather than one joined string. This pane places one
     -- token at a time, so a newline inside a joined string is discarded with the
     -- rest of the whitespace and the caveat runs straight into the quest text.
+    -- A caveat of its own, for the reason the other three are: it explains an
+    -- absence rather than being English, so it is drawn in the muted colour and
+    -- is kept out of enPlain, which is what a hover matches its sentences
+    -- against.
     local enBlocks = { { text = lastQuest.referenceKind and lastQuest.referenceKind ~= "quest"
-      and "English text is not available for this record." or "English text is not available for this quest." } }
+      and "English text is not available for this record." or "English text is not available for this quest.",
+      caveat = true } }
     panel.enCanHighlight = entry ~= nil
     if entry then
       enTitle = entry.title or LABELS.englishHeader
@@ -587,7 +664,7 @@ local function refreshPanel()
     local ex, ey, eused = 0, 0, 0
     local sentenceOffset = 0
     for index, block in ipairs(enBlocks) do
-      local color = block.caveat and COLORS.caveat or COLORS.text
+      local color = rawget(panel, "whwNativeStyle") and Addon.ReaderInk(panel) or (block.caveat and COLORS.caveat or COLORS.text)
       local sentenceOfToken = {}
       if not block.caveat then
         for _, si in ipairs(Addon.TokenSentenceIndexes(block.text)) do
@@ -622,7 +699,7 @@ local function refreshPanel()
           end
           -- The font too, for the same pooling reason: a bit built at one size would
           -- keep it forever while the row around it grew.
-          tokenFont(bit.text, enScale)
+          tokenFont(bit.text, enScale, panel)
           -- Set on every render: these frames are pooled, so a token the caveat
           -- turned red on an earlier quest would stay red.
           bit.text:SetTextColor(color[1], color[2], color[3])
@@ -652,7 +729,13 @@ local function refreshPanel()
         end
       end
     end
-    panel.enContent:SetHeight(math.max(28, -ey + 28))
+    -- Down past the bottom of the last row. The rows are TOKEN_H tall and
+    -- top-anchored at ey, so the scroll child has to reach that far or the
+    -- last line is cut off and cannot be scrolled to. This added a flat 28,
+    -- which at 100% is the row plus a 10px pad and at 200% is 8px short of the
+    -- row -- so the bottom of every quest was unreachable at exactly the sizes
+    -- players raise for reading.
+    panel.enContent:SetHeight(math.max(28, -ey + TOKEN_H + 10))
     panel.enScroll:UpdateScrollChildRect()
     Addon.HighlightEnglishForWord(lastHighlightWord, lastHighlightIndex, lastHighlightOccurrence, lastHighlightSentenceOnly)
   end
@@ -673,7 +756,6 @@ local function refreshPanel()
   local gutter = Addon.TextGutter and Addon.TextGutter() or 0
   if gutter > contentWidth / 4 then gutter = 0 end
   local x, y, used = gutter, 0, 0
-  local savedCount = 0
   local countedWords = {}
   -- Per-quest progress, counted once per distinct word.
   local progress = { known = 0, learning = 0, new = 0 }
@@ -710,7 +792,7 @@ local function refreshPanel()
       end
       button:SetHeight(TOKEN_H)
       -- Same reason as the English column: pooled frames need the font each time.
-      tokenFont(button.text)
+      tokenFont(button.text, nil, panel)
 
       button.text:SetText(token)
       local width = math.min(contentWidth - gutter, math.ceil(button.text:GetStringWidth()) + 6)
@@ -737,11 +819,11 @@ local function refreshPanel()
       -- does not know, so it belongs in the total rather than outside it.
       if word ~= "" and not countedWords[key] then
         countedWords[key] = true
-        if entry then savedCount = savedCount + 1 end
         local status = entry and Addon.EffectiveStatus(entry) or "new"
         if progress[status] ~= nil then progress[status] = progress[status] + 1 end
       end
-      Addon.StyleWordButton(button, entry and (entry.status or "new") or nil, marking, underlineHeight)
+      Addon.StyleWordButton(button, entry and (entry.status or "new") or nil, marking, underlineHeight,
+        rawget(panel, 'whwNativeStyle') and Addon.ReaderInk(panel) or nil)
       if not readOnly and not entry then
         -- Nothing knows this word: no dictionary entry and the player has not
         -- saved it. That is the 5% a new patch brings, and the only vocabulary
@@ -781,10 +863,13 @@ local function refreshPanel()
       button:Show()
     end
   end
-  local contentHeight = math.max(28, -y + 28)
+  -- Same as the English column above: the scroll child reaches the bottom of
+  -- the last row plus the 10px pad the flat 28 stood for at 100%, and scales
+  -- with the text instead of being cut off by it.
+  local contentHeight = math.max(28, -y + TOKEN_H + 10)
   panel.content:SetHeight(contentHeight)
   panel.scroll:UpdateScrollChildRect()
-  panel.meta:SetText(readOnly and "English database text – read only" or Addon.FormatProgress(progress))
+  panel.meta:SetText(readOnly and "English database text – read only" or Addon.FormatProgress(progress, Addon.UsesLightSurface(panel)))
   for _, item in ipairs(panel.legend) do
     if readOnly then item.dot:Hide() item.text:Hide() else item.dot:Show() item.text:Show() end
   end
@@ -947,18 +1032,24 @@ local function readCurrentQuest(questLogId, requested)
   offer = offer:gsub("\n\n\n+", "\n\n")
   local progressText = Addon.trim(normalizeQuestText(GetProgressText and GetProgressText() or ""))
   local rewardText = Addon.trim(normalizeQuestText(GetRewardText and GetRewardText() or ""))
-  -- Events set lastPassage. Tests and anything that skipped them still infer
-  -- from which Blizzard function answered, the way this used to work.
+  -- Events set lastPassage. Anything that skipped them infers from which
+  -- Blizzard function answered, the way this used to work -- and only when
+  -- there is nothing to go on, which is what "the fallback" has always meant.
   local passage = Addon.lastPassage
-  -- A quest named by log id is being read out of the log, and the log holds
-  -- nothing but the opening text -- Blizzard's progress and hand-in lines exist
-  -- only while an NPC is saying them. Without this the read inherited whichever
-  -- passage the last conversation left behind, and GOSSIP_CLOSED never clears
-  -- one: browse the log after a chat and every quest came up labelled gossip,
-  -- which raised the "no English for this part of a quest" caveat over text
-  -- that was the opening text all along, and switched highlighting off with it.
-  if questLogId and questLogId > 0 then passage = "offer" end
-  if passage ~= "progress" and passage ~= "reward" and passage ~= "gossip" then
+  -- Reading out of the log, and the log holds nothing but the opening text:
+  -- Blizzard's progress and hand-in lines exist only while an NPC is saying
+  -- them. Without this the read inherited whichever passage the last
+  -- conversation left behind, and GOSSIP_CLOSED never clears one -- browse the
+  -- log after a chat and every quest came up labelled gossip, which raised the
+  -- "no English for this part of a quest" caveat over text that was the opening
+  -- text all along, and switched highlighting off with it.
+  --
+  -- Both ways into the log, not only the one that names an id in its argument:
+  -- the other arrives through QuestInfoFrame.questLog or the Classic log window
+  -- with no id at all, and it is a read of the same log holding the same one
+  -- passage.
+  if not nativeNPC then passage = "offer" end
+  if passage == nil then
     if offer == "" and progressText ~= "" then
       passage = "progress"
     elseif offer == "" and rewardText ~= "" then
@@ -1033,6 +1124,120 @@ local function readCurrentQuest(questLogId, requested)
   refreshPanel()
 end
 Addon.readCurrentQuest = readCurrentQuest
+
+-- A readable item: a journal, a letter, a page in a book ----------------------
+--
+-- Blizzard draws these in its own frame, and this addon still does not draw
+-- into it -- the same bargain as the quest log and the gossip window. The page
+-- is read through the client's own API and the words come up in the panel,
+-- clickable exactly as the words of an NPC's conversation are. Until now a book
+-- was the one passage of the language being learned with no way in at all: the
+-- player could open Kearnen's Journal and not click a word of it, while the
+-- same sentence spoken by an NPC was word for word clickable.
+--
+-- Named rather than referenced because one frame or the other is nil depending
+-- on the client, and nothing in this file indexes a Blizzard global without
+-- asking first. ItemTextFrame is the readable-item window -- a scroll of text
+-- with page buttons, which is what a journal or a letter opens -- and BookFrame
+-- is the two-page book that keeps one page in each of two regions.
+local BOOK_WINDOWS = { "ItemTextFrame", "BookFrame" }
+
+-- The buttons that move a book along. A page turn is the only thing that
+-- changes a book's text without closing and reopening the window, so it is the
+-- one thing the panel has to follow by itself.
+local BOOK_PAGE_BUTTONS = {
+  "ItemTextPrevPageButton", "ItemTextNextPageButton",
+  "BookFramePrevPageButton", "BookFrameNextPageButton",
+}
+
+-- A Blizzard global that is a frame, or nil.
+local function bookWindow(name)
+  local frame = rawget(_G, name)
+  if type(frame) == "table" and type(frame.IsShown) == "function" then return frame end
+  return nil
+end
+
+-- A named region's text, or nil. GetText is probed rather than assumed, and
+-- "" is answered as no text rather than as an empty page: a frame the client
+-- has not filled in yet must not push a blank page into the panel over the
+-- words the player is actually looking at.
+local function bookRegionText(frame, name)
+  if not frame then return nil end
+  local region = rawget(frame, name)
+  if type(region) ~= "table" or type(region.GetText) ~= "function" then return nil end
+  local ok, text = pcall(region.GetText, region)
+  if ok and type(text) == "string" and text ~= "" then return text end
+  return nil
+end
+
+-- The page as the game has it: its text, and the title to read it under.
+--
+-- The item-text API is asked first, because it is the page the client has
+-- loaded rather than a font string's rendering of it. The regions under it are
+-- the answer for the two-page book, which has no API of its own, and the
+-- fallback for a client whose API is not there at all.
+function Addon.BookText()
+  local item, book = bookWindow("ItemTextFrame"), bookWindow("BookFrame")
+  -- Which window the text came from decides what it is called. Asked the other
+  -- way round -- the item API's name first, whatever the text -- a two-page book
+  -- came up titled after whatever readable item the player had last opened.
+  local text, source
+  if type(ItemTextGetText) == "function" then
+    local ok, value = pcall(ItemTextGetText)
+    if ok and type(value) == "string" and value ~= "" then text, source = value, "item" end
+  end
+  if not text then
+    text = bookRegionText(item, "ItemTextItemText")
+    if text then source = "item" end
+  end
+  if not text then
+    -- One page per region, joined by a blank line -- which is the paragraph
+    -- break this panel already reads, so a page turn in the middle of a
+    -- paragraph does not run the two halves together.
+    local first = bookRegionText(book, "BookPage1")
+    local second = bookRegionText(book, "BookPage2")
+    if first or second then
+      text = (first or "") .. (first and second and "\n\n" or "") .. (second or "")
+      source = "book"
+    end
+  end
+  if not text or text == "" then return nil end
+
+  -- The book's own name, which is what its title bar shows and what the player
+  -- would call it.
+  local title
+  if source == "item" then
+    if type(ItemTextGetItem) == "function" then
+      local ok, name = pcall(ItemTextGetItem)
+      if ok and type(name) == "string" and name ~= "" then title = name end
+    end
+    title = title or bookRegionText(item, "ItemTextTitleText")
+  else
+    title = bookRegionText(book, "BookTitle")
+  end
+  return text, title
+end
+
+-- What GOSSIP_SHOW does for a conversation, this does for a page: read it and
+-- put it in front of the player. A book is not an NPC and has no quest id, so
+-- there is nothing to archive and nothing to count -- the words are what the
+-- player came for, and they are the same words the panel already knows how to
+-- draw, mark and open an editor on.
+function Addon.readBook(requested)
+  local text, title = Addon.BookText()
+  text = Addon.trim(tostring(text or ""))
+  if text == "" then return end
+  Addon.lastPassage = "book"
+  Addon.lastQuest = { id = 0, title = Addon.trim(title or "Book"), text = text, passage = "book" }
+  if Addon.ApplyIntegratedLayout then Addon.ApplyIntegratedLayout() end
+  if not panel then return end
+  -- The same switch the NPC conversation uses, for the same reason: reading a
+  -- book is being spoken at, and a player who does not want the panel opening
+  -- itself while they are talked to does not want it opening itself while they
+  -- read either.
+  if requested or Addon.GetNpcReaderAutoOpen() then panel:Show() end
+  refreshPanel()
+end
 
 function Addon.readGossip(requested)
   local text = C_GossipInfo and C_GossipInfo.GetText and C_GossipInfo.GetText()
@@ -1135,9 +1340,7 @@ local function syncSideTabLayer(button, elapsed)
   end
   local content = rawget(button, "wordHunterLayerContent")
   if content then include(content) end
-  for _, frame in pairs({ Addon.panel, Addon.questsFrame }) do
-    if frame and frame:IsShown() then include(frame) end
-  end
+
   level = level + 1
   if button:GetFrameStrata() ~= strata then button:SetFrameStrata(strata) end
   if button:GetFrameLevel() ~= level then button:SetFrameLevel(level) end
@@ -1196,6 +1399,12 @@ local npcReaderHosts = {}
 local function npcReaderHost()
   if frameVisible(usableFrame(QuestFrame)) then return QuestFrame end
   if frameVisible(usableFrame(GossipFrame)) then return GossipFrame end
+  -- A book is spoken at the player in the same sense an NPC is, and gets the
+  -- same Reader tab on the window it is read in.
+  for _, name in ipairs(BOOK_WINDOWS) do
+    local frame = bookWindow(name)
+    if frame and frameVisible(frame) then return frame end
+  end
 end
 
 function Addon.ToggleReaderFromNpc()
@@ -1203,6 +1412,14 @@ function Addon.ToggleReaderFromNpc()
   if panel:IsShown() then
     panel:Hide()
     if Addon.editor then Addon.editor:Hide() end
+    return
+  end
+  -- Which window the words are in decides which reader reads them. One button
+  -- serves all of them, so it has to open the one the player is looking at --
+  -- a book read through the gossip reader would come up on the last NPC.
+  local book = bookWindow("ItemTextFrame") or bookWindow("BookFrame")
+  if book and frameVisible(book) then
+    Addon.readBook(true)
   elseif frameVisible(usableFrame(QuestFrame)) then
     readCurrentQuest(nil, true)
   else
@@ -1225,6 +1442,17 @@ end
 function Addon.AttachNpcReaderButton()
   for _, name in ipairs({ "QuestFrame", "GossipFrame" }) do
     local host = usableFrame(_G[name])
+    if host and not npcReaderHosts[host] then
+      npcReaderHosts[host] = true
+      host:HookScript("OnShow", Addon.RefreshNpcReaderButton)
+      host:HookScript("OnHide", Addon.RefreshNpcReaderButton)
+    end
+  end
+  -- The book frames too. The tab follows the window it is hung on, so it has
+  -- to be told when one of these appears or goes away just as the NPC windows
+  -- are.
+  for _, name in ipairs(BOOK_WINDOWS) do
+    local host = bookWindow(name)
     if host and not npcReaderHosts[host] then
       npcReaderHosts[host] = true
       host:HookScript("OnShow", Addon.RefreshNpcReaderButton)
@@ -1398,6 +1626,47 @@ function Addon.hookQuestUi()
   end)
 end
 
+-- The book frames and what moves them along, hooked once for the session.
+--
+-- OnShow rather than the event alone, and the event rather than OnShow alone:
+-- a book the player reopens shows its frame before the client has the page in
+-- it, and a client whose item-text event this build does not know still has a
+-- window that shows. Both, so neither is the only thing standing between the
+-- player and the words. Page buttons come last, because turning a page is the
+-- one thing that changes a book's text in place -- and the panel reading the
+-- page the player started on for the rest of the book is exactly the fault
+-- this whole section exists to avoid.
+-- One hook per frame and per button, tracked on the object rather than in a
+-- flag over the whole section: a client can build these windows after this is
+-- first called, and the next call has to reach them. Calling it again is how
+-- hookQuestUi already works.
+function Addon.hookBookUi()
+  for _, name in ipairs(BOOK_WINDOWS) do
+    local frame = bookWindow(name)
+    if frame and not rawget(frame, "whwBookHook") then
+      frame.whwBookHook = true
+      frame:HookScript("OnShow", function() Addon.readBook() end)
+      frame:HookScript("OnHide", function()
+        -- The bargain GOSSIP_CLOSED keeps: a panel showing this book goes away
+        -- with it, and one the player opened on something else is left alone.
+        if Addon.lastQuest and Addon.lastQuest.passage == "book" then
+          if panel then panel:Hide() end
+          if Addon.editor then Addon.editor:Hide() end
+        end
+      end)
+    end
+  end
+  for _, buttonName in ipairs(BOOK_PAGE_BUTTONS) do
+    local button = bookWindow(buttonName)
+    if button and not rawget(button, "whwBookHook") then
+      button.whwBookHook = true
+      button:HookScript("OnClick", function() Addon.readBook() end)
+    end
+  end
+  Addon.AttachNpcReaderButton()
+  return true
+end
+
 function Addon.createPanel()
   -- Built once. Nothing in the game calls this twice -- ADDON_LOADED fires once
   -- per addon and Init.lua's branch is guarded by the addon's own name -- but a
@@ -1409,7 +1678,7 @@ function Addon.createPanel()
   -- Checked against the public handle rather than the upvalue, so a test that
   -- clears Addon.panel to start over still gets a new one.
   if Addon.panel then return Addon.panel end
-  panel = CreateFrame("Frame", "WordHunterWoWFrame", UIParent, "BackdropTemplate")
+  panel = Addon.CreateNativeWindow("WordHunterWoWFrame", "reader", "WordHunterWoW")
   Addon.panel = panel
   panel:SetFrameStrata("FULLSCREEN_DIALOG")
   panel:SetFrameLevel(20)
@@ -1476,7 +1745,7 @@ function Addon.createPanel()
   panel.meta:SetJustifyH("LEFT")
   panel.meta:SetMaxLines(1)
 
-  local close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+  local close = Addon.NativeCloseButton(panel)
   close:SetPoint("TOPRIGHT", -2, -2)
   close:SetScript("OnClick", function()
     panel:Hide()
@@ -1488,7 +1757,7 @@ function Addon.createPanel()
   panel.enTitle:SetWordWrap(false)
   panel.enTitle:SetText(LABELS.englishHeader)
 
-  panel.enScroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
+  panel.enScroll = Addon.CreateStyledScrollFrame(panel)
   panel.enContent = CreateFrame("Frame", nil, panel.enScroll)
   panel.enContent:SetWidth(360)
   panel.enContent:SetHeight(1)
@@ -1498,7 +1767,7 @@ function Addon.createPanel()
   panel.divider:SetColorTexture(0.20, 0.30, 0.43, 0.55)
   panel.divider:SetWidth(1)
 
-  panel.scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
+  panel.scroll = Addon.CreateStyledScrollFrame(panel)
   panel.content = CreateFrame("Frame", nil, panel.scroll)
   panel.content:SetWidth(382)
   panel.content:SetHeight(1)
@@ -1507,6 +1776,14 @@ function Addon.createPanel()
   panel.footerLine = panel:CreateTexture(nil, "ARTWORK")
   panel.footerLine:SetColorTexture(0.20, 0.30, 0.43, 0.55)
   panel.footerLine:SetHeight(1)
+  if rawget(panel, 'whwNativeStyle') then
+    panel.headingRule = panel:CreateTexture(nil, 'ARTWORK')
+    if Addon.HasUIAtlas('spellbook-divider') then
+      panel.headingRule:SetAtlas('spellbook-divider'); panel.headingRule:SetHeight(11)
+    else
+      panel.headingRule:SetColorTexture(.25, .16, .08, .25); panel.headingRule:SetHeight(1)
+    end
+  end
 
   -- Kept as a list rather than four loop locals that fall out of scope: the
   -- dots and their labels have to be re-sized and re-placed every time the text
@@ -1514,13 +1791,15 @@ function Addon.createPanel()
   local statuses = { "new", "learning", "known", "ignored" }
   panel.legend = {}
   for index, status in ipairs(statuses) do
-    local color = COLORS[status]
+    -- From the surface's own palette, so the swatch in the legend is the same
+    -- colour as the words it names and as the figure in the progress line.
+    local color = Addon.PaletteFor(Addon.UsesLightSurface(panel))[status]
     local dot = panel:CreateTexture(nil, "ARTWORK")
     dot:SetColorTexture(color[1], color[2], color[3], 1)
     local legend = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     legend:SetText(Addon.STATUS_LABELS[status])
     legend:SetTextColor(0.78, 0.82, 0.88)
-    panel.legend[index] = { dot = dot, text = legend }
+    panel.legend[index] = { dot = dot, text = legend, status = status }
   end
 
   local copyQuest = Addon.createActionButton(panel, LABELS.copyQuest)
@@ -1528,6 +1807,116 @@ function Addon.createPanel()
   copyQuest:SetScript("OnClick", function()
     if Addon.lastQuest then Addon.showCopyText(LABELS.copyQuest, Addon.lastQuest.text, nil, panel) end
   end)
+
+  -- --- the Spoken addon's quest audio ---------------------------------------------
+  --
+  -- Spoken puts its own Play button on Blizzard's quest log and reads the quest
+  -- aloud. It has no public "play this quest id" call -- the button resolves the
+  -- line itself and hands a prepared clip to its player -- so this asks the two
+  -- objects that button asks and gets the same audio for the same quest. Which
+  -- is the QuestAccept line, as it is there: the opening paragraph is the one
+  -- the player is reading in this panel.
+  --
+  -- Everything is probed. A player with no Spoken, or with the Spoken player
+  -- but not the Spoken_Quests feature that resolves quest ids, gets no button
+  -- at all rather than a button that errors.
+  local function spokenQuestVoice()
+    local Spoken = rawget(_G, "Spoken")
+    local VoiceOver = rawget(_G, "VoiceOver")
+    if type(Spoken) ~= "table" or type(Spoken.IsCompatible) ~= "function" then return nil end
+    local ok, compatible = pcall(Spoken.IsCompatible, Spoken, 1)
+    if not ok or not compatible then return nil end
+    if type(VoiceOver) ~= "table" then return nil end
+    local Player = VoiceOver.Player
+    if type(Player) ~= "table" or type(Player.PlayNow) ~= "function" then return nil end
+    local Enums = VoiceOver.Enums
+    if type(Enums) ~= "table" or type(Enums.SoundEvent) ~= "table" then return nil end
+    return VoiceOver
+  end
+  Addon.SpokenQuestVoice = spokenQuestVoice
+
+  -- The clip this button started, so a second press can find it. Spoken matches
+  -- clips by identity and builds a fresh table every time, so the queue is
+  -- walked by quest id and event instead -- the same toggle its own button is.
+  local spokenClip
+
+  local function spokenPlaying(VoiceOver, quest)
+    if not (VoiceOver and quest and tonumber(quest.id) and tonumber(quest.id) > 0) then return nil end
+    local Player = VoiceOver.Player
+    local event = VoiceOver.Enums.SoundEvent.QuestAccept
+    if spokenClip and type(Player.Contains) == "function" and Player:Contains(spokenClip) then
+      return spokenClip
+    end
+    if type(Player.Queued) == "function" then
+      local ok, queue = pcall(Player.Queued, Player)
+      if ok and type(queue) == "table" then
+        for _, clip in ipairs(queue) do
+          if clip.questID == quest.id and clip.event == event then return clip end
+        end
+      end
+    end
+    return nil
+  end
+
+  function Addon.ToggleQuestAudio()
+    local VoiceOver = spokenQuestVoice()
+    local quest = Addon.lastQuest
+    local function done(playing)
+      -- The label follows the state here rather than on the next render: a
+      -- button that still says Play after you pressed it is a button that
+      -- looks like it did nothing.
+      if Addon.RefreshQuestAudioButton then Addon.RefreshQuestAudioButton() end
+      return playing
+    end
+    if not VoiceOver or not (quest and tonumber(quest.id) and tonumber(quest.id) > 0) then return done(false) end
+    local event = VoiceOver.Enums.SoundEvent.QuestAccept
+    local already = spokenPlaying(VoiceOver, quest)
+    if already then
+      pcall(VoiceOver.Player.Remove, VoiceOver.Player, already)
+      spokenClip = nil
+      return done(false)
+    end
+    spokenClip = {
+      event = event,
+      questID = quest.id,
+      title = quest.title,
+      name = quest.title,
+      origin = "WordHunterWoW",
+    }
+    local ok, played = pcall(VoiceOver.Player.PlayNow, VoiceOver.Player, spokenClip)
+    -- Falsy is how Spoken says no pack has this line. Nothing to keep, and
+    -- nothing to stop on the next press.
+    if not ok or not played then spokenClip = nil return done(false) end
+    return done(true)
+  end
+
+  local playBtn = Addon.createActionButton(panel, "Play")
+  playBtn.baseWidth = 60
+  rawset(playBtn, "whwOptional", true)
+  playBtn:SetScript("OnClick", function() Addon.ToggleQuestAudio() end)
+  playBtn:SetScript("OnEnter", function(self)
+    if not GameTooltip then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText("Play with Spoken")
+    GameTooltip:AddLine("Reads this quest aloud, the same audio as the Play button in the quest log.", 0.8, 0.82, 0.88, true)
+    GameTooltip:Show()
+  end)
+  playBtn:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+  -- Shown only where it can do something: Spoken has to be installed and the
+  -- text on screen has to be a real quest. A book, a journal page and a line
+  -- of gossip all come through this panel and none of them has audio.
+  local function refreshPlayButton()
+    local quest = Addon.lastQuest
+    local wanted = spokenQuestVoice() ~= nil
+      and quest ~= nil and tonumber(quest.id) and tonumber(quest.id) > 0
+    -- Show/Hide rather than SetShown: those are the two the stub actually
+    -- models, so a test can see the difference between a button that is up and
+    -- one that is not. SetShown on a stub frame is answered by a fabricated
+    -- method that does nothing.
+    if wanted then playBtn:Show() else playBtn:Hide() end
+    playBtn:SetText(spokenPlaying(spokenQuestVoice(), quest) and "Stop" or "Play")
+  end
+  Addon.RefreshQuestAudioButton = refreshPlayButton
 
   local wordsBtn = Addon.createActionButton(panel, LABELS.wordsButton)
   wordsBtn.baseWidth = 52
@@ -1571,8 +1960,14 @@ function Addon.createPanel()
   end)
   phase:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
   panel.catalogPhaseButton = phase
+  -- The Play button is deliberately not in either list. It is the one button
+  -- that comes and goes -- with the Spoken addon, and with whether the text on
+  -- screen is a real quest at all -- and a button in these lists is a button
+  -- that has to be laid out, sized and anchored like the rest. layoutActions
+  -- appends it to the row when it is up instead.
   panel.actions = { copyQuest, wordsBtn, statsBtn }
   panel.copyQuestButton = copyQuest
+  panel.questAudioButton = playBtn
   panel.catalogActions = { copyQuest, wordsBtn, statsBtn, phase }
 
   function Addon.ApplyIntegratedLayout()
