@@ -181,19 +181,20 @@ GetBuildInfo = mapBuildInfo
 Addon.Compat.Refresh()
 assert(Addon.QuestLogButtonHost() == QuestMapFrame.DetailsFrame, "back on the shared map UI")
 
--- And it is drawn above the panel it opens.
---
--- The panel is FULLSCREEN_DIALOG at level 20 and opens right beside the quest
--- log; the log lives in the world map, which sits lower, so the button hung off
--- the map went under the panel and showed as a red sliver two letters wide.
--- This is the one control whose job is to toggle that panel, so it is the one
--- that has to stay reachable while the panel is up.
-assert(button:GetFrameStrata() == Addon.panel:GetFrameStrata(),
-  "the button is in a different strata from the panel, so its level decides nothing"
-  .. " -- button " .. tostring(button:GetFrameStrata())
-  .. ", panel " .. tostring(Addon.panel:GetFrameStrata()))
-assert(button:GetFrameLevel() > Addon.panel:GetFrameLevel(),
-  "the button draws at level " .. button:GetFrameLevel()
-  .. ", under the panel at " .. Addon.panel:GetFrameLevel())
-print("  and stays visible over the panel it opens")
+-- The tab follows its owner even when another window raises or covers it.
+Addon.panel:Hide()
+if Addon.questsFrame then Addon.questsFrame:Hide() end
+local owner = rawget(button, "wordHunterLayerHost")
+assert(owner, "Reader must have a window controlling its draw order")
+owner:SetFrameStrata("HIGH")
+owner:SetFrameLevel(10)
+button:GetScript("OnUpdate")(button)
+assert(button:GetFrameStrata() == "HIGH" and button:GetFrameLevel() == 11)
+local otherWindow = node()
+otherWindow:SetFrameStrata("HIGH")
+otherWindow:SetFrameLevel(20)
+assert(button:GetFrameLevel() < otherWindow:GetFrameLevel(), "another window must cover the tab")
+owner:SetFrameLevel(30)
+button:GetScript("OnUpdate")(button)
+assert(button:GetFrameLevel() == 31, "raising the owner must raise its tab")
 print("quest-log-button: " .. (forever and "Forever" or "Retail") .. ": ok")

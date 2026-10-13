@@ -162,7 +162,43 @@ while ancestor do
   assert(ancestor ~= root and ancestor ~= host and not ancestor._clipsChildren, 'raised strata cannot bypass ancestor clipping')
   ancestor = ancestor:GetParent()
 end
-assert(b:GetFrameStrata() == 'FULLSCREEN_DIALOG' and b:GetFrameLevel() == 40, 'tab must stay above the reader')
+assert(b:GetFrameStrata() == root:GetFrameStrata() and b:GetFrameLevel() == math.max(root:GetFrameLevel(), rawget(b, 'wordHunterLayerContent'):GetFrameLevel()) + 1, 'tab must follow its outer window')
+root:SetFrameStrata('HIGH'); root:SetFrameLevel(10)
+b:GetScript('OnUpdate')(b)
+assert(b:GetFrameStrata() == 'HIGH' and b:GetFrameLevel() == math.max(10, rawget(b, 'wordHunterLayerContent'):GetFrameLevel()) + 1, 'native and fallback tabs must follow raised roots')
+local layerContent = rawget(b, 'wordHunterLayerContent')
+layerContent:SetFrameLevel(35)
+b:GetScript('OnUpdate')(b)
+assert(b:GetFrameLevel() == 36, 'tab must clear the map content and native tabs')
+A.panel:SetFrameStrata('FULLSCREEN_DIALOG'); A.panel:SetFrameLevel(40); A.panel:Show()
+b:GetScript('OnUpdate')(b)
+assert(b:GetFrameStrata() == 'FULLSCREEN_DIALOG' and b:GetFrameLevel() == 41, 'visible Reader must not cover the tab')
+A.panel:Hide(); b:GetScript('OnUpdate')(b)
+assert(b:GetFrameStrata() == 'HIGH' and b:GetFrameLevel() == 36, 'closing Reader must restore the map layer')
+local artwork = fixture(root)
+artwork:SetFrameStrata('DIALOG'); artwork:SetFrameLevel(80); artwork:Show()
+function root:GetChildren() return artwork end
+b:GetScript('OnUpdate')(b)
+assert(b:GetFrameStrata() == 'DIALOG' and b:GetFrameLevel() == 81,
+  'map artwork on a higher child strata must not obscure the tabs')
+artwork:Hide(); b:GetScript('OnUpdate')(b)
+if not classic then
+  SpokenZonesPanel = fixture(UIParent)
+  SpokenZonesPanel:SetFrameStrata(root:GetFrameStrata())
+  SpokenZonesPanel:SetFrameLevel(root:GetFrameLevel() + 10)
+  local rim = fixture(SpokenZonesPanel)
+  rim:SetFrameLevel(SpokenZonesPanel:GetFrameLevel() + 13)
+  SpokenZonesPanel:SetFrameLevel(50) -- Map raises its dock above the existing quest content.
+  rim:Show(); SpokenZonesPanel:Show()
+  function SpokenZonesPanel:GetChildren() return rim end
+  b:GetScript('OnUpdate')(b)
+  assert(b:GetFrameStrata() == root:GetFrameStrata() and b:GetFrameLevel() > math.max(rim:GetFrameLevel(), SpokenZonesPanel:GetFrameLevel()),
+    'Spoken gamepad dock and its rim must not hide WordHunter tabs')
+  SpokenZonesPanel:Hide(); b:GetScript('OnUpdate')(b)
+  SpokenZonesPanel = nil
+end
+assert(b:GetFrameStrata() == 'HIGH' and b:GetFrameLevel() == 36,
+  'hidden higher artwork must not keep the tabs above other windows')
 assert(not b:IsShown(), 'UIParent child must explicitly hide while map/log root is hidden')
 if classic then
   assert(b:GetWidth() == 32 and b:GetHeight() == 32 and b._normalTexture == 'Interface\\Icons\\INV_Misc_Book_09')
@@ -387,6 +423,9 @@ assert(A.npcReaderButton == npcTab and #(GossipFrame._hooks.OnShow or {}) == 1)
 GetGossipText = function() return 'Willkommen, Reisender.' end
 GossipFrame:Show(); assert(npcTab:IsVisible())
 assert(select(2, npcTab:GetPoint()) == GossipFrame, 'tab must move to the dialogue window')
+GossipFrame:SetFrameStrata('DIALOG'); GossipFrame:SetFrameLevel(15)
+npcTab:GetScript('OnUpdate')(npcTab)
+assert(npcTab:GetFrameStrata() == 'DIALOG' and npcTab:GetFrameLevel() == 16, 'NPC tab must follow its current dialogue host')
 A.readGossip(); assert(not A.panel:IsShown(), 'gossip defaults to manual too')
 npcClick(); assert(A.panel:IsShown() and A.lastQuest.passage == 'gossip' and A.lastQuest.id == 0)
 npcClick(); assert(not A.panel:IsShown())

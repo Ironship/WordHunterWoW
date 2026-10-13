@@ -1100,6 +1100,56 @@ function Addon.ToggleQuestFromLog()
   end
 end
 
+local sideTabStrata = { BACKGROUND=1, LOW=2, MEDIUM=3, HIGH=4, DIALOG=5,
+  FULLSCREEN=6, FULLSCREEN_DIALOG=7, TOOLTIP=8 }
+local function syncSideTabLayer(button, elapsed)
+  if elapsed then
+    button.wordHunterLayerElapsed = (rawget(button, 'wordHunterLayerElapsed') or 0) + elapsed
+    if button.wordHunterLayerElapsed < .1 then return end
+    button.wordHunterLayerElapsed = 0
+  end
+  local host = rawget(button, "wordHunterLayerHost")
+  if not host then return end
+  local strata, level = host:GetFrameStrata(), host:GetFrameLevel()
+  local function include(frame)
+    local other = frame:GetFrameStrata()
+    if (sideTabStrata[other] or 0) > (sideTabStrata[strata] or 0) then
+      strata, level = other, frame:GetFrameLevel()
+    elseif other == strata then
+      level = math.max(level, frame:GetFrameLevel())
+    end
+    if type(frame.GetChildren) == "function" then
+      for _, child in ipairs({ frame:GetChildren() }) do
+        if child:IsShown() then include(child) end
+      end
+    end
+  end
+  -- Window artwork may live on children with their own strata and levels.
+  include(host)
+  -- Spoken docks these to UIParent in Forever's gamepad mode, outside the map tree.
+  if host == WorldMapFrame then
+    for _, name in ipairs({ "SpokenZonesPanel", "SpokenZonesPanelToggle" }) do
+      local dock = usableFrame(_G[name])
+      if dock and dock:IsShown() then include(dock) end
+    end
+  end
+  local content = rawget(button, "wordHunterLayerContent")
+  if content then include(content) end
+  for _, frame in pairs({ Addon.panel, Addon.questsFrame }) do
+    if frame and frame:IsShown() then include(frame) end
+  end
+  level = level + 1
+  if button:GetFrameStrata() ~= strata then button:SetFrameStrata(strata) end
+  if button:GetFrameLevel() ~= level then button:SetFrameLevel(level) end
+end
+
+local function followSideTabHost(button, host, content)
+  button.wordHunterLayerHost = host
+  button.wordHunterLayerContent = content
+  button:SetScript("OnUpdate", syncSideTabLayer)
+  syncSideTabLayer(button)
+end
+
 local function createQuestSideTab(icon, toggle, parent)
   local b
   parent = parent or UIParent
@@ -1164,6 +1214,7 @@ function Addon.RefreshNpcReaderButton()
   if not npcReaderButton then return end
   local host = npcReaderHost()
   if not host then npcReaderButton:Hide(); return end
+  followSideTabHost(npcReaderButton, host)
   npcReaderButton:ClearAllPoints()
   npcReaderButton:SetPoint("TOPLEFT", host, "TOPRIGHT", 2, -110)
   npcReaderButton:SetScale(host:GetEffectiveScale() / UIParent:GetEffectiveScale())
@@ -1183,8 +1234,6 @@ function Addon.AttachNpcReaderButton()
   if not npcReaderButton and next(npcReaderHosts) then
     npcReaderButton = createQuestSideTab("Interface\\Icons\\INV_Misc_Book_11", Addon.ToggleReaderFromNpc)
     Addon.npcReaderButton = npcReaderButton
-    npcReaderButton:SetFrameStrata("FULLSCREEN_DIALOG")
-    npcReaderButton:SetFrameLevel(40)
     npcReaderButton:SetScript("OnEnter", function(self)
       if not GameTooltip then return end
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -1202,6 +1251,7 @@ function Addon.RefreshQuestLogButton()
   Addon.RefreshNpcReaderButton()
   if not logButton then return end
   if not questsLogButton or not questsLogRoot then logButton:Hide(); return end
+  followSideTabHost(logButton, questsLogRoot, rawget(questsLogButton, "wordHunterLayerContent"))
   logButton:ClearAllPoints()
   logButton:SetPoint("TOPLEFT", questsLogButton, "BOTTOMLEFT", 0, -8)
   logButton:SetScale(questsLogButton:GetScale())
@@ -1219,8 +1269,6 @@ function Addon.AttachQuestLogButton()
   local host = questLogHost()
   if not host then return nil end
   local button = createQuestSideTab("Interface\\Icons\\INV_Misc_Book_11", Addon.ToggleQuestFromLog)
-  button:SetFrameStrata("FULLSCREEN_DIALOG")
-  button:SetFrameLevel(40)
   button:SetScript("OnEnter", function(self)
     if not GameTooltip then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -1264,6 +1312,7 @@ function Addon.RefreshQuestsLogButton()
       if tab and (not anchor or tab:IsShown()) then anchor = tab end
     end
   end
+  followSideTabHost(b, questsLogRoot, anchor or host)
   b:ClearAllPoints()
   if anchor then
     -- Reserve a neighbour at -3, its 32px height, and an 8px gap (Lorever).
@@ -1290,8 +1339,6 @@ function Addon.AttachQuestsLogButton()
     if Addon.toggleQuestBrowser then Addon.toggleQuestBrowser() end
   end
   local b = createQuestSideTab("Interface\\Icons\\INV_Misc_Book_09", toggle)
-  b:SetFrameStrata("FULLSCREEN_DIALOG")
-  b:SetFrameLevel(40)
   b:SetScript("OnEnter", function(self)
     if not GameTooltip then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
