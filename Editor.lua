@@ -317,34 +317,44 @@ local function saveSelected()
       end
     end
     Addon.GetWordsTable(selected.locale)[key] = kept
-    Addon.rebuildExport()
-    editor:Hide()
-    Addon.refreshPanel()
-    Addon.refreshWordList()
-    return
+  else
+    local entry = Addon.GetWordsTable(selected.locale)[key]
+    if not entry then
+      entry = { word = selected.word }
+      Addon.GetWordsTable(selected.locale)[key] = entry
+    end
+    local statusChangedAt = entry.statusChangedAt or now
+    if entry.status ~= selected.status then statusChangedAt = now end
+    local noteUpdatedAt = entry.noteUpdatedAt or 0
+    if note ~= (entry.note or "") then noteUpdatedAt = now end
+    entry.encounterOnly = nil
+    entry.status = selected.status
+    entry.statusChangedAt = statusChangedAt
+    entry.translation = translation
+    entry.note = note
+    entry.noteUpdatedAt = noteUpdatedAt
+    entry.context = selected.context
+    entry.questId = selected.questId
+    entry.questTitle = selected.questTitle
+    entry.updatedAt = now
+    Addon.ensureHeadwordDefaults(entry, now)
+    Addon.recordEncounter(entry, selected.questId, selected.questTitle, now)
   end
-  local entry = Addon.GetWordsTable(selected.locale)[key]
-  if not entry then
-    entry = { word = selected.word }
-    Addon.GetWordsTable(selected.locale)[key] = entry
-  end
-  local statusChangedAt = entry.statusChangedAt or now
-  if entry.status ~= selected.status then statusChangedAt = now end
-  local noteUpdatedAt = entry.noteUpdatedAt or 0
-  if note ~= (entry.note or "") then noteUpdatedAt = now end
-  entry.status = selected.status
-  entry.statusChangedAt = statusChangedAt
-  entry.translation = translation
-  entry.note = note
-  entry.noteUpdatedAt = noteUpdatedAt
-  entry.context = selected.context
-  entry.questId = selected.questId
-  entry.questTitle = selected.questTitle
-  entry.updatedAt = now
-  Addon.ensureHeadwordDefaults(entry, now)
-  Addon.recordEncounter(entry, selected.questId, selected.questTitle, now)
   Addon.rebuildExport()
-  editor:Hide()
+  local refreshed = Addon.GetEffectiveWord(key, selected.locale)
+  selected.translationText = translation
+  selected.noteText = note
+  selected.originalStatus = selected.status
+  if refreshed then
+    selected.firstSeenAt = refreshed.firstSeenAt or selected.firstSeenAt
+    selected.lastSeenAt = refreshed.lastSeenAt or selected.lastSeenAt
+    selected.encounterCount = refreshed.encounterCount or selected.encounterCount
+    selected.statusChangedAt = refreshed.statusChangedAt or selected.statusChangedAt
+  end
+  if (editor.translation:GetText() or "") ~= translation then editor.translation:SetText(translation) end
+  if (editor.note:GetText() or "") ~= note then editor.note:SetText(note) end
+  Addon.updateResetDictionary()
+  updateEditorHistory()
   Addon.refreshPanel()
   Addon.refreshWordList()
 end
