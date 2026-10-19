@@ -19,9 +19,11 @@ QuestWordHunter keeps the quest on screen as clickable text. See a word you don'
 - A quiet **Ready for Known** hint after five different quests and two weeks. It never promotes anything by itself
 - Separate lists per language, so German and French don't mix
 - Windows you can move, resize and theme — `/whw settings`
-- A **controller** works too: the D-pad moves between words, A opens one, B closes, Y is reading mode. Needs the game's own controller support; the full map is under Settings
+- A **controller** works too: the D-pad moves between words; the reader and editor show which buttons open, save, close or switch reading mode. Needs the game's own controller support; the full map is under Settings
 
 Buttons stay in English. Quest text stays in the language you set in WoW.
+
+Assign shortcuts under Options → Key Bindings → AddOns → WordHunterWoW. The reader's footer and the word editor show the current bindings and update when you change them. With controller support enabled in both WoW and the addon, hints use the client's controller button labels, including its selected Xbox/PlayStation glyphs. Explicit WordHunterWoW controller bindings override the panel's default controls. Unassigned keyboard actions have no invented default. The editor's arrow keys and recall ratings 1–5 work locally outside combat; arrows move the text caret while typing. Enter saves from the translation field, and Escape closes the windows.
 
 ## Quest library
 

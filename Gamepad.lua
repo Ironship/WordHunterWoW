@@ -48,6 +48,7 @@ function Addon.SetGamePadEnabled(value)
   if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
   if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
   WordHunterWoWDB.settings.gamepad = not not value
+  if Addon.RefreshInputHints then Addon.RefreshInputHints() end
   if Addon.settingsPanel and Addon.settingsPanel.refresh then Addon.settingsPanel.refresh() end
 end
 
@@ -457,7 +458,17 @@ end
 function Addon.GamePadButton(frame, button)
   local handled = false
   if Addon.GetGamePadEnabled() then
-    handled = dispatch(button) and true or false
+    local action = Addon.ShortcutAction and Addon.ShortcutAction(button)
+    if action then
+      -- In combat the propagation flag cannot be changed; the native binding
+      -- must execute this once, rather than also running it here.
+      if not (InCombatLockdown and InCombatLockdown()) then
+        Addon.RunShortcut(action)
+        handled = true
+      end
+    else
+      handled = dispatch(button) and true or false
+    end
   end
   if Addon.SafePropagate then Addon.SafePropagate(frame, not handled) end
   return handled

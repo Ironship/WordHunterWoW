@@ -99,6 +99,7 @@ function Addon.NativeCloseButton(frame)
   local close = rawget(frame, "CloseButton")
   if close then
     rawset(frame, "closeButton", close)
+    if Addon.ButtonShortcut then Addon.ButtonShortcut(close, "CLOSE", "ESCAPE", "PAD2") end
     return close
   end
   -- A frame with no inherited button still has to have a way out. Sized, since
@@ -106,6 +107,7 @@ function Addon.NativeCloseButton(frame)
   close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
   close:SetSize(24, 24)
   rawset(frame, "closeButton", close)
+  if Addon.ButtonShortcut then Addon.ButtonShortcut(close, "CLOSE", "ESCAPE", "PAD2") end
   return close
 end
 
