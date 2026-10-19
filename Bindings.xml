@@ -1,0 +1,12 @@
+<Bindings>
+  <Binding name="WORDHUNTERWOW_READER" header="WORDHUNTERWOW" category="ADDONS">WordHunterWoW_Addon.RunShortcut("READER")</Binding>
+  <Binding name="WORDHUNTERWOW_QUESTS" category="ADDONS">WordHunterWoW_Addon.RunShortcut("QUESTS")</Binding>
+  <Binding name="WORDHUNTERWOW_WORDS" category="ADDONS">WordHunterWoW_Addon.RunShortcut("WORDS")</Binding>
+  <Binding name="WORDHUNTERWOW_STATS" category="ADDONS">WordHunterWoW_Addon.RunShortcut("STATS")</Binding>
+  <Binding name="WORDHUNTERWOW_READING" category="ADDONS">WordHunterWoW_Addon.RunShortcut("READING")</Binding>
+  <Binding name="WORDHUNTERWOW_SETTINGS" category="ADDONS">WordHunterWoW_Addon.RunShortcut("SETTINGS")</Binding>
+  <Binding name="WORDHUNTERWOW_PREVIOUS" category="ADDONS">WordHunterWoW_Addon.RunShortcut("PREVIOUS")</Binding>
+  <Binding name="WORDHUNTERWOW_NEXT" category="ADDONS">WordHunterWoW_Addon.RunShortcut("NEXT")</Binding>
+  <Binding name="WORDHUNTERWOW_SAVE" category="ADDONS">WordHunterWoW_Addon.RunShortcut("SAVE")</Binding>
+  <Binding name="WORDHUNTERWOW_CLOSE" category="ADDONS">WordHunterWoW_Addon.RunShortcut("CLOSE")</Binding>
+</Bindings>

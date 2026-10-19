@@ -54,7 +54,7 @@ LABELS.resetLayoutNote = "Puts every window back where it started, this one incl
 LABELS.harvestClear = "Clear collected text"
 LABELS.harvestClearBody = "This throws away every passage and word collected so far that has not been exported. It cannot be undone."
 LABELS.harvestClearAction = "Clear"
-LABELS.gamepadWindowNote = "In this window: LB/RB switch tabs · B closes it."
+LABELS.gamepadWindowNote = "In this window the shoulder buttons switch tabs; the right face button closes it."
 LABELS.optionsPageText = "Settings have their own window with a live preview. You can also type /whw settings."
 LABELS.optionsPageButton = "Open WordHunterWoW settings"
 LABELS.aboutVersion = "WordHunterWoW %s  ·  game: %s  ·  client %s (%s)"
@@ -958,8 +958,31 @@ function Addon.CreateSettingsPanel()
   window.gamepadCheck = check(controller, "WordHunterWoWGamepadCheck", "gamepad", LABELS.gamepadLabel,
     function() return Addon.GetGamePadEnabled and Addon.GetGamePadEnabled() or false end,
     function(v) if Addon.SetGamePadEnabled then Addon.SetGamePadEnabled(v) end end)
-  window.gamepadNote = note(controller, LABELS.gamepadNote)
-  note(controller, LABELS.gamepadWindowNote)
+  local gamepadRow
+  window.gamepadNote, gamepadRow = note(controller, LABELS.gamepadNote)
+  local windowNote, windowNoteRow = note(controller, LABELS.gamepadWindowNote)
+  if Addon.ControllerHelpText then
+    function gamepadRow.Refresh() window.gamepadNote:SetText(Addon.ControllerHelpText()) end
+    function windowNoteRow.Refresh()
+      local text = "Assign shortcuts in Options → Key Bindings → WordHunterWoW."
+      if Addon.GamePadHintsEnabled() then
+        text = text .. "\nIn this window: " .. Addon.ShortcutHint(nil, nil, "PADLSHOULDER") .. "/"
+          .. Addon.ShortcutHint(nil, nil, "PADRSHOULDER") .. " switch tabs; "
+          .. Addon.ShortcutHint("CLOSE", nil, "PAD2") .. " closes it."
+      end
+      windowNote:SetText(text)
+    end
+    local previousHelp, previousWindowNote
+    Addon.WatchInputHints(window, function()
+      gamepadRow.Refresh()
+      windowNoteRow.Refresh()
+      local help, controls = window.gamepadNote:GetText(), windowNote:GetText()
+      if (help ~= previousHelp or controls ~= previousWindowNote) and window:IsShown() and window.refresh then
+        window.refresh()
+      end
+      previousHelp, previousWindowNote = help, controls
+    end)
+  end
 
   -- --- 7. About ------------------------------------------------------------------
   -- Nothing here is read off a game frame. The name probe /whw diag prints

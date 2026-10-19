@@ -391,6 +391,7 @@ function Addon.createEditor()
   -- end of a quest is still meant for the editor, not for turning the player.
   local function arrowKeys(self, key)
     if key ~= "LEFT" and key ~= "RIGHT" then return false end
+    if InCombatLockdown and InCombatLockdown() then return false end
     if GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus() then return false end
     if Addon.OpenNeighbourWord then Addon.OpenNeighbourWord(key == "LEFT" and -1 or 1) end
     return true
@@ -601,6 +602,10 @@ function Addon.createEditor()
   cover:EnableKeyboard(true)
   if Addon.SafePropagate then Addon.SafePropagate(cover, true) end
   cover:SetScript("OnKeyDown", function(self, key)
+    if Addon.HandleShortcutKey and Addon.HandleShortcutKey(key) then
+      if Addon.SafePropagate then Addon.SafePropagate(self, false) end
+      return
+    end
     local score = KEY_SCORES[key]
     if score and Addon.selected and Addon.selected.recallPending
         and not (InCombatLockdown and InCombatLockdown()) then
@@ -619,6 +624,35 @@ function Addon.createEditor()
     self:EnableKeyboard(out)
     if out and Addon.SafePropagate then Addon.SafePropagate(self, true) end
   end)
+  if Addon.ButtonShortcut then
+    local function outsideRating(button)
+      return function() return not (Addon.selected and Addon.selected.recallPending) and button or nil end
+    end
+    Addon.ButtonShortcut(save, "SAVE", nil, outsideRating("PAD1"), true)
+    Addon.ButtonShortcut(cancel, "CLOSE", "ESCAPE", outsideRating("PAD2"), true)
+    Addon.ButtonShortcut(editor.prevWord, "PREVIOUS", "LEFT", outsideRating("PADLSHOULDER"), true)
+    Addon.ButtonShortcut(editor.nextWord, "NEXT", "RIGHT", outsideRating("PADRSHOULDER"), true)
+    Addon.ButtonShortcut(cover.show, nil, nil, "PAD2")
+    local function refresh()
+      local pad = Addon.GamePadHintsEnabled()
+      local left = Addon.ShortcutHint(nil, nil, "PADDLEFT")
+      local right = Addon.ShortcutHint(nil, nil, "PADDRIGHT")
+      local direction = left ~= "" and right ~= "" and (left .. "/" .. right) or (left .. right)
+      editor.statusLabel:SetText(LABELS.status .. (pad and direction ~= "" and ("  " .. direction) or ""))
+      local rate = Addon.ShortcutHint(nil, nil, "PAD1")
+      local controls = ""
+      if pad and direction ~= "" then controls = controls .. "  " .. direction .. ": pick" end
+      if pad and rate ~= "" then controls = controls .. "  " .. rate .. ": rate" end
+      cover.prompt:SetText(LABELS.recallPrompt .. controls)
+    end
+    Addon.WatchInputHints(editor, refresh)
+    cover:HookScript("OnShow", Addon.RefreshInputHints)
+    cover:HookScript("OnHide", Addon.RefreshInputHints)
+    for _, box in ipairs({ editor.translation, editor.note }) do
+      box:HookScript("OnEditFocusGained", Addon.RefreshInputHints)
+      box:HookScript("OnEditFocusLost", Addon.RefreshInputHints)
+    end
+  end
 end
 
 -- Whether what is in the boxes is the player's own wording or the dictionary's.

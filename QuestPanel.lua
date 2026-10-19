@@ -174,6 +174,9 @@ local function chromeMetrics(scale)
   scale = scale or (Addon.GetTextScale and Addon.GetTextScale() or 1)
   local m = { scale = scale }
   for key, base in pairs(CHROME_BASE) do m[key] = base * scale end
+  local hints = Addon.PanelInputHintHeight and Addon.PanelInputHintHeight(panel) or 0
+  m.footPad = m.footPad + hints
+  m.metaFootY = m.metaFootY + hints
   if panel and rawget(panel, 'whwNativeStyle') then m.topPad = m.topPad + 28 end
   -- Where the heading block ends, which is where the text under it starts in
   -- the two-column layout and where the progress line goes in the one-column
@@ -1439,6 +1442,10 @@ function Addon.RefreshNpcReaderButton()
   npcReaderButton:Show()
 end
 
+function Addon.ToggleReader()
+  if npcReaderHost() then Addon.ToggleReaderFromNpc() else Addon.ToggleQuestFromLog() end
+end
+
 function Addon.AttachNpcReaderButton()
   for _, name in ipairs({ "QuestFrame", "GossipFrame" }) do
     local host = usableFrame(_G[name])
@@ -1470,6 +1477,7 @@ function Addon.AttachNpcReaderButton()
       GameTooltip:Show()
     end)
     npcReaderButton:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    if Addon.ButtonShortcut then Addon.ButtonShortcut(npcReaderButton, "READER") end
   end
   Addon.RefreshNpcReaderButton()
   return npcReaderButton
@@ -1508,6 +1516,7 @@ function Addon.AttachQuestLogButton()
     if GameTooltip then GameTooltip:Hide() end
   end)
   logButton = button
+  if Addon.ButtonShortcut then Addon.ButtonShortcut(button, "READER") end
   Addon.questLogButton = button
   host:HookScript("OnShow", Addon.RefreshQuestLogButton)
   host:HookScript("OnHide", Addon.RefreshQuestLogButton)
@@ -1578,6 +1587,7 @@ function Addon.AttachQuestsLogButton()
     if GameTooltip then GameTooltip:Hide() end
   end)
   questsLogButton = b
+  if Addon.ButtonShortcut then Addon.ButtonShortcut(b, "QUESTS") end
   Addon.questsLogButton = b
   local watched = {}
   local function watch(frame)
@@ -1919,6 +1929,7 @@ function Addon.createPanel()
   Addon.RefreshQuestAudioButton = refreshPlayButton
 
   local wordsBtn = Addon.createActionButton(panel, LABELS.wordsButton)
+  if Addon.ButtonShortcut then Addon.ButtonShortcut(wordsBtn, "WORDS", nil, "PAD3") end
   wordsBtn.baseWidth = 52
   wordsBtn:SetScript("OnClick", function()
     if Addon.listFrame and Addon.listFrame:IsShown() then
@@ -1929,6 +1940,7 @@ function Addon.createPanel()
   end)
 
   local statsBtn = Addon.createActionButton(panel, LABELS.statsButton)
+  if Addon.ButtonShortcut then Addon.ButtonShortcut(statsBtn, "STATS") end
   statsBtn.baseWidth = 52
   statsBtn:SetScript("OnClick", function()
     if Addon.statsFrame and Addon.statsFrame:IsShown() then
@@ -2017,6 +2029,17 @@ function Addon.createPanel()
     if panel:IsShown() then refreshPanel() else layoutChrome() end
   end
 
+  if Addon.WatchInputHints then
+    panel.inputHint = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    panel.inputHint:SetPoint("BOTTOMLEFT", 18, 4)
+    panel.inputHint:SetJustifyH("LEFT")
+    panel.inputHint:SetWordWrap(true)
+    Addon.WatchInputHints(panel, function()
+      if panel.inputHint:GetText() ~= Addon.PanelShortcutText() and Addon.RelayoutPanel then
+        Addon.RelayoutPanel()
+      end
+    end)
+  end
   Addon.ApplyIntegratedLayout()
 end
 
