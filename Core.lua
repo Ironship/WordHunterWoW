@@ -1837,13 +1837,18 @@ local function liftQuestFrames()
     local frame = _G[name]
     if frame ~= nil and frame.SetFrameStrata ~= nil and frame.SetFrameLevel ~= nil then
       if liftedDimFrames[frame] == nil then
-        liftedDimFrames[frame] = {
-          strata = frame.GetFrameStrata ~= nil and frame:GetFrameStrata() or nil,
-          level = frame.GetFrameLevel ~= nil and frame:GetFrameLevel() or nil,
-        }
+        local strata, level
+        if frame.GetFrameStrata ~= nil then strata = frame:GetFrameStrata() end
+        if frame.GetFrameLevel ~= nil then level = frame:GetFrameLevel() end
+        -- Only lift windows whose original layer can be restored by addon code.
+        if not Addon.IsSecretValue or not (Addon.IsSecretValue(strata) or Addon.IsSecretValue(level)) then
+          liftedDimFrames[frame] = { strata = strata, level = level }
+        end
       end
-      frame:SetFrameStrata(DIM_LIFT_STRATA)
-      frame:SetFrameLevel(DIM_LIFT_LEVEL)
+      if liftedDimFrames[frame] then
+        frame:SetFrameStrata(DIM_LIFT_STRATA)
+        frame:SetFrameLevel(DIM_LIFT_LEVEL)
+      end
     end
   end
 end
