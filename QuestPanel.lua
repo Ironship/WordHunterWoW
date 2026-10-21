@@ -1319,12 +1319,16 @@ local function syncSideTabLayer(button, elapsed)
   local host = rawget(button, "wordHunterLayerHost")
   if not host then return end
   local strata, level = host:GetFrameStrata(), host:GetFrameLevel()
+  if Addon.IsSecretValue and (Addon.IsSecretValue(strata) or Addon.IsSecretValue(level)) then return end
   local function include(frame)
-    local other = frame:GetFrameStrata()
-    if (sideTabStrata[other] or 0) > (sideTabStrata[strata] or 0) then
-      strata, level = other, frame:GetFrameLevel()
-    elseif other == strata then
-      level = math.max(level, frame:GetFrameLevel())
+    local other, otherLevel = frame:GetFrameStrata(), frame:GetFrameLevel()
+    -- Retail 12.1.7 can hide strata; retain the last readable layer instead.
+    if not Addon.IsSecretValue or not (Addon.IsSecretValue(other) or Addon.IsSecretValue(otherLevel)) then
+      if (sideTabStrata[other] or 0) > (sideTabStrata[strata] or 0) then
+        strata, level = other, otherLevel
+      elseif other == strata then
+        level = math.max(level, otherLevel)
+      end
     end
     if type(frame.GetChildren) == "function" then
       for _, child in ipairs({ frame:GetChildren() }) do
@@ -1345,8 +1349,9 @@ local function syncSideTabLayer(button, elapsed)
   if content then include(content) end
 
   level = level + 1
-  if button:GetFrameStrata() ~= strata then button:SetFrameStrata(strata) end
-  if button:GetFrameLevel() ~= level then button:SetFrameLevel(level) end
+  local ownStrata, ownLevel = button:GetFrameStrata(), button:GetFrameLevel()
+  if (Addon.IsSecretValue and Addon.IsSecretValue(ownStrata)) or ownStrata ~= strata then button:SetFrameStrata(strata) end
+  if (Addon.IsSecretValue and Addon.IsSecretValue(ownLevel)) or ownLevel ~= level then button:SetFrameLevel(level) end
 end
 
 local function followSideTabHost(button, host, content)
