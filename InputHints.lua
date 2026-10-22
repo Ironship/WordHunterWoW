@@ -23,9 +23,23 @@ local function padKey(key)
 end
 
 function Addon.InputKeyText(key)
+  if Addon.GamePadUI and padKey(key) then return Addon.GamePadUI.Key(key) end
   local text = GetBindingText and GetBindingText(key, 1)
   if type(text) == "string" and text ~= "" then return text end
   return _G["KEY_" .. key] or key
+end
+
+function Addon.SideTabShortcut(button, action, pad)
+  local hint = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  hint:SetPoint("RIGHT", button, "LEFT", -3, 0)
+  hint:SetJustifyH("RIGHT")
+  hint:SetShadowColor(0, 0, 0, 1)
+  hint:SetShadowOffset(1, -1)
+  Addon.ButtonShortcut(button, action)
+  Addon.WatchInputHints(button, function()
+    local cursor = Addon.GamePadUI and Addon.GamePadUI.ConsolePortActive()
+    hint:SetText(Addon.ShortcutHint(action, nil, not cursor and pad or nil))
+  end)
 end
 
 local function chord(key)
@@ -96,6 +110,7 @@ function Addon.ShortcutHint(action, keyboard, pad)
     add("ENTER")
   end
   local fallback = usingPad and pad or keyboard
+  if usingPad and Addon.GamePadUI and Addon.GamePadUI.ConsolePortActive() then fallback = nil end
   if fallback then
     local bound = Addon.ShortcutAction(fallback)
     if not bound or bound == action then
@@ -115,6 +130,18 @@ end
 
 function Addon.RefreshInputHints()
   for _, refresh in pairs(watchers) do refresh() end
+end
+
+function Addon.WindowInputHint(frame)
+  local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  hint:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 2)
+  hint:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -12, 2)
+  hint:SetJustifyH("LEFT")
+  hint:SetWordWrap(true)
+  Addon.WatchInputHints(frame, function()
+    hint:SetText(Addon.GamePadHintsEnabled() and Addon.GamePadUI and Addon.GamePadUI.Hint() or "")
+  end)
+  return hint
 end
 
 function Addon.ButtonShortcut(button, action, keyboard, pad, below)
@@ -149,7 +176,9 @@ function Addon.PanelShortcutText()
     local keys = Addon.ShortcutHint(action, keyboard, pad)
     if keys ~= "" then parts[#parts + 1] = keys .. ": " .. label end
   end
-  if Addon.GamePadHintsEnabled() then
+  if Addon.GamePadUI and Addon.GamePadUI.ConsolePortActive() then
+    parts[#parts + 1] = Addon.GamePadUI.Hint()
+  elseif Addon.GamePadHintsEnabled() then
     local movement = {}
     for _, key in ipairs({ "PADDLEFT", "PADDRIGHT", "PADDUP", "PADDDOWN" }) do
       local text = Addon.ShortcutHint(nil, nil, key)
@@ -159,6 +188,10 @@ function Addon.PanelShortcutText()
     add("open word", nil, nil, "PAD1")
     add("scroll up", nil, nil, "PADLSHOULDER")
     add("scroll down", nil, nil, "PADRSHOULDER")
+    if WordHunterWoW_VoiceTogglePause then
+      add("pause / resume voice", nil, nil, "PADRTRIGGER")
+      add("replay voice", nil, nil, "PADLTRIGGER")
+    end
   end
   add("close", "CLOSE", "ESCAPE", "PAD2")
   add("words", "WORDS", nil, "PAD3")

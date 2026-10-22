@@ -10,6 +10,8 @@ QuestWordHunter keeps the quest on screen as clickable text. See a word you don'
 
 ## What you get
 
+Controller support includes the map and quest-log side tabs: X / Square opens the selected quest's reader and Y / Triangle opens the library. In the library, LB/RB changes tabs and LT/RT changes pages; the D-pad selects controls, A / Cross activates them and B / Circle returns. Lists and settings use the same selection outline, and left/right adjusts a selected slider. The English panel scrolls with up/down or LB/RB. With the voice engine loaded, the reader's triggers replay and pause/resume speech. Explicit WordHunter bindings take priority. ConsolePort uses its own interface cursor and configured button hints; addon windows and side tabs are registered through its public API.
+
 - Quest text you can click instead of retyping into a notes app
 - Colours and underlines for **New**, **Learning**, **Known** and **Ignored**, so you see progress in the paragraph itself — keep both or pick one
 - A meaning, a personal note, and the sentence the word came from

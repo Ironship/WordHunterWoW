@@ -1299,7 +1299,8 @@ function Addon.CreateSettingsPanel()
     -- the 300 pixels back rather than leaving a blank column where it was.
     local areaLeft = showPreview and (PREVIEW_W + 2 * MARGIN) or MARGIN
     area:SetPoint("TOPLEFT", window, "TOPLEFT", areaLeft, -top)
-    area:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -MARGIN, MARGIN)
+    area:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -MARGIN,
+      MARGIN + (Addon.GamePadHintsEnabled and Addon.GamePadHintsEnabled() and 32 or 0))
 
     local buttonHeight = Addon.RoleButtonHeight(scale)
     reset:SetSize(RESET_W * scale, buttonHeight)
@@ -1386,6 +1387,7 @@ function Addon.CreateSettingsPanel()
     closeMenu()
   end)
 
+  if Addon.WindowInputHint then Addon.WindowInputHint(window) end
   window.selectTab(TABS[1].id)
   -- Built at whatever size is already stored, not at 100% and corrected on
   -- the first show, and the sliders are released from their build-time hold.

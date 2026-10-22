@@ -261,6 +261,15 @@ function Addon.toggleWordList()
     -- sits at 8 to 20, and a scroll ending at 22 still brings the rule down
     -- across it.
     listFrame.scroll:SetPoint("BOTTOMRIGHT", -34, 36)
+    if Addon.WindowInputHint then
+      local inputHint = Addon.WindowInputHint(listFrame)
+      Addon.WatchInputHints(listFrame, function()
+        local padding = Addon.GamePadHintsEnabled() and math.max(36, inputHint:GetStringHeight() + 8) or 0
+        listFrame.scroll:SetPoint("BOTTOMRIGHT", -34, 36 + padding)
+        listFrame.truncated:SetPoint("BOTTOMLEFT", 18, 8 + padding)
+        listFrame.truncated:SetPoint("BOTTOMRIGHT", -34, 8 + padding)
+      end)
+    end
     listFrame.contentInset = Addon.CreateContentInset(listFrame, listFrame.scroll)
     if listFrame.scroll.SetClipsChildren then listFrame.scroll:SetClipsChildren(true) end
     listFrame.content = CreateFrame("Frame", nil, listFrame.scroll)

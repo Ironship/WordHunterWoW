@@ -1364,8 +1364,10 @@ end
 local function createQuestSideTab(icon, toggle, parent)
   local b
   parent = parent or UIParent
+  Addon.sideTabSerial = (Addon.sideTabSerial or 0) + 1
+  local name = "WordHunterWoWSideTab" .. Addon.sideTabSerial
   if type(SidePanelTabButtonMixin) == "table" then
-    b = CreateFrame("Frame", nil, parent, "LargeSideTabButtonTemplate")
+    b = CreateFrame("Frame", name, parent, "LargeSideTabButtonTemplate")
     b.Icon:SetTexture(icon)
     if type(b.SetFillToInterior) == "function" then
       b:SetFillToInterior(true, 24)
@@ -1382,7 +1384,7 @@ local function createQuestSideTab(icon, toggle, parent)
       if button == "LeftButton" and upInside then toggle() end
     end)
   else
-    b = CreateFrame("CheckButton", nil, parent, "SpellBookSkillLineTabTemplate")
+    b = CreateFrame("CheckButton", name, parent, "SpellBookSkillLineTabTemplate")
     b:SetSize(32, 32)
     b:SetNormalTexture(icon)
     local texture = b:GetNormalTexture()
@@ -1391,6 +1393,18 @@ local function createQuestSideTab(icon, toggle, parent)
     texture:SetSize(24, 24)
     b:SetScript("OnClick", toggle)
   end
+  -- ConsolePort registers the host as pass-through and navigates its children.
+  local target = CreateFrame("Button", name .. "ClickTarget", b)
+  target:SetAllPoints(b)
+  target:SetScript("OnClick", toggle)
+  for _, event in ipairs({ "OnEnter", "OnLeave" }) do
+    target:SetScript(event, function()
+      local handler = b:GetScript(event)
+      if handler then handler(b) end
+    end)
+  end
+  if parent == UIParent then b:Hide() end
+  if Addon.AttachGamePad then Addon.AttachGamePad(b) end
   return b
 end
 Addon.CreateBookSideTab = createQuestSideTab
@@ -1482,7 +1496,7 @@ function Addon.AttachNpcReaderButton()
       GameTooltip:Show()
     end)
     npcReaderButton:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
-    if Addon.ButtonShortcut then Addon.ButtonShortcut(npcReaderButton, "READER") end
+    if Addon.SideTabShortcut then Addon.SideTabShortcut(npcReaderButton, "READER", "PAD3") end
   end
   Addon.RefreshNpcReaderButton()
   return npcReaderButton
@@ -1521,7 +1535,7 @@ function Addon.AttachQuestLogButton()
     if GameTooltip then GameTooltip:Hide() end
   end)
   logButton = button
-  if Addon.ButtonShortcut then Addon.ButtonShortcut(button, "READER") end
+  if Addon.SideTabShortcut then Addon.SideTabShortcut(button, "READER", "PAD3") end
   Addon.questLogButton = button
   host:HookScript("OnShow", Addon.RefreshQuestLogButton)
   host:HookScript("OnHide", Addon.RefreshQuestLogButton)
@@ -1592,7 +1606,7 @@ function Addon.AttachQuestsLogButton()
     if GameTooltip then GameTooltip:Hide() end
   end)
   questsLogButton = b
-  if Addon.ButtonShortcut then Addon.ButtonShortcut(b, "QUESTS") end
+  if Addon.SideTabShortcut then Addon.SideTabShortcut(b, "QUESTS", "PAD4") end
   Addon.questsLogButton = b
   local watched = {}
   local function watch(frame)
