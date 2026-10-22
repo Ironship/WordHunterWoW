@@ -8,6 +8,10 @@ local actions = {
 }
 BINDING_HEADER_WORDHUNTERWOW = "WordHunterWoW"
 for action, label in pairs(actions) do _G["BINDING_NAME_" .. PREFIX .. action] = label end
+BINDING_HEADER_WORDHUNTERVOICE = "QuestWordHunter Voice"
+BINDING_NAME_WORDHUNTERVOICE_PAUSE = "Pause / resume voice"
+BINDING_NAME_WORDHUNTERVOICE_REPLAY = "Replay passage"
+BINDING_NAME_WORDHUNTERVOICE_STOP = "Stop voice"
 
 function Addon.GamePadHintsEnabled()
   if not (Addon.GetGamePadEnabled and Addon.GetGamePadEnabled()) then return false end

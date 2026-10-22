@@ -9,4 +9,7 @@
   <Binding name="WORDHUNTERWOW_NEXT" category="ADDONS">WordHunterWoW_Addon.RunShortcut("NEXT")</Binding>
   <Binding name="WORDHUNTERWOW_SAVE" category="ADDONS">WordHunterWoW_Addon.RunShortcut("SAVE")</Binding>
   <Binding name="WORDHUNTERWOW_CLOSE" category="ADDONS">WordHunterWoW_Addon.RunShortcut("CLOSE")</Binding>
+  <Binding name="WORDHUNTERVOICE_PAUSE" header="WORDHUNTERVOICE" category="ADDONS">if WordHunterWoW_VoiceTogglePause then WordHunterWoW_VoiceTogglePause() end</Binding>
+  <Binding name="WORDHUNTERVOICE_REPLAY" category="ADDONS">if WordHunterWoW_Voice and WordHunterWoW_Voice.Replay then WordHunterWoW_Voice.Replay() end</Binding>
+  <Binding name="WORDHUNTERVOICE_STOP" category="ADDONS">if WordHunterWoW_Voice and WordHunterWoW_Voice.Stop then WordHunterWoW_Voice.Stop() end</Binding>
 </Bindings>
