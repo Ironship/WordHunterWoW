@@ -12,7 +12,7 @@ local unpack = unpack or table.unpack
 -- different names.
 LABELS.questLogButton = "WordHunterWoW - Reader"
 LABELS.questLogButtonTip = "Show this quest's text side by side."
-LABELS.questLogAutoLabel = "Open the quest panel automatically from the quest log"
+LABELS.questLogAutoLabel = "Open Reader automatically from the quest log (off by default)"
 -- Its two neighbours, enOfferOnly and enNoOffer, each name the passage that is
 -- being shown in place of the one asked for. This one is for the record that
 -- holds no passage at all -- a title and nothing else -- so it names nothing
@@ -1116,8 +1116,8 @@ local function readCurrentQuest(questLogId, requested)
   -- and the panel would have landed on the log through it regardless.
   local Compat = Addon.Compat
   local atQuestGiver = not Compat or Compat.NpcQuestFrameShown()
-  if requested or (atQuestGiver and Addon.GetNpcReaderAutoOpen())
-      or (not atQuestGiver and Compat and Compat.QuestLogShown() and Addon.GetQuestLogAutoOpen()) then
+  if requested or (nativeNPC and atQuestGiver and Addon.GetNpcReaderAutoOpen())
+      or (not nativeNPC and Compat and Compat.QuestLogShown() and Addon.GetQuestLogAutoOpen()) then
     panel:Show()
   end
   -- Laid out after the decision to show, never before it. refreshPanel declines
