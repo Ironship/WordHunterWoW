@@ -317,6 +317,19 @@ local function createLibraryWords(f)
   view:Hide()
 end
 
+local function refreshInputHint(f)
+  local words = f.tab == "words"
+  f.hint:SetText(words and "Click words · Edit meaning and learning status." or L.hint)
+  if Addon.GamePadHintsEnabled and Addon.GamePadHintsEnabled() and Addon.GamePadUI then
+    local cursor = Addon.GamePadUI.ConsolePortActive()
+    local select = Addon.InputKeyText("PADDUP") .. "/" .. Addon.InputKeyText("PADDDOWN") .. ": select · "
+      .. Addon.InputKeyText("PAD1") .. ": open · " .. Addon.InputKeyText("PAD2") .. ": back"
+    f.hint:SetText((cursor and Addon.GamePadUI.Hint() or select) .. (not cursor and (" · " .. Addon.InputKeyText("PADLSHOULDER")
+      .. "/" .. Addon.InputKeyText("PADRSHOULDER") .. ": tabs · "
+      .. Addon.InputKeyText("PADLTRIGGER") .. "/" .. Addon.InputKeyText("PADRTRIGGER") .. ": pages") or ""))
+  end
+end
+
 local function refreshView(resetPage)
   local f = questsFrame
   if not f or not f:IsShown() then return end
@@ -326,7 +339,7 @@ local function refreshView(resetPage)
     tab:SetChecked(tab.selected)
   end
   f.viewTitle:SetText(({ my = "My quests", all = "All in game quests", words = "Words" })[f.tab])
-  f.hint:SetText(words and "Click words · Edit meaning and learning status." or L.hint)
+  refreshInputHint(f)
   for _, control in ipairs({ f.searchLabel, f.search, f.questScroll, f.prevPage, f.nextPage, f.pageLabel }) do
     control:SetShown(not words)
   end
@@ -446,8 +459,13 @@ function Addon.toggleQuestBrowser()
     hint:SetPoint("TOPLEFT", 18, -37)
     hint:SetPoint("TOPRIGHT", -20, -37)
     hint:SetJustifyH("LEFT")
+    hint:SetWordWrap(true)
+    hint:SetMaxLines(2)
     hint:SetText(L.hint)
     f.hint = hint
+    if Addon.WatchInputHints then
+      Addon.WatchInputHints(f, function() refreshInputHint(f) end)
+    end
     f.viewTitle = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     f.viewTitle:SetPoint("TOPLEFT", 18, -65)
     local close = Addon.NativeCloseButton(f)
