@@ -1395,6 +1395,7 @@ local function createQuestSideTab(icon, toggle, parent)
   end
   -- ConsolePort registers the host as pass-through and navigates its children.
   local target = CreateFrame("Button", name .. "ClickTarget", b)
+  b.wordHunterClickTarget = target
   target:SetAllPoints(b)
   target:SetScript("OnClick", toggle)
   for _, event in ipairs({ "OnEnter", "OnLeave" }) do
@@ -1581,7 +1582,11 @@ function Addon.RefreshQuestsLogButton()
     b:SetScale(questsLogRoot:GetEffectiveScale() / UIParent:GetEffectiveScale())
   end
   b:SetChecked(Addon.questsFrame and Addon.questsFrame:IsShown() or false)
-  if frameVisible(host) and frameVisible(questsLogRoot) then b:Show() else b:Hide() end
+  if (frameVisible(host) or frameVisible(questLogHost())) and frameVisible(questsLogRoot) then
+    b:Show()
+  else
+    b:Hide()
+  end
   Addon.RefreshQuestLogButton()
 end
 
@@ -1616,6 +1621,7 @@ function Addon.AttachQuestsLogButton()
     frame:HookScript("OnHide", Addon.RefreshQuestsLogButton)
   end
   watch(host)
+  watch(questLogHost())
   watch(questsLogRoot)
   if map then
     watch(QuestMapFrame)
@@ -1640,7 +1646,10 @@ function Addon.hookQuestUi()
       -- not name: by the time one of the log's own functions has run, its
       -- frames certainly exist, so nothing can be too early here.
       Addon.AttachQuestLogButton()
-      if Addon.AttachQuestsLogButton then Addon.AttachQuestsLogButton() end
+      if Addon.AttachQuestsLogButton then
+        Addon.AttachQuestsLogButton()
+        Addon.RefreshQuestsLogButton()
+      end
       if name == "QuestMapFrame_ShowQuestDetails" then
         local questId = QuestMapFrame_GetDetailQuestID and QuestMapFrame_GetDetailQuestID()
         if not questId or questId == 0 then questId = Compat.SelectedQuestID() end
