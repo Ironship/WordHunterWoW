@@ -286,7 +286,7 @@ end
 -- The panel numbers its layouts; a new quest, or the same one re-flowed at
 -- another size, reuses the same pooled buttons for different words, so an index
 -- remembered across a layout would point at whatever word landed there.
-local focus, focusSerial
+local focus, focusSerial, focusKey
 
 local function wordsOf(panel)
   local list, count = panel.wordButtons, panel.wordCount
@@ -330,12 +330,22 @@ local function setFocus(panel, index)
   local list = wordsOf(panel)
   local button = list[index]
   if not usable(button) then return false end
-  focus, focusSerial = index, panel.layoutSerial
+  focus, focusSerial, focusKey = index, panel.layoutSerial, button.key
   cursorTo(panel.content, button)
   local onEnter = button:GetScript("OnEnter")
   if onEnter then onEnter(button) end
   scrollIntoView(panel, button)
   return true
+end
+
+function Addon.RefreshGamePadWordFocus(panel, previousSerial, newQuest)
+  local button = focus and panel.wordButtons and panel.wordButtons[focus]
+  if not newQuest and focusSerial == previousSerial and usable(button) and button.key == focusKey then
+    setFocus(panel, focus)
+  else
+    focus, focusSerial, focusKey = nil, nil, nil
+    hideCursor(panel.content)
+  end
 end
 
 local function firstWord(panel)

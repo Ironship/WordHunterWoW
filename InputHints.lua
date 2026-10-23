@@ -150,19 +150,29 @@ function Addon.WindowInputHint(frame)
   return hint
 end
 
-function Addon.ButtonShortcut(button, action, keyboard, pad, below)
+function Addon.ButtonShortcut(button, action, keyboard, pad, inline)
   local hint
-  if below then
+  if inline then
     hint = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    hint:SetPoint("TOPLEFT", button, "BOTTOMLEFT", 0, -1)
-    hint:SetPoint("TOPRIGHT", button, "BOTTOMRIGHT", 0, -1)
-    hint:SetHeight(16)
+    hint:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 4, 3)
+    hint:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -4, 3)
+    hint:SetHeight(12)
     hint:SetWordWrap(false)
     hint:SetMaxLines(1)
     button.shortcutHint = hint
   end
   local function text() return Addon.ShortcutHint(action, keyboard, pad) end
-  Addon.WatchInputHints(button, function() if hint then hint:SetText(text()) end end)
+  Addon.WatchInputHints(button, function()
+    if not hint then return end
+    local keys = text()
+    hint:SetText(keys)
+    local label = button:GetFontString()
+    if label then
+      label:ClearAllPoints()
+      label:SetPoint("CENTER", button, "CENTER", 0, keys ~= "" and 6 or 0)
+    end
+    button:SetHeight(math.max(Addon.RoleButtonHeight(), keys ~= "" and 38 or 0))
+  end)
   button:HookScript("OnEnter", function(self)
     if not GameTooltip then return end
     if GameTooltip:GetOwner() ~= self then

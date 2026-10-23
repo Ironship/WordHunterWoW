@@ -219,3 +219,5 @@ Everything stays on your machine. No uploads.
 The settings window's layout is adapted from [DoesItDie](https://github.com/Ironship/DoesItDie) by Joe Greive (MIT).
 
 MIT licence, see [LICENSE](LICENSE). Issues: [github.com/Ironship/WordHunterWoW](https://github.com/Ironship/WordHunterWoW)
+
+Saving a word keeps its exact position in the current quest: the next shoulder-button press continues to the following word, including repeated words. The editor shows shortcuts inside Save, Cancel, Previous and Next.

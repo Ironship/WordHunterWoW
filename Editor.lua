@@ -225,7 +225,12 @@ function Addon.openEditor(word, context, questId, questTitle, opts)
   -- opened from the list has no quest around it, so the click the panel
   -- recorded is forgotten: Next then starts the panel's quest from its first
   -- word, rather than walking on from a word the editor is no longer showing.
-  if not fromPanel then Addon.lastOpened = nil end
+  if not fromPanel then
+    Addon.lastOpened = nil
+    if Addon.panel and Addon.RefreshGamePadWordFocus then
+      Addon.RefreshGamePadWordFocus(Addon.panel, nil, true)
+    end
+  end
   if Addon.RefreshWordArrows then Addon.RefreshWordArrows() end
   if gated then
     -- The meaning goes in like any other word's. It used to be held back here
@@ -355,7 +360,7 @@ local function saveSelected()
   if (editor.note:GetText() or "") ~= note then editor.note:SetText(note) end
   Addon.updateResetDictionary()
   updateEditorHistory()
-  Addon.refreshPanel()
+  Addon.refreshPanel(true)
   Addon.refreshWordList()
 end
 
@@ -632,7 +637,7 @@ function Addon.createEditor()
     Addon.ButtonShortcut(cancel, "CLOSE", "ESCAPE", outsideRating("PAD2"), true)
     Addon.ButtonShortcut(editor.prevWord, "PREVIOUS", "LEFT", outsideRating("PADLSHOULDER"), true)
     Addon.ButtonShortcut(editor.nextWord, "NEXT", "RIGHT", outsideRating("PADRSHOULDER"), true)
-    Addon.ButtonShortcut(cover.show, nil, nil, "PAD2")
+    Addon.ButtonShortcut(cover.show, nil, nil, "PAD2", true)
     local function refresh()
       local pad = Addon.GamePadHintsEnabled()
       local left = Addon.ShortcutHint(nil, nil, "PADDLEFT")

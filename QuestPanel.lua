@@ -523,7 +523,7 @@ function Addon.RevealSelectedHighlight()
   Addon.HighlightEnglishForWord(selectedHighlight[1], selectedHighlight[2], selectedHighlight[3])
 end
 
-local function refreshPanel()
+local function refreshPanel(preserveWord)
   -- Shadowed for this render, so every measurement below is already in the
   -- player's chosen size.
   local TOKEN_H, TOKEN_STEP = tokenMetrics()
@@ -907,7 +907,20 @@ local function refreshPanel()
   -- layout they belong to: the pool is reused, so an index remembered across a
   -- re-flow would name whatever word landed there.
   panel.wordButtons, panel.wordCount = wordButtons, used
-  panel.layoutSerial = (type(panel.layoutSerial) == "number" and panel.layoutSerial or 0) + 1
+  local previousSerial = panel.layoutSerial
+  panel.layoutSerial = (type(previousSerial) == "number" and previousSerial or 0) + 1
+  -- Saving recolors the same tokens; retain the exact occurrence, including repeated words.
+  local last = Addon.lastOpened
+  local opened = last and wordButtons[last.index]
+  if preserveWord == true and not newQuest and last and last.serial == previousSerial
+      and last.index <= used and opened and opened.key == last.key then
+    last.serial = panel.layoutSerial
+  else
+    Addon.lastOpened = nil
+  end
+  if Addon.RefreshGamePadWordFocus then
+    Addon.RefreshGamePadWordFocus(panel, previousSerial, newQuest or preserveWord ~= true)
+  end
   -- The editor's Previous and Next read this pool; a new layout is a new answer.
   if Addon.RefreshWordArrows then Addon.RefreshWordArrows() end
   -- Anything that draws on top of the laid-out text gets its turn here, once the
