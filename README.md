@@ -223,3 +223,5 @@ MIT licence, see [LICENSE](LICENSE). Issues: [github.com/Ironship/WordHunterWoW]
 Saving a word keeps its exact position in the current quest: the next shoulder-button press continues to the following word, including repeated words. The editor shows shortcuts inside Save, Cancel, Previous and Next.
 
 Quest-list tooltips open to the left of their quest entry while the WordHunter book tabs or Spoken map panel are visible, keeping the right-side controls clear. Native quest text and controller actions are preserved.
+
+Reader footer shortcuts appear inside Play/Stop, Stats, Words and Copy quest. Defaults while the reader has controller input: left-stick click plays/stops Spoken quest audio, right-stick click opens Stats, X opens Words, and View/Back opens Copy quest. All four actions can be assigned in Key Bindings; explicit WordHunter bindings take priority. The footer grows and wraps to fit the shortcut labels at the selected text size.

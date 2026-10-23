@@ -208,9 +208,8 @@ local Addon = WordHunterWoW_Addon
 --   the question   D-pad left/right: rating 1-5    PAD1: rate    PAD2: later
 --
 -- Only presses this file answers are kept from the game; every other one is let
--- through, under the same combat rule the keyboard has (SafePropagate). The
--- sticks are never taken, so walking and looking around keep working with the
--- panel open.
+-- through, under the same combat rule the keyboard has (SafePropagate).
+-- Stick axes keep moving/looking; their clicks activate reader footer actions.
 
 local STATUS_ORDER = { "new", "learning", "known", "ignored" }
 
@@ -572,6 +571,11 @@ local function toggleWordList()
 end
 
 local function inPanel(panel, button)
+  for action, key in pairs(Addon.ReaderPadKeys or {}) do
+    if button == key and (action ~= "PLAY" or (panel.questAudioButton and panel.questAudioButton:IsShown())) then
+      Addon.RunShortcut(action); return true
+    end
+  end
   if button == "PADDLEFT" then return step(panel, -1)
   elseif button == "PADDRIGHT" then return step(panel, 1)
   elseif button == "PADDUP" then return line(panel, 1)

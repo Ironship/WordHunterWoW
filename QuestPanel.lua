@@ -261,11 +261,21 @@ local function layoutActions(m)
     for index, action in ipairs(actions) do row[index] = action end
     row[#row + 1] = playBtn
   end
+  local baseHeight = m.buttonH
   for _, action in ipairs(row) do
     if action.GetFontString then
       chromeFont(action:GetFontString(), "GameFontNormal", "body", m.scale)
     end
+    if Addon.LayoutButtonShortcut then
+      m.buttonH = math.max(m.buttonH, Addon.LayoutButtonShortcut(action, m.scale, baseHeight))
+    end
+  end
+  m.legendBottom = m.legendBottom + m.buttonH - baseHeight
+  for _, action in ipairs(row) do
     local width = action.baseWidth * m.scale
+    local hint = rawget(action, "shortcutHint")
+    if hint then width = math.max(width, (hint:GetStringWidth() or 0) + 12 * m.scale) end
+    width = math.min(width, available)
     action:SetSize(width, m.buttonH)
     action:ClearAllPoints()
     if previous and used + m.buttonGap + width > available then
@@ -1987,7 +1997,6 @@ function Addon.createPanel()
   Addon.RefreshQuestAudioButton = refreshPlayButton
 
   local wordsBtn = Addon.createActionButton(panel, LABELS.wordsButton)
-  if Addon.ButtonShortcut then Addon.ButtonShortcut(wordsBtn, "WORDS", nil, "PAD3") end
   wordsBtn.baseWidth = 52
   wordsBtn:SetScript("OnClick", function()
     if Addon.listFrame and Addon.listFrame:IsShown() then
@@ -1998,7 +2007,6 @@ function Addon.createPanel()
   end)
 
   local statsBtn = Addon.createActionButton(panel, LABELS.statsButton)
-  if Addon.ButtonShortcut then Addon.ButtonShortcut(statsBtn, "STATS") end
   statsBtn.baseWidth = 52
   statsBtn:SetScript("OnClick", function()
     if Addon.statsFrame and Addon.statsFrame:IsShown() then
@@ -2039,6 +2047,11 @@ function Addon.createPanel()
   panel.copyQuestButton = copyQuest
   panel.questAudioButton = playBtn
   panel.catalogActions = { copyQuest, wordsBtn, statsBtn, phase }
+  if Addon.ButtonShortcut then
+    for _, entry in ipairs({ { playBtn, "PLAY" }, { statsBtn, "STATS" }, { wordsBtn, "WORDS" }, { copyQuest, "COPY" } }) do
+      Addon.ButtonShortcut(entry[1], entry[2], nil, Addon.ReaderPadKeys[entry[2]], true)
+    end
+  end
 
   function Addon.ApplyIntegratedLayout()
     if not panel then return end
@@ -2092,11 +2105,7 @@ function Addon.createPanel()
     panel.inputHint:SetPoint("BOTTOMLEFT", 18, 4)
     panel.inputHint:SetJustifyH("LEFT")
     panel.inputHint:SetWordWrap(true)
-    Addon.WatchInputHints(panel, function()
-      if panel.inputHint:GetText() ~= Addon.PanelShortcutText() and Addon.RelayoutPanel then
-        Addon.RelayoutPanel()
-      end
-    end)
+    Addon.WatchInputHints(panel, layoutChrome)
   end
   Addon.ApplyIntegratedLayout()
 end
