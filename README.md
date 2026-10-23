@@ -221,3 +221,5 @@ The settings window's layout is adapted from [DoesItDie](https://github.com/Iron
 MIT licence, see [LICENSE](LICENSE). Issues: [github.com/Ironship/WordHunterWoW](https://github.com/Ironship/WordHunterWoW)
 
 Saving a word keeps its exact position in the current quest: the next shoulder-button press continues to the following word, including repeated words. The editor shows shortcuts inside Save, Cancel, Previous and Next.
+
+Quest-list tooltips open to the left of their quest entry while the WordHunter book tabs or Spoken map panel are visible, keeping the right-side controls clear. Native quest text and controller actions are preserved.

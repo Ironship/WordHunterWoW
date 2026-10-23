@@ -1646,6 +1646,22 @@ function Addon.AttachQuestsLogButton()
   return b
 end
 
+local questTooltipHooked
+local function hookQuestTooltip()
+  if questTooltipHooked or type(EventRegistry) ~= "table"
+      or type(EventRegistry.RegisterCallback) ~= "function" then return end
+  EventRegistry:RegisterCallback("QuestMapLogTitleButton.OnEnter", function(_, button)
+    local tooltip = usableFrame(GameTooltip)
+    if not tooltip or not tooltip:IsShown() or tooltip:GetOwner() ~= button then return end
+    local spoken = usableFrame(rawget(_G, "SpokenZonesPanel"))
+    if not (frameVisible(questsLogButton) or frameVisible(logButton) or frameVisible(spoken)) then return end
+    -- The native right anchor covers the book tabs and Spoken's docked map panel.
+    tooltip:ClearAllPoints()
+    tooltip:SetPoint("TOPRIGHT", button, "TOPLEFT", -12, 0)
+  end, Addon)
+  questTooltipHooked = true
+end
+
 -- Which of Blizzard's functions fired only matters for working out which quest
 -- the player is looking at; the reading itself is the same on every game.
 function Addon.hookQuestUi()
@@ -1653,6 +1669,7 @@ function Addon.hookQuestUi()
   Addon.AttachNpcReaderButton()
   Addon.AttachQuestLogButton()
   if Addon.AttachQuestsLogButton then Addon.AttachQuestsLogButton() end
+  hookQuestTooltip()
   return Compat.HookQuestUi(function(name)
     C_Timer.After(0, function()
       -- Belt and braces for a log that arrived by some route ADDON_LOADED did
