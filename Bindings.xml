@@ -3,6 +3,8 @@
   <Binding name="WORDHUNTERWOW_QUESTS" category="ADDONS">WordHunterWoW_Addon.RunShortcut("QUESTS")</Binding>
   <Binding name="WORDHUNTERWOW_WORDS" category="ADDONS">WordHunterWoW_Addon.RunShortcut("WORDS")</Binding>
   <Binding name="WORDHUNTERWOW_STATS" category="ADDONS">WordHunterWoW_Addon.RunShortcut("STATS")</Binding>
+  <Binding name="WORDHUNTERWOW_PLAY" category="ADDONS">WordHunterWoW_Addon.RunShortcut("PLAY")</Binding>
+  <Binding name="WORDHUNTERWOW_COPY" category="ADDONS">WordHunterWoW_Addon.RunShortcut("COPY")</Binding>
   <Binding name="WORDHUNTERWOW_READING" category="ADDONS">WordHunterWoW_Addon.RunShortcut("READING")</Binding>
   <Binding name="WORDHUNTERWOW_SETTINGS" category="ADDONS">WordHunterWoW_Addon.RunShortcut("SETTINGS")</Binding>
   <Binding name="WORDHUNTERWOW_PREVIOUS" category="ADDONS">WordHunterWoW_Addon.RunShortcut("PREVIOUS")</Binding>

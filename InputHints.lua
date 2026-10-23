@@ -3,9 +3,11 @@ local PREFIX = "WORDHUNTERWOW_"
 local actions = {
   READER = "Toggle quest reader", QUESTS = "Toggle quest library",
   WORDS = "Toggle word list", STATS = "Toggle statistics",
+  PLAY = "Play / stop Spoken quest audio", COPY = "Copy quest text",
   READING = "Toggle reading mode", SETTINGS = "Open settings",
   PREVIOUS = "Previous word", NEXT = "Next word", SAVE = "Save word", CLOSE = "Close window",
 }
+Addon.ReaderPadKeys = { PLAY = "PADLSTICK", STATS = "PADRSTICK", WORDS = "PAD3", COPY = "PADBACK" }
 BINDING_HEADER_WORDHUNTERWOW = "WordHunterWoW"
 for action, label in pairs(actions) do _G["BINDING_NAME_" .. PREFIX .. action] = label end
 BINDING_HEADER_WORDHUNTERVOICE = "QuestWordHunter Voice"
@@ -85,6 +87,11 @@ function Addon.RunShortcut(action)
     else Addon.toggleStats() end
   elseif action == "READING" then Addon.ToggleReadingMode()
   elseif action == "SETTINGS" then Addon.OpenSettings()
+  elseif action == "PLAY" or action == "COPY" then
+    local panel = Addon.panel
+    local key = action == "PLAY" and "questAudioButton" or "copyQuestButton"
+    local button = panel and panel[key]
+    if panel and panel:IsShown() and button and button:IsShown() then click(button) end
   end
 end
 
@@ -150,28 +157,43 @@ function Addon.WindowInputHint(frame)
   return hint
 end
 
+function Addon.LayoutButtonShortcut(button, scale, baseHeight)
+  local hint = rawget(button, "shortcutHint")
+  if not hint then return baseHeight end
+  scale = scale or rawget(button, "shortcutScale") or 1
+  baseHeight = baseHeight or rawget(button, "shortcutBaseHeight") or Addon.RoleButtonHeight()
+  button.shortcutScale, button.shortcutBaseHeight = scale, baseHeight
+  local keys = button.shortcutText()
+  hint:SetText(keys)
+  Addon.ApplyFontRole(hint, "label", scale)
+  hint:ClearAllPoints()
+  hint:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 4 * scale, 3 * scale)
+  hint:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -4 * scale, 3 * scale)
+  hint:SetHeight(0)
+  local hintHeight = math.max(14, (hint:GetStringHeight() or Addon.RoleSize("label", scale)) + 2 * scale)
+  hint:SetHeight(hintHeight)
+  local label = button:GetFontString()
+  if label then
+    label:ClearAllPoints()
+    label:SetPoint("CENTER", button, "CENTER", 0, keys ~= "" and hintHeight / 2 or 0)
+  end
+  local height = math.max(baseHeight, keys ~= "" and (Addon.RoleSize("body", scale) + hintHeight + 12 * scale) or 0)
+  button:SetHeight(height)
+  return height
+end
+
 function Addon.ButtonShortcut(button, action, keyboard, pad, inline)
   local hint
   if inline then
     hint = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    hint:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 4, 3)
-    hint:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -4, 3)
-    hint:SetHeight(12)
     hint:SetWordWrap(false)
     hint:SetMaxLines(1)
     button.shortcutHint = hint
   end
   local function text() return Addon.ShortcutHint(action, keyboard, pad) end
+  button.shortcutText = text
   Addon.WatchInputHints(button, function()
-    if not hint then return end
-    local keys = text()
-    hint:SetText(keys)
-    local label = button:GetFontString()
-    if label then
-      label:ClearAllPoints()
-      label:SetPoint("CENTER", button, "CENTER", 0, keys ~= "" and 6 or 0)
-    end
-    button:SetHeight(math.max(Addon.RoleButtonHeight(), keys ~= "" and 38 or 0))
+    if hint then Addon.LayoutButtonShortcut(button) end
   end)
   button:HookScript("OnEnter", function(self)
     if not GameTooltip then return end
