@@ -37,8 +37,8 @@ function Addon.SideTabShortcut(button, action, pad)
   local icon = button.Icon or (button.GetNormalTexture and button:GetNormalTexture()) or button
   -- Keep the label above the tab art and off the quest list's scrollbar.
   local hint = (button.wordHunterClickTarget or button):CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  hint:SetPoint("RIGHT", icon, "LEFT", -2, 0)
-  hint:SetJustifyH("RIGHT")
+  hint:SetPoint("LEFT", icon, "RIGHT", 2, 0)
+  hint:SetJustifyH("LEFT")
   hint:SetShadowColor(0, 0, 0, 1)
   hint:SetShadowOffset(1, -1)
   Addon.ButtonShortcut(button, action)
