@@ -270,6 +270,12 @@ local function layoutActions(m)
       m.buttonH = math.max(m.buttonH, Addon.LayoutButtonShortcut(action, m.scale, baseHeight))
     end
   end
+  -- Second pass, now that the tallest is known: every button in the row is that
+  -- tall and has its caption and shortcut centred in it, so a button without a
+  -- shortcut line is not left short of the ones that have one.
+  if Addon.LayoutButtonShortcut and m.buttonH > baseHeight then
+    for _, action in ipairs(row) do Addon.LayoutButtonShortcut(action, m.scale, baseHeight, m.buttonH) end
+  end
   m.legendBottom = m.legendBottom + m.buttonH - baseHeight
   for _, action in ipairs(row) do
     local width = action.baseWidth * m.scale
@@ -328,13 +334,17 @@ local function layoutChrome()
     else panel.sourceNote:Hide() end
   end
 
-  chromeFont(panel.title, rawget(panel, "whwNativeStyle") and "QuestTitleFont" or "GameFontNormalLarge", "heading", m.scale)
+  -- One face for both columns' headings. The German one was QuestTitleFont and
+  -- the English one GameFontNormalLarge, so on a client with a replaced game
+  -- font the two titles side by side were two different typefaces.
+  local headingFont = rawget(panel, "whwNativeStyle") and "QuestTitleFont" or "GameFontNormalLarge"
+  chromeFont(panel.title, headingFont, "heading", m.scale)
   panel.title:SetHeight(m.titleH)
   panel.title:ClearAllPoints()
   chromeFont(panel.meta, "GameFontDisableSmall", "meta", m.scale)
   panel.meta:SetHeight(m.metaH)
   panel.meta:ClearAllPoints()
-  chromeFont(panel.enTitle, "GameFontNormalLarge", "heading", en.scale)
+  chromeFont(panel.enTitle, headingFont, "heading", en.scale)
   panel.enTitle:SetHeight(en.titleH)
   if rawget(panel, 'whwNativeStyle') then
     local ink = Addon.ReaderInk(panel)
@@ -347,6 +357,7 @@ local function layoutChrome()
     for _, text in ipairs({ panel.title, panel.enTitle, panel.meta, panel.sourceNote }) do
       text:SetTextColor(unpack(ink)); text:SetShadowColor(0, 0, 0, 0)
     end
+    if panel.inputHint then panel.inputHint:SetTextColor(unpack(palette.muted)) end
     for _, item in ipairs(panel.legend) do
       item.text:SetTextColor(unpack(ink))
       local dot = palette[item.status] or palette.new
@@ -363,7 +374,14 @@ local function layoutChrome()
   panel.enTitle:SetPoint("RIGHT", panel, "CENTER", -12, 0)
   panel.scroll:ClearAllPoints()
   panel.enScroll:ClearAllPoints()
+  local baseButtonH = m.buttonH
   local actionRows, freeWidth, lastAction = layoutActions(m)
+  -- With shortcut lines the buttons are taller than the 26 the line's own offset
+  -- was worked out against, which left it riding above their middle. Put its
+  -- middle on theirs; at the plain height this changes nothing.
+  if m.buttonH > baseButtonH then
+    m.metaFootY = m.footPad + (m.buttonH - m.metaH) / 2
+  end
   -- A narrow footer needs a separate progress row; never reverse its anchors
   -- or put the progress line under the wrapped buttons.
   local progressRow = panel.integratedLayout and (actionRows > 1 or freeWidth <= 8)
@@ -1335,6 +1353,7 @@ local sideTabStrata = { BACKGROUND=1, LOW=2, MEDIUM=3, HIGH=4, DIALOG=5,
   FULLSCREEN=6, FULLSCREEN_DIALOG=7, TOOLTIP=8 }
 local function syncSideTabLayer(button, elapsed)
   if elapsed then
+    button.wordHunterTreeElapsed = (rawget(button, 'wordHunterTreeElapsed') or 0) + elapsed
     button.wordHunterLayerElapsed = (rawget(button, 'wordHunterLayerElapsed') or 0) + elapsed
     if button.wordHunterLayerElapsed < .1 then return end
     button.wordHunterLayerElapsed = 0
@@ -1343,6 +1362,19 @@ local function syncSideTabLayer(button, elapsed)
   if not host then return end
   local strata, level = host:GetFrameStrata(), host:GetFrameLevel()
   if Addon.IsSecretValue and (Addon.IsSecretValue(strata) or Addon.IsSecretValue(level)) then return end
+  -- Native child layers rarely change at rest; avoid walking the tree ten times a second.
+  local cached = rawget(button, "wordHunterLayerCache")
+  if elapsed and cached and cached.host == host and cached.hostStrata == strata and cached.hostLevel == level
+      and button.wordHunterTreeElapsed < 1 then
+    local ownStrata, ownLevel = button:GetFrameStrata(), button:GetFrameLevel()
+    if not Addon.IsSecretValue or not (Addon.IsSecretValue(ownStrata) or Addon.IsSecretValue(ownLevel)) then
+      if ownStrata ~= cached.strata then button:SetFrameStrata(cached.strata) end
+      if ownLevel ~= cached.level then button:SetFrameLevel(cached.level) end
+    end
+    return
+  end
+  local hostStrata, hostLevel = strata, level
+  button.wordHunterTreeElapsed = 0
   local function include(frame)
     local other, otherLevel = frame:GetFrameStrata(), frame:GetFrameLevel()
     -- Retail 12.1.7 can hide strata; retain the last readable layer instead.
@@ -1372,6 +1404,8 @@ local function syncSideTabLayer(button, elapsed)
   if content then include(content) end
 
   level = level + 1
+  button.wordHunterLayerCache = { host = host, hostStrata = hostStrata, hostLevel = hostLevel,
+    strata = strata, level = level }
   local ownStrata, ownLevel = button:GetFrameStrata(), button:GetFrameLevel()
   if (Addon.IsSecretValue and Addon.IsSecretValue(ownStrata)) or ownStrata ~= strata then button:SetFrameStrata(strata) end
   if (Addon.IsSecretValue and Addon.IsSecretValue(ownLevel)) or ownLevel ~= level then button:SetFrameLevel(level) end
@@ -2102,6 +2136,9 @@ function Addon.createPanel()
 
   if Addon.WatchInputHints then
     panel.inputHint = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    -- Small print, so quiet: the gold it came in is the colour of the buttons'
+    -- hover state and of the headings, and a line of key names is neither.
+    panel.inputHint:SetTextColor(unpack(COLORS.muted))
     panel.inputHint:SetPoint("BOTTOMLEFT", 18, 4)
     panel.inputHint:SetJustifyH("LEFT")
     panel.inputHint:SetWordWrap(true)

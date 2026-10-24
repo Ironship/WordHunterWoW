@@ -1456,6 +1456,7 @@ local LATIN_EXTRA_LOWER = {
 
 function Addon.utf8Lower(text)
   text = tostring(text or "")
+  if not text:find("[\128-\255]") then return strlower(text) end
   -- wordKey folds these to ss before lowercasing; search/sort go through here
   -- alone, so without this "strasse" never finds Straße.
   text = text:gsub("ẞ", "ss"):gsub("ß", "ss")
@@ -1914,6 +1915,15 @@ function Addon.ResetLayout()
   if print then print("|cff59aefaWordHunterWoW:|r window positions and sizes reset") end
 end
 
+local function setBoundedSize(frame, width, height)
+  local bounds = rawget(frame, "whwResizeBounds")
+  if bounds then
+    width = math.max(bounds[1], math.min(width, bounds[3] or width))
+    height = math.max(bounds[2], math.min(height, bounds[4] or height))
+  end
+  frame:SetSize(width, height)
+end
+
 function Addon.RestoreFramePosition(frame, key, defaultPoint, defaultX, defaultY, defaultW, defaultH)
   local data = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.frames and WordHunterWoWDB.settings.frames[key]
   -- Checked for shape, not just presence. These values are restored while the
@@ -1925,7 +1935,7 @@ function Addon.RestoreFramePosition(frame, key, defaultPoint, defaultX, defaultY
   if usableFrameData(data) then
     frame:ClearAllPoints()
     frame:SetPoint(data.point, UIParent, data.relPoint or data.point, data.x, data.y)
-    frame:SetSize(data.w, data.h)
+    setBoundedSize(frame, data.w, data.h)
     return true
   end
   if defaultPoint then
@@ -1933,13 +1943,14 @@ function Addon.RestoreFramePosition(frame, key, defaultPoint, defaultX, defaultY
     frame:SetPoint(defaultPoint, UIParent, defaultPoint, defaultX or 0, defaultY or 0)
   end
   if defaultW and defaultH then
-    frame:SetSize(defaultW, defaultH)
+    setBoundedSize(frame, defaultW, defaultH)
   end
   return false
 end
 
 function Addon.MakeResizable(frame, key, minW, minH, maxW, maxH)
   if not frame then return end
+  frame.whwResizeBounds = { minW, minH, maxW, maxH }
   frame:SetResizable(true)
   if frame.SetResizeBounds then
     frame:SetResizeBounds(minW, minH, maxW, maxH)
@@ -1952,6 +1963,9 @@ function Addon.MakeResizable(frame, key, minW, minH, maxW, maxH)
     if frame.SetMinResize then frame:SetMinResize(minW, minH) end
     if frame.SetMaxResize then frame:SetMaxResize(maxW, maxH) end
   end
+  -- Bounds also apply to an old saved size, not only to dragging the grip.
+  local width, height = frame:GetSize()
+  if type(width) == "number" and type(height) == "number" then setBoundedSize(frame, width, height) end
   if not frame.resizeHandle then
     local handle = CreateFrame("Button", nil, frame)
     handle:SetSize(16, 16)

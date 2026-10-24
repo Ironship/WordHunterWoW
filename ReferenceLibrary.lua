@@ -1,10 +1,13 @@
 local Addon = WordHunterWoW_Addon
+Addon.SupportsDictionaryDataModules = true
 
 -- Source editions are learning material, never native quest/cache replacements.
 local function query(value)
   if type(value) ~= "string" then return end
   local source, kind, id = value:match("^reference:([^:]+):([^:]+):(%d+)$")
-  if source then return source, kind, tonumber(id) end
+  if source and (kind == "quest" or kind == "item" or kind == "spell" or kind == "npc") then
+    return source, kind, tonumber(id)
+  end
 end
 
 local function edition(source, kind)
@@ -39,6 +42,8 @@ end
 function Addon.GetReferenceEnglishRecord(value)
   local source, kind, id = query(value)
   if not source then return nil end
+  local ensure = kind == "quest" and Addon.EnsureDictionaryQuestData or Addon.EnsureDictionaryEntityData
+  if ensure then ensure(id, source) end
   local languages = edition(source, kind)
   local row = record(languages, "enUS", id)
   if not row then return nil end
@@ -49,6 +54,8 @@ end
 function Addon.ResolveReferenceQuest(value, locale, phase)
   local source, kind, id = query(value)
   if not source then return nil end
+  local ensure = kind == "quest" and Addon.EnsureDictionaryQuestData or Addon.EnsureDictionaryEntityData
+  if ensure then ensure(id, source) end
   local languages, label = edition(source, kind)
   if not languages then return nil end
   locale = locale or Addon.GetCatalogLocale()
@@ -117,7 +124,8 @@ function Addon.GetQuestLibrarySources()
   return sources
 end
 
-function Addon.GetLibraryQuestSourceRecord(id, locale)
+function Addon.GetLibraryQuestSourceRecord(id, locale, load)
+  if load and Addon.EnsureDictionaryQuestData then Addon.EnsureDictionaryQuestData(id) end
   if locale == "enGB" then locale = "enUS" end
   for _, source in ipairs(Addon.GetQuestLibrarySources()) do
     local rows = source.pack.locales[locale]
@@ -139,7 +147,8 @@ function Addon.GetLibraryViews()
     local languages = edition(source, kind)
     if type(languages) ~= "table" then return end
     local de, en = languages.deDE, languages.enUS
-    if not (type(de) == "table" and next(de) or type(en) == "table" and next(en)) then return end
+    if not (type(de) == "table" and next(de) or type(en) == "table" and next(en))
+        and not (kind == "quest" and Addon.CanLoadDictionaryQuestSource and Addon.CanLoadDictionaryQuestSource(source)) then return end
     local label = bucket.viewLabel or labels[source] or bucket.sourceLabel or bucket.label or source
     if type(label) ~= "string" or label == "" then label = source end
     views[#views + 1] = { key = source .. ":" .. kind, source = source, kind = kind,

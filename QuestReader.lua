@@ -166,6 +166,7 @@ end
 function Addon.GetQuestDatabase(locale)
   locale = locale or Addon.GetCatalogLocale()
   local flavor = Addon.Compat and Addon.Compat.GameFlavor() or "retail"
+  if flavor ~= "retail" and Addon.EnsureDictionaryNativeQuestData then Addon.EnsureDictionaryNativeQuestData() end
   local games = WordHunterWoW_QuestDataByFlavor
   local game = type(games) == "table" and games[flavor]
   local all = WordHunterWoW_QuestData
@@ -241,20 +242,30 @@ local function englishRecord(value)
     record, locale = recordFor(WordHunterWoW_QuestEN, id), "enUS"
   end
   record = databaseRecord(record, flavor, locale)
-  if Addon.GetLibraryQuestSourceRecord then
-    local imported, label = Addon.GetLibraryQuestSourceRecord(id, "enUS")
-    if type(record) ~= "table" then record = imported else record = fillMissing(record, imported, label) end
-  end
+  local nativeSource
   for _, nativeLocale in ipairs({ "enUS", "enGB" }) do
     local observed = Addon.GetObservedQuestTexts and Addon.GetObservedQuestTexts(nativeLocale)
     local native = recordFor(observed, id)
     if hasText(native) then
       if incomplete(native) then native = fillMissing(native, corpusRecord(id, nativeLocale), "collected text") end
-      return fillMissing(native, record, "database"), currentFlavor, nativeLocale, "observed text"
+      record, locale, nativeSource = fillMissing(native, record, "database"), nativeLocale, "observed text"
+      break
     end
     native = corpusRecord(id, nativeLocale)
-    if hasText(native) then return fillMissing(native, record, "database"), currentFlavor, nativeLocale, "collected text" end
+    if hasText(native) then
+      record, locale, nativeSource = fillMissing(native, record, "database"), nativeLocale, "collected text"
+      break
+    end
   end
+  if Addon.GetLibraryQuestSourceRecord then
+    local quest = Addon.lastQuest
+    local phase = quest and quest.id == id and (quest.catalogPhase or quest.passage) or Addon.lastPassage
+    local field = phase == "progress" and "progress" or (phase == "reward" or phase == "completion") and "completion" or "description"
+    if phase == "title" or phase == "sourceObjective" then field = phase end
+    local imported, label = Addon.GetLibraryQuestSourceRecord(id, "enUS", not record or plain(record[field]) == "")
+    if type(record) ~= "table" then record = imported else record = fillMissing(record, imported, label) end
+  end
+  if nativeSource then return record, currentFlavor, locale, nativeSource end
   return record, record and (record.sourceFlavor or record.flavor) or flavor, locale, "database"
 end
 
@@ -305,6 +316,7 @@ function Addon.ResolveCatalogQuest(value, locale, phase)
   if not Addon.SUPPORTED_LOCALES[locale] then return nil end
   if phase == "reward" then phase = "completion" end
   if phase and phase ~= "offer" and phase ~= "progress" and phase ~= "completion" and phase ~= "title" then return nil end
+  if Addon.EnsureDictionaryQuestData then Addon.EnsureDictionaryQuestData(id) end
   local flavor = Addon.Compat and Addon.Compat.GameFlavor() or "retail"
   local localized, databaseFlavor, _, databaseLocale = Addon.GetQuestDatabase(locale)
   local sourceFlavor, sourceLocale = flavor, locale

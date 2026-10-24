@@ -6,6 +6,7 @@ local events = CreateFrame("Frame")
 events:RegisterEvent("ADDON_LOADED")
 events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
+events:RegisterEvent("PLAYER_LOGOUT")
 events:RegisterEvent("QUEST_DETAIL")
 events:RegisterEvent("QUEST_PROGRESS")
 events:RegisterEvent("QUEST_COMPLETE")
@@ -107,6 +108,8 @@ events:SetScript("OnEvent", function(_, event, a1, a2)
     -- quest window opening.
     if Addon.PlayerName then Addon.PlayerName() end
     if Addon.SyncCharacterQuestHistory then Addon.SyncCharacterQuestHistory() end
+  elseif event == "PLAYER_LOGOUT" then
+    if Addon.SyncCharacterQuestHistory then Addon.SyncCharacterQuestHistory() end
   elseif event == "GOSSIP_SHOW" then
     Addon.AttachNpcReaderButton()
     Addon.lastPassage = "gossip"
@@ -145,10 +148,12 @@ events:SetScript("OnEvent", function(_, event, a1, a2)
     end
     refreshCatalogSoon()
   elseif event == "QUEST_LOG_UPDATE" or event == "QUEST_QUERY_COMPLETE" then
-    -- The log changed, or Classic answered the legacy catalogue: re-sync.
-    -- Additive as well -- QUEST_LOG_UPDATE fires constantly and must never
-    -- reach the quest reader through the branch below.
-    if Addon.SyncCharacterQuestHistory then Addon.SyncCharacterQuestHistory() end
+    -- Log notifications are frequent; sync the full history when it is read.
+    if event == "QUEST_LOG_UPDATE" and Addon.InvalidateCharacterQuestHistory then
+      Addon.InvalidateCharacterQuestHistory()
+    elseif Addon.SyncCharacterQuestHistory then
+      Addon.SyncCharacterQuestHistory()
+    end
     refreshCatalogSoon()
   else
     Addon.AttachNpcReaderButton()

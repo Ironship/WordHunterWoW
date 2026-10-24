@@ -1,4 +1,5 @@
 local Addon = WordHunterWoW_Addon
+local unpack = unpack or table.unpack
 local PREFIX = "WORDHUNTERWOW_"
 local actions = {
   READER = "Toggle quest reader", QUESTS = "Toggle quest library",
@@ -147,6 +148,7 @@ end
 
 function Addon.WindowInputHint(frame)
   local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  hint:SetTextColor(unpack(Addon.COLORS.muted))
   hint:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 2)
   hint:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -12, 2)
   hint:SetJustifyH("LEFT")
@@ -157,11 +159,19 @@ function Addon.WindowInputHint(frame)
   return hint
 end
 
-function Addon.LayoutButtonShortcut(button, scale, baseHeight)
-  local hint = rawget(button, "shortcutHint")
-  if not hint then return baseHeight end
+-- A button's caption and its shortcut line are one block, and the block is
+-- centred in the button whatever the button's height turns out to be. That is
+-- what lets a row of buttons share one height: the tallest sets it, and a button
+-- with no shortcut -- Save, on a keyboard -- is simply a caption in the middle
+-- of the same box rather than a short button beside tall ones.
+--
+-- Measuring and placing are separate because the height a group settles on is
+-- only known once every member has been measured.
+local function measureShortcut(button, scale, baseHeight)
   scale = scale or rawget(button, "shortcutScale") or 1
   baseHeight = baseHeight or rawget(button, "shortcutBaseHeight") or Addon.RoleButtonHeight()
+  local hint = rawget(button, "shortcutHint")
+  if not hint then return baseHeight, 0, "", scale end
   button.shortcutScale, button.shortcutBaseHeight = scale, baseHeight
   local keys = button.shortcutText()
   hint:SetText(keys)
@@ -172,14 +182,59 @@ function Addon.LayoutButtonShortcut(button, scale, baseHeight)
   hint:SetHeight(0)
   local hintHeight = math.max(14, (hint:GetStringHeight() or Addon.RoleSize("label", scale)) + 2 * scale)
   hint:SetHeight(hintHeight)
+  local height = math.max(baseHeight, keys ~= "" and (Addon.RoleSize("body", scale) + hintHeight + 12 * scale) or 0)
+  return height, hintHeight, keys, scale
+end
+
+local function placeShortcut(button, height, hintHeight, keys, scale)
+  button:SetHeight(height)
+  local hint = rawget(button, "shortcutHint")
+  if not hint then return end
   local label = button:GetFontString()
+  local lit = keys ~= ""
+  -- Room above and below the block. At the button's own natural height this is
+  -- the 6 pixels the height formula leaves; in a taller row it is more.
+  local rest = lit and (height - Addon.RoleSize("body", scale) - hintHeight) / 2 or 3 * scale
+  hint:ClearAllPoints()
+  hint:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 4 * scale, rest)
+  hint:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -4 * scale, rest)
   if label then
     label:ClearAllPoints()
-    label:SetPoint("CENTER", button, "CENTER", 0, keys ~= "" and hintHeight / 2 or 0)
+    label:SetPoint("CENTER", button, "CENTER", 0, lit and hintHeight / 2 or 0)
   end
-  local height = math.max(baseHeight, keys ~= "" and (Addon.RoleSize("body", scale) + hintHeight + 12 * scale) or 0)
-  button:SetHeight(height)
+end
+
+-- `rowHeight` is the height the row the button is in has settled on; the
+-- button is made at least that tall. A button that belongs to a group (see
+-- GroupButtonShortcuts) works the row height out for itself.
+function Addon.LayoutButtonShortcut(button, scale, baseHeight, rowHeight)
+  local group = rawget(button, "shortcutGroup")
+  if group and rowHeight == nil then
+    local measured, tallest = {}, 0
+    for index, member in ipairs(group) do
+      local height, hintHeight, keys, memberScale = measureShortcut(member, scale, baseHeight)
+      measured[index] = { height, hintHeight, keys, memberScale }
+      tallest = math.max(tallest, height)
+    end
+    for index, member in ipairs(group) do
+      local m = measured[index]
+      placeShortcut(member, tallest, m[2], m[3], m[4])
+    end
+    return tallest
+  end
+  local height, hintHeight, keys, usedScale = measureShortcut(button, scale, baseHeight)
+  if not rawget(button, "shortcutHint") then return height end
+  height = math.max(height, rowHeight or 0)
+  placeShortcut(button, height, hintHeight, keys, usedScale)
   return height
+end
+
+-- Buttons that sit in one row and so have to be one height. Each one still
+-- re-lays the whole row when its own hint changes, which is cheap and keeps the
+-- row from ever being taller than the hints it actually shows.
+function Addon.GroupButtonShortcuts(buttons)
+  for _, button in ipairs(buttons) do button.shortcutGroup = buttons end
+  Addon.LayoutButtonShortcut(buttons[1])
 end
 
 function Addon.ButtonShortcut(button, action, keyboard, pad, inline)
@@ -189,6 +244,7 @@ function Addon.ButtonShortcut(button, action, keyboard, pad, inline)
     hint:SetWordWrap(false)
     hint:SetMaxLines(1)
     button.shortcutHint = hint
+    hint:SetTextColor(0.80, 0.75, 0.64)
   end
   local function text() return Addon.ShortcutHint(action, keyboard, pad) end
   button.shortcutText = text

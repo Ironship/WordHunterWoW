@@ -18,6 +18,7 @@ local Compat = Addon.Compat
 -- never deletes: an old completion survives every re-sync.
 
 local legacyRequested = false
+local historyDirty = false
 
 local function trim(value)
   if Addon.trim then return Addon.trim(value) end
@@ -94,7 +95,12 @@ end
 -- This character's history: numeric quest id -> { completed, accepted, title }.
 -- The live table, answered read-only; {} when the client names nobody.
 function Addon.GetCharacterQuestHistory()
+  if historyDirty then Addon.SyncCharacterQuestHistory() end
   return historyBucket(false) or {}
+end
+
+function Addon.InvalidateCharacterQuestHistory()
+  historyDirty = true
 end
 
 -- Record that this character accepted or completed a quest. Never stores
@@ -274,5 +280,6 @@ function Addon.SyncCharacterQuestHistory()
       end
     end
   end
+  historyDirty = false
   return true
 end
