@@ -724,6 +724,7 @@ function Addon.SetTargetLocale(locale)
   -- Only a language the player picked is ever marked, so the load-time
   -- correction below still reaches the one an old default wrote.
   WordHunterWoWDB.settings.targetLocaleChosen = true
+  Addon.EnsureDictionary(locale)
   Addon.GetWordsTable()
   Addon.rebuildExport()
   if Addon.settingsPanel and Addon.settingsPanel.refresh then
@@ -756,6 +757,41 @@ end
 Addon.DictionaryProviders = Addon.DictionaryProviders or {}
 Addon.DictionaryProviderOrder = Addon.DictionaryProviderOrder or {}
 
+-- The word dictionaries for the other languages ship as load-on-demand add-ons:
+-- each is a 24 to 54 MiB table in memory, and a player learning one language was
+-- carrying every one of them installed. German is not listed because the German
+-- dictionary is also the voice engine's host and loads with the game.
+--
+-- Asked for in three places, so a language is never answered "no entry" just
+-- because its dictionary has not been read yet: at login for the language being
+-- learned, when the player picks another, and -- as the last resort -- by the
+-- first lookup that finds none.
+Addon.DICTIONARY_ADDONS = {
+  esES = "WordHunterWoW-Dictionary-ES", esMX = "WordHunterWoW-Dictionary-ES",
+  frFR = "WordHunterWoW-Dictionary-FR", itIT = "WordHunterWoW-Dictionary-IT",
+  ptBR = "WordHunterWoW-Dictionary-PTBR",
+}
+Addon.dictionaryRequested = Addon.dictionaryRequested or {}
+
+-- True when the language has a dictionary registered. Each add-on is asked for
+-- once: one that is not installed stays not installed until the game restarts, so
+-- asking again on every lookup would be a call per word for nothing.
+function Addon.EnsureDictionary(locale)
+  if Addon.DictionaryProviders[locale] then return true end
+  local name = Addon.DICTIONARY_ADDONS[locale]
+  if not name or Addon.dictionaryRequested[name] then return false end
+  Addon.dictionaryRequested[name] = true
+  local load = (C_AddOns and C_AddOns.LoadAddOn) or LoadAddOn
+  if type(load) ~= "function" then return false end
+  -- Registering a dictionary refreshes the word list and the reader, which is
+  -- right for a pack arriving on its own and wrong in the middle of the refresh
+  -- that asked for it.
+  Addon.dictionaryLoading = true
+  local ok = pcall(load, name)
+  Addon.dictionaryLoading = nil
+  return ok and Addon.DictionaryProviders[locale] ~= nil
+end
+
 function Addon.RegisterDictionaryProvider(locale, providerId, entries)
   if not Addon.SUPPORTED_LOCALES[locale] or type(providerId) ~= "string" or type(entries) ~= "table" then return false end
   if type(Addon.DictionaryProviders[locale]) ~= "table" then Addon.DictionaryProviders[locale] = {} end
@@ -764,6 +800,7 @@ function Addon.RegisterDictionaryProvider(locale, providerId, entries)
     Addon.DictionaryProviderOrder[locale][#Addon.DictionaryProviderOrder[locale] + 1] = providerId
   end
   Addon.DictionaryProviders[locale][providerId] = entries
+  if Addon.dictionaryLoading then return true end
   if Addon.refreshWordList then Addon.refreshWordList() end
   if Addon.panel and Addon.panel:IsShown() and Addon.lastQuest and Addon.refreshPanel then Addon.refreshPanel() end
   return true
@@ -771,6 +808,7 @@ end
 
 function Addon.GetDictionaryEntry(key, locale)
   locale = locale or Addon.GetTargetLocale()
+  if not Addon.DictionaryProviders[locale] then Addon.EnsureDictionary(locale) end
   local providers = Addon.DictionaryProviders[locale]
   local order = Addon.DictionaryProviderOrder[locale]
   if not providers or not order then return nil end
@@ -915,6 +953,7 @@ end
 -- The callback gets the entry as stored; read its status through EffectiveStatus.
 function Addon.ForEachEffectiveWord(fn, locale)
   locale = locale or Addon.GetTargetLocale()
+  if not Addon.DictionaryProviders[locale] then Addon.EnsureDictionary(locale) end
   local providers = Addon.DictionaryProviders[locale] or {}
   local order = Addon.DictionaryProviderOrder[locale] or {}
   local user = Addon.GetWordsTable(locale)
