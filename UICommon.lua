@@ -38,27 +38,66 @@ function Addon.CreateNativeWindow(name, kind, title, parent)
   return CreateFrame("Frame", name, parent, "BackdropTemplate")
 end
 
+-- Where the fill of a native window goes, which is the rectangle of Blizzard's
+-- own Bg in ButtonFrameBaseTemplate (2,-21 / -2,2 in the Retail and Forever
+-- templates) with one correction on the left. Any larger and the fill pokes out
+-- past the frame's art, any smaller and the game shows through the gap; the
+-- first try here used 8,-30 / -8,8 and left a strip along the top, right and
+-- bottom, the second used Bg's own numbers and stuck out on the left.
+--
+-- The left is 5, not 2, because the frame art is not symmetrical: this layout
+-- (ButtonFrameTemplateNoPortrait) puts its left corners 8 outside the frame and
+-- its right ones only 4, so the metal line runs at about 5.7 from the left edge
+-- but at about 1.7 inside the right one (measured off a screenshot at a scale
+-- of 2.0). 5 puts the edge of the fill under the soft shadow that starts the
+-- art; the right already meets the line, and the top and bottom were right.
+--
+-- Anything else drawn under the fill (the settings preview's checkerboard) has
+-- to use this too, or it shows in exactly that gap.
+local FILL_LEFT, FILL_TOP, FILL_RIGHT, FILL_BOTTOM = 5, 21, 2, 2
+
+function Addon.AnchorNativeFill(region, frame)
+  region:ClearAllPoints()
+  region:SetPoint("TOPLEFT", frame, "TOPLEFT", FILL_LEFT, -FILL_TOP)
+  region:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -FILL_RIGHT, FILL_BOTTOM)
+end
+
+-- The size of that rectangle for a window of the given size.
+function Addon.NativeFillSize(width, height)
+  return width - FILL_LEFT - FILL_RIGHT, height - FILL_TOP - FILL_BOTTOM
+end
+
 function Addon.PaintNativeWindow(frame, alpha)
-  if not rawget(frame, "whwNativeStyle") or Addon.GetBackgroundStyle() ~= "native" then return false end
-  local parchment = frame.whwNativeStyle == "reader" and Addon.GetBackgroundStyle() == "native"
+  if not rawget(frame, "whwNativeStyle") then return false end
+  -- Blizzard owns the border; full-frame backdrops bleed past its inset corners.
+  frame:SetBackdrop(nil)
+  for _, name in ipairs({ "Bg", "TopTileStreaks" }) do
+    local region = rawget(frame, name)
+    if region then region:Hide() end
+  end
+  local styleKey = Addon.GetBackgroundStyle()
+  local native = styleKey == "native"
+  local parchment = frame.whwNativeStyle == "reader" and native
   local atlas = parchment and "QuestDetailsBackgrounds" or "collections-background-tile"
   if not rawget(frame, "whwReadingBackground") then
     frame.whwReadingBackground = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
   end
   local bg = frame.whwReadingBackground
-  bg:ClearAllPoints()
-  bg:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -30)
-  bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -8, 8)
-  if hasAtlas(atlas) then
+  Addon.AnchorNativeFill(bg, frame)
+  if native and hasAtlas(atlas) then
     bg:SetAtlas(atlas)
     bg:SetHorizTile(not parchment); bg:SetVertTile(not parchment)
     local tint = parchment and 1 or .32
     bg:SetVertexColor(tint, tint, tint, 1)
-    bg:SetAlpha(alpha or Addon.GetOpacity())
   else
-    local c = parchment and { .90, .77, .55 } or { .10, .08, .06 }
-    bg:SetColorTexture(c[1], c[2], c[3], alpha or Addon.GetOpacity())
+    local style = Addon.BACKGROUNDS[styleKey] or Addon.BACKGROUNDS.midnight
+    local c = style.readingColor or Addon.BACKGROUNDS.midnight.readingColor
+    if native then c = parchment and { .90, .77, .55 } or { .10, .08, .06 } end
+    bg:SetColorTexture(c[1], c[2], c[3], 1)
+    bg:SetVertexColor(1, 1, 1, 1)
   end
+  bg:SetAlpha(alpha or Addon.GetOpacity())
+  frame:SetToplevel(true)
   return true
 end
 
