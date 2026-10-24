@@ -450,7 +450,9 @@ function Addon.createEditor()
   editor.noteScroll = CreateFrame("ScrollFrame", nil, editor, "InputScrollFrameTemplate,BackdropTemplate")
   editor.noteScroll:SetPoint("TOPLEFT", 20, -198)
   editor.noteScroll:SetPoint("TOPRIGHT", -20, -198)
-  editor.noteScroll:SetHeight(48)
+  -- Four pixels taller than it was, to give the text its margin and still show
+  -- three lines.
+  editor.noteScroll:SetHeight(52)
   editor.noteScroll.hideCharCount = true
   InputScrollFrame_OnLoad(editor.noteScroll)
   editor.note = editor.noteScroll.EditBox
