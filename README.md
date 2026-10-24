@@ -187,6 +187,8 @@ You don't have to define every word yourself. A dictionary pack fills them in fo
 | [German](https://github.com/Ironship/WordHunterWoW-Dictionary-DE) | 104,274 words, every one checked by hand |
 | [French](https://github.com/Ironship/WordHunterWoW-Dictionary-FR) · [Spanish](https://github.com/Ironship/WordHunterWoW-Dictionary-ES) · [Italian](https://github.com/Ironship/WordHunterWoW-Dictionary-IT) · [Portuguese](https://github.com/Ironship/WordHunterWoW-Dictionary-PTBR) | machine-translated, not hand-checked |
 
+The French, Spanish, Italian and Portuguese packs load on demand: QuestWordHunter reads the one for the language you are learning at login, or when you pick it in the settings, so the others cost no memory (each is 24 to 54 MiB once loaded). A pack needs QuestWordHunter 1.22.6 or newer for that — an older one never loads it. The German dictionary also hosts the voice engine and loads with the game.
+
 Want the English quest text side by side? That is [English Quest Panel](https://github.com/Ironship/WordHunterWoW-ENPanel). With it installed, pointing at a German word lights up the English sentence that says the same thing, and picks out the English word itself.
 
 ## Helping fill the gaps

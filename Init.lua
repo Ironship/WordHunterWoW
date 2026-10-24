@@ -95,6 +95,9 @@ events:SetScript("OnEvent", function(_, event, a1, a2)
     -- The season only answers reliably once the player is in the world, and
     -- Classic's quest log may have loaded since ADDON_LOADED.
     Addon.Compat.Refresh()
+    -- The dictionary of the language being learned is read here, behind the
+    -- loading screen, rather than by the first word looked up in a quest.
+    if Addon.EnsureDictionary then Addon.EnsureDictionary(Addon.GetTargetLocale()) end
     Addon.hookQuestUi()
     if Addon.hookBookUi then Addon.hookBookUi() end
     -- Remembered now, while the client is sure to answer it, so the collector
