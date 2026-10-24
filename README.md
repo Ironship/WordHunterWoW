@@ -225,3 +225,7 @@ Saving a word keeps its exact position in the current quest: the next shoulder-b
 Quest-list tooltips open to the left of their quest entry while the WordHunter book tabs or Spoken map panel are visible, keeping the right-side controls clear. Native quest text and controller actions are preserved.
 
 Reader footer shortcuts appear inside Play/Stop, Stats, Words and Copy quest. Defaults while the reader has controller input: left-stick click plays/stops Spoken quest audio, right-stick click opens Stats, X opens Words, and View/Back opens Copy quest. All four actions can be assigned in Key Bindings; explicit WordHunter bindings take priority. The footer grows and wraps to fit the shortcut labels at the selected text size.
+
+Action buttons use Blizzard's red 128RedButton style. Save, Cancel, Previous and Next stand at one height with their captions and shortcuts centred, and the status and footer rows stretch with the editor. Text fields share one flat style, both reader headings use the same typeface, and the scroll-bar arrows no longer reappear on columns that overflow. Words uses pages sized to the visible area: resizing and changing pages reuse the result keys, only the current page resolves word entries, and closing the list releases its results.
+
+Quest history refreshes on demand after quest-log notifications, and side-tab layer scans are throttled while their host is unchanged. Dictionary library data loads only when needed; opening the full quest catalog loads its ranges over several frames. Retail and Forever share these paths.

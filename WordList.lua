@@ -6,6 +6,8 @@ local unpack = unpack or table.unpack
 
 local listFrame
 local listFilter = "all"
+local FILTER_MODES = { "all", "new", "learning", "known", "ignored" }
+local ROW_HEIGHT = 23
 
 -- The saved variables are created at ADDON_LOADED, while the slash commands
 -- that reach this file are registered as it loads. A /whw typed on the loading
@@ -27,46 +29,34 @@ local function updateListFilters(view)
   end
 end
 
-local function refreshWordListView(listFrame)
+local function layoutWordListView(listFrame)
   if not listFrame then return end
-  -- And not while it is closed. Rebuilding walks every entry in the dictionary,
-  -- around 74,000 of them, sorts the survivors and lays out the rows. Saving a
-  -- word calls this, so once the list had been opened even once, every save
-  -- paid that cost for a window nobody was looking at -- which is the game
-  -- stuttering on Save, for the rest of the session, because you glanced at the
-  -- word list an hour earlier.
   if not listFrame:IsShown() then return end
   local listRows = rawget(listFrame, "rows") or {}
   listFrame.rows = listRows
-  local listFilter = rawget(listFrame, "wordFilter") or "all"
+  local items = rawget(listFrame, "wordItems") or {}
   local locale = rawget(listFrame, "wordLocale") or Addon.GetTargetLocale()
-  updateListFilters(listFrame)
-  local query = Addon.utf8Lower(Addon.trim(listFrame.search:GetText()))
-  local hideIgnored = hideIgnoredSetting()
-  local items = {}
-  -- Fold the sort key once per surviving row. Doing it inside the comparator
-  -- instead runs it O(n log n) times over a dictionary of ~74k entries.
-  Addon.ForEachEffectiveWord(function(key, entry)
-    local status = Addon.EffectiveStatus(entry)
-    if listFilter ~= "all" and listFilter ~= status then return end
-    if listFilter == "all" and hideIgnored and status == "ignored" then return end
-    local word = entry.word or key
-    local sortKey = Addon.utf8Lower(word)
-    if query ~= "" then
-      local haystack = sortKey .. " " .. Addon.utf8Lower(entry.translation or "")
-      if not haystack:find(query, 1, true) then return end
-    end
-    items[#items + 1] = { key = key, entry = entry, status = status, sortKey = sortKey }
-  end, locale)
-  table.sort(items, function(a, b) return a.sortKey < b.sortKey end)
-  for _, row in ipairs(listRows) do row:Hide() end
-  -- Reachable from outside so a test can measure a row's letters. The rows
-  -- are pooled and file-local, and the size a row is drawn at is now a thing
-  -- worth holding.
-  listFrame.rows = listRows
+  local pageSize = math.max(1, math.floor(listFrame.scroll:GetHeight() / ROW_HEIGHT))
+  local oldSize = rawget(listFrame, "wordPageSize") or pageSize
+  local page = rawget(listFrame, "wordPage") or 1
+  if oldSize ~= pageSize then page = math.floor((page - 1) * oldSize / pageSize) + 1 end
+  local pages = math.max(1, math.ceil(#items / pageSize))
+  page = math.max(1, math.min(page, pages))
+  listFrame.wordPage, listFrame.wordPageSize, listFrame.wordPageCount = page, pageSize, pages
+  local filters = {}
+  for _, mode in ipairs(FILTER_MODES) do filters[#filters + 1] = listFrame.filterButtons[mode] end
+  Addon.SpreadButtons(listFrame, filters, rawget(listFrame, "wordFilterY") or -39,
+    rawget(listFrame, "wordListMargin") or 0, 6)
+  for _, row in ipairs(listRows) do
+    row:Hide()
+    row.entry, row.key = nil, nil
+  end
   local y = 0
-  for index, item in ipairs(items) do
-    if index > 200 then break end
+  local first = (page - 1) * pageSize + 1
+  for index = 1, math.min(pageSize, #items - first + 1) do
+    local key = items[first + index - 1]
+    local entry = Addon.GetEffectiveWord(key, locale)
+    local item = { key = key, entry = entry, status = Addon.EffectiveStatus(entry) }
     local row = listRows[index]
     if not row then
       row = CreateFrame("Button", nil, listFrame.content)
@@ -112,20 +102,83 @@ local function refreshWordListView(listFrame)
     row:SetPoint("TOPLEFT", 0, y)
     row:SetPoint("TOPRIGHT", 0, y)
     row:Show()
-    y = y - 23
+    y = y - ROW_HEIGHT
   end
-  listFrame.content:SetHeight(math.max(1, -y + 16))
-  listFrame.content:SetWidth(math.max(300, listFrame:GetWidth() - 60))
+  listFrame.content:SetHeight(math.max(1, -y))
+  -- The library view is already inset; do not subtract window margins again.
+  listFrame.content:SetWidth(math.max(1, listFrame.scroll:GetWidth()))
+  listFrame.scroll:SetVerticalScroll(0)
   listFrame.scroll:UpdateScrollChildRect()
-  if listFrame.truncated then
-    if #items > 200 then
-      listFrame.truncated:SetText(string.format("showing 200 of %d — search to narrow", #items))
-      listFrame.truncated:Show()
-    else
-      listFrame.truncated:SetText("")
-      listFrame.truncated:Hide()
-    end
+  if rawget(listFrame, "prevPage") then
+    listFrame.prevPage:SetEnabled(page > 1)
+    listFrame.nextPage:SetEnabled(page < pages)
+    listFrame.truncated:SetText(string.format("Page %d / %d\n%d words", page, pages, #items))
+    listFrame.truncated:Show()
   end
+end
+Addon.LayoutWordListView = layoutWordListView
+
+function Addon.StepWordListPage(view, delta)
+  view.wordPage = math.max(1, math.min((rawget(view, "wordPage") or 1) + delta,
+    rawget(view, "wordPageCount") or 1))
+  if Addon.GamePadUI then Addon.GamePadUI.Clear() end
+  layoutWordListView(view)
+end
+
+function Addon.SetupWordListView(view, margin, bottom)
+  view.wordListMargin = margin
+  view.prevPage = Addon.createActionButton(view, LABELS.prevWord)
+  view.prevPage:SetSize(80, Addon.RoleButtonHeight())
+  view.prevPage:SetPoint("BOTTOMLEFT", margin, bottom)
+  view.prevPage:SetScript("OnClick", function() Addon.StepWordListPage(view, -1) end)
+  view.nextPage = Addon.createActionButton(view, LABELS.nextWord)
+  view.nextPage:SetSize(80, Addon.RoleButtonHeight())
+  view.nextPage:SetPoint("BOTTOMRIGHT", -margin, bottom)
+  view.nextPage:SetScript("OnClick", function() Addon.StepWordListPage(view, 1) end)
+  view.truncated:ClearAllPoints()
+  view.truncated:SetPoint("LEFT", view.prevPage, "RIGHT", 8, 0)
+  view.truncated:SetPoint("RIGHT", view.nextPage, "LEFT", -8, 0)
+  view.truncated:SetJustifyH("CENTER")
+  view.scroll:HookScript("OnSizeChanged", function() layoutWordListView(view) end)
+  view.scroll:HookScript("OnMouseWheel", function(_, delta)
+    if delta ~= 0 then Addon.StepWordListPage(view, delta > 0 and -1 or 1) end
+  end)
+  view:HookScript("OnHide", function()
+    view.wordItems = nil
+    for _, row in ipairs(rawget(view, "rows") or {}) do row.entry, row.key = nil, nil end
+  end)
+end
+
+local function refreshWordListView(listFrame)
+  if not listFrame or not listFrame:IsShown() then return end
+  if not rawget(listFrame, "prevPage") then Addon.SetupWordListView(listFrame, 0, 0) end
+  local mode = rawget(listFrame, "wordFilter") or "all"
+  local locale = rawget(listFrame, "wordLocale") or Addon.GetTargetLocale()
+  local query = Addon.utf8Lower(Addon.trim(listFrame.search:GetText()))
+  local hideIgnored = hideIgnoredSetting()
+  if rawget(listFrame, "lastWordQuery") ~= query or rawget(listFrame, "lastWordFilter") ~= mode
+      or rawget(listFrame, "lastWordLocale") ~= locale or rawget(listFrame, "lastHideIgnored") ~= hideIgnored then
+    listFrame.wordPage = 1
+  end
+  listFrame.lastWordQuery, listFrame.lastWordFilter = query, mode
+  listFrame.lastWordLocale, listFrame.lastHideIgnored = locale, hideIgnored
+  updateListFilters(listFrame)
+  -- Keep only existing keys; resolve the handful of visible entries at paint time.
+  local items = {}
+  Addon.ForEachEffectiveWord(function(key, entry)
+    local status = Addon.EffectiveStatus(entry)
+    if mode ~= "all" and mode ~= status then return end
+    if mode == "all" and hideIgnored and status == "ignored" then return end
+    if query ~= "" then
+      local haystack = Addon.utf8Lower((entry.word or key) .. " " .. (entry.translation or ""))
+      if not haystack:find(query, 1, true) then return end
+    end
+    items[#items + 1] = key
+  end, locale)
+  -- Keys are already casefolded by wordKey, including umlauts and eszett.
+  table.sort(items)
+  listFrame.wordItems = items
+  layoutWordListView(listFrame)
 end
 Addon.RefreshWordListView = refreshWordListView
 local function refreshWordList()
@@ -159,21 +212,6 @@ function Addon.toggleWordList()
     Addon.PlaceFrame(listFrame, "list")
     Addon.ApplyWindowScale("listScale")
     Addon.MakeResizable(listFrame, "list", 420, 350, 700, 650)
-    do
-      local debounce
-      listFrame:HookScript("OnSizeChanged", function(self)
-        self.content:SetWidth(math.max(300, self:GetWidth() - 60))
-        self.scroll:UpdateScrollChildRect()
-        if debounce then debounce:Cancel() end
-        debounce = C_Timer.NewTimer(0.15, function()
-          if self:IsShown() then refreshWordList() end
-        end)
-      end)
-      listFrame.resizeHandle:HookScript("OnMouseUp", function()
-        if debounce then debounce:Cancel() end
-        if listFrame:IsShown() then refreshWordList() end
-      end)
-    end
     listFrame:Hide()
 
     local brand = listFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -192,15 +230,7 @@ function Addon.toggleWordList()
     listFrame.search = Addon.CreateSearchBox(listFrame)
     listFrame.search:SetPoint("TOPLEFT", 18, -56)
     listFrame.search:SetPoint("TOPRIGHT", -18, -56)
-    -- Debounced, like the resize above it and for the same reason: a rebuild
-    -- walks every word the player has plus the dictionary behind it, and there
-    -- is no sense doing that for the "S" in "Schwert" when "Sc" is a
-    -- twentieth of a second away. A hundred thousand entries is the size that
-    -- makes this matter; the resize path already had the answer.
-    --
-    -- The same 0.15 rather than a number picked for typing. Two delays doing
-    -- one job in one file is how they start to differ, and 150ms is under what
-    -- a typist notices between keystrokes either way.
+    -- Search changes the results; resizing only lays out the current page.
     do
       local debounce
       Addon.SetSearchChanged(listFrame.search, function(self)
@@ -216,8 +246,8 @@ function Addon.toggleWordList()
     end)
 
     listFrame.filterButtons = {}
-    local modes = { "all", "new", "learning", "known", "ignored" }
-    for index, mode in ipairs(modes) do
+    listFrame.wordFilterY = -94
+    for index, mode in ipairs(FILTER_MODES) do
       local color = mode == "all" and COLORS.neutral or COLORS[mode]
       local button = Addon.createFlatButton(
         listFrame,
@@ -256,20 +286,8 @@ function Addon.toggleWordList()
     listFrame.truncated:Hide()
 
     listFrame.scroll:SetPoint("TOPLEFT", 18, -158)
-    -- Raised from 22 to clear the line under the list. The inset is flush with
-    -- the scroll now, so its border draws inside this edge -- but the footer
-    -- sits at 8 to 20, and a scroll ending at 22 still brings the rule down
-    -- across it.
-    listFrame.scroll:SetPoint("BOTTOMRIGHT", -34, 36)
-    if Addon.WindowInputHint then
-      local inputHint = Addon.WindowInputHint(listFrame)
-      Addon.WatchInputHints(listFrame, function()
-        local padding = Addon.GamePadHintsEnabled() and math.max(36, inputHint:GetStringHeight() + 8) or 0
-        listFrame.scroll:SetPoint("BOTTOMRIGHT", -34, 36 + padding)
-        listFrame.truncated:SetPoint("BOTTOMLEFT", 18, 8 + padding)
-        listFrame.truncated:SetPoint("BOTTOMRIGHT", -34, 8 + padding)
-      end)
-    end
+    -- Keep the content inset clear of the page controls below it.
+    listFrame.scroll:SetPoint("BOTTOMRIGHT", -34, 56)
     listFrame.contentInset = Addon.CreateContentInset(listFrame, listFrame.scroll)
     if listFrame.scroll.SetClipsChildren then listFrame.scroll:SetClipsChildren(true) end
     listFrame.content = CreateFrame("Frame", nil, listFrame.scroll)
@@ -277,7 +295,16 @@ function Addon.toggleWordList()
     listFrame.content:SetHeight(1)
     if listFrame.content.SetClipsChildren then listFrame.content:SetClipsChildren(true) end
     listFrame.scroll:SetScrollChild(listFrame.content)
-
+    Addon.SetupWordListView(listFrame, 18, 12)
+    if Addon.WindowInputHint then
+      local inputHint = Addon.WindowInputHint(listFrame)
+      Addon.WatchInputHints(listFrame, function()
+        local padding = Addon.GamePadHintsEnabled() and math.max(36, inputHint:GetStringHeight() + 8) or 0
+        listFrame.scroll:SetPoint("BOTTOMRIGHT", -34, 56 + padding)
+        listFrame.prevPage:SetPoint("BOTTOMLEFT", 18, 12 + padding)
+        listFrame.nextPage:SetPoint("BOTTOMRIGHT", -18, 12 + padding)
+      end)
+    end
   end
   if listFrame:IsShown() then
     listFrame:Hide()

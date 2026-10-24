@@ -297,7 +297,7 @@ local function createLibraryWords(f)
   end
   view.scroll = Addon.CreateStyledScrollFrame(view)
   view.scroll:SetPoint("TOPLEFT", 0, -79)
-  view.scroll:SetPoint("BOTTOMRIGHT", -16, 24)
+  view.scroll:SetPoint("BOTTOMRIGHT", -16, 48)
   -- A child of the view, not of the frame. It used to hang off the library
   -- frame and be shown and hidden by hand from this view's OnShow and OnHide --
   -- and on the quests tab it was left up, drawing its bottom border straight
@@ -333,6 +333,7 @@ end
 local function refreshView(resetPage)
   local f = questsFrame
   if not f or not f:IsShown() then return end
+  if rawget(f, "loadingDictionary") and f.tab ~= "words" then return end
   local words = f.tab == "words"
   for key, tab in pairs(f.libraryTabs) do
     tab.selected = key == f.tab
@@ -374,6 +375,23 @@ end
 
 function Addon.refreshQuestBrowser()
   if not questsFrame or not questsFrame:IsShown() then return end
+  if questsFrame.tab ~= "words" and Addon.RequestDictionaryQuestCatalog then
+    local ready = Addon.RequestDictionaryQuestCatalog(Addon.refreshQuestBrowser)
+    if not ready or Addon.dictionaryDataError then
+      questsFrame.loadingDictionary = false
+      refreshView(false)
+      questsFrame.loadingDictionary = true
+      for _, row in ipairs(rawget(questsFrame, "rows") or {}) do row:Hide() end
+      questsFrame.empty:SetText(Addon.dictionaryDataError and "Quest library data is unavailable. Restart the game after updating the addon."
+        or "Loading quest library...")
+      questsFrame.empty:Show()
+      questsFrame.prevPage:Disable()
+      questsFrame.nextPage:Disable()
+      questsFrame.pageLabel:SetText("")
+      return
+    end
+  end
+  questsFrame.loadingDictionary = false
   if questsFrame.tab ~= "words" then catalog = buildCatalog(questsFrame.tab) end
   refreshView(false)
 end
@@ -421,7 +439,8 @@ local function layout()
     previous = tab
   end
   if f:IsShown() then
-    if f.tab == "words" then Addon.RefreshWordListView(f.wordsView) else paintRows() end
+    if f.tab == "words" then Addon.LayoutWordListView(f.wordsView)
+    elseif not rawget(f, "loadingDictionary") then paintRows() end
   end
 end
 

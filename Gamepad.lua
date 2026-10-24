@@ -651,8 +651,9 @@ local function dispatch(button)
       return true
     end
     if button == "PADLTRIGGER" or button == "PADRTRIGGER" then
-      local target = button == "PADLTRIGGER" and library.prevPage or library.nextPage
-      if library.tab ~= "words" and target:IsEnabled() then
+      local view = library.tab == "words" and library.wordsView or library
+      local target = button == "PADLTRIGGER" and view.prevPage or view.nextPage
+      if target:IsEnabled() then
         if Addon.GamePadUI then Addon.GamePadUI.Clear() end
         click(target)
       end
@@ -665,6 +666,10 @@ local function dispatch(button)
   local over = firstShown({ "listFrame", "statsFrame" })
   if over then
     if button == "PAD2" or button == "PAD3" then return putAway(over, button) end
+    if over == Addon.listFrame and (button == "PADLTRIGGER" or button == "PADRTRIGGER") then
+      Addon.StepWordListPage(over, button == "PADLTRIGGER" and -1 or 1)
+      return true
+    end
     return Addon.GamePadUI and Addon.GamePadUI.Navigate(over, button) or false
   end
   local panel = Addon.panel

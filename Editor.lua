@@ -402,7 +402,7 @@ function Addon.createEditor()
     return true
   end
   Addon.SetupEscapeClose(editor, arrowKeys)
-  Addon.MakeResizable(editor, "editor", 420, 380, 650, 750)
+  Addon.MakeResizable(editor, "editor", 420, 420, 650, 750)
   Addon.PlaceFrame(editor, "editor")
   Addon.ApplyWindowScale("editorScale")
   editor:Hide()
@@ -447,7 +447,7 @@ function Addon.createEditor()
   note:SetPoint("TOPLEFT", 20, -182)
   note:SetText(LABELS.note)
   editor.noteLabel = note
-  editor.noteScroll = CreateFrame("ScrollFrame", nil, editor, "InputScrollFrameTemplate")
+  editor.noteScroll = CreateFrame("ScrollFrame", nil, editor, "InputScrollFrameTemplate,BackdropTemplate")
   editor.noteScroll:SetPoint("TOPLEFT", 20, -198)
   editor.noteScroll:SetPoint("TOPRIGHT", -20, -198)
   editor.noteScroll:SetHeight(48)
@@ -461,6 +461,7 @@ function Addon.createEditor()
   editor.note:SetAutoFocus(false)
   editor.note:SetMultiLine(true)
   editor.note:SetMaxLetters(1000)
+  Addon.StyleInputField(editor.noteScroll, editor.note)
   editor.note:SetScript("OnEscapePressed", function() Addon.CloseAll() end)
 
   local statusLabel = editor:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -471,8 +472,7 @@ function Addon.createEditor()
   local statuses = { "new", "learning", "known", "ignored" }
   for index, status in ipairs(statuses) do
     local button = Addon.createFlatButton(editor, STATUS_LABELS[status], COLORS[status])
-    button:SetSize(89, Addon.RoleButtonHeight())
-    button:SetPoint("TOPLEFT", 20 + (index - 1) * 95, -278)
+    button:SetHeight(Addon.RoleButtonHeight())
     button.status = status
     button:SetScript("OnClick", function(self)
       Addon.selected.status = self.status
@@ -495,9 +495,7 @@ function Addon.createEditor()
 
   -- Previous and Next, on the bottom row with Cancel and Save and at their
   -- height: the reading controls belong in this window, where the word is.
-  -- Four buttons across the row is what made Cancel and Save 94 wide and sent
-  -- Copy word up beside Reset to dictionary; at the editor's narrowest, 420,
-  -- the row has two pixels to spare.
+  -- Their widths are shared when the editor is resized, like the status row.
   editor.prevWord = Addon.createActionButton(editor, LABELS.prevWord)
   editor.prevWord:SetSize(88, Addon.RoleButtonHeight())
   editor.prevWord:SetPoint("BOTTOMLEFT", 20, 20)
@@ -582,6 +580,24 @@ function Addon.createEditor()
     cover.buttons[score] = button
   end
 
+  -- The status row is as wide as the window is, so it keeps pace with the two
+  -- fields above it when the editor is dragged wider. The ratings are left at
+  -- their own width on purpose: they stand in the same strip for a moment and
+  -- have always kept their size.
+  local function layoutStatusRow()
+    local row = {}
+    for _, status in ipairs(statuses) do row[#row + 1] = editor.statusButtons[status] end
+    Addon.SpreadButtons(editor, row, -278, 20, 6)
+    local width = (editor:GetWidth() - 40 - 3 * 8) / 4
+    for index, button in ipairs({ editor.prevWord, editor.nextWord, cancel, save }) do
+      button:ClearAllPoints()
+      button:SetWidth(width)
+      button:SetPoint("BOTTOMLEFT", editor, "BOTTOMLEFT", 20 + (index - 1) * (width + 8), 20)
+    end
+  end
+  editor:HookScript("OnSizeChanged", layoutStatusRow)
+  layoutStatusRow()
+
   cover.soFar = cover:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   cover.soFar:SetTextColor(unpack(COLORS.muted))
   cover.soFar:SetPoint("TOPRIGHT", -20, -20)
@@ -638,6 +654,10 @@ function Addon.createEditor()
     Addon.ButtonShortcut(editor.prevWord, "PREVIOUS", "LEFT", outsideRating("PADLSHOULDER"), true)
     Addon.ButtonShortcut(editor.nextWord, "NEXT", "RIGHT", outsideRating("PADRSHOULDER"), true)
     Addon.ButtonShortcut(cover.show, nil, nil, "PAD2", true)
+    -- One height for the whole row. Save has no shortcut of its own on a
+    -- keyboard, so on its own it was a short button beside three tall ones, and
+    -- Cancel, anchored to its middle, was sunk below Previous and Next.
+    Addon.GroupButtonShortcuts({ save, cancel, editor.prevWord, editor.nextWord })
     local function refresh()
       local pad = Addon.GamePadHintsEnabled()
       local left = Addon.ShortcutHint(nil, nil, "PADDLEFT")

@@ -154,8 +154,8 @@ function Addon.CreateContentInset(parent, scroll, native)
   inset:SetPoint("TOPLEFT", scroll, "TOPLEFT", -6, 6)
   -- Flush with the scroll's own bottom rather than six pixels below it.
   -- InsetFrameTemplate's border is thick enough to draw inward from there, and
-  -- anything that sits under the scroll -- the word list's "showing 200 of
-  -- 114181" line, the library's pagination row -- had a rule drawn straight
+  -- anything that sits under the scroll -- the word list's page controls,
+  -- the library's pagination row -- had a rule drawn straight
   -- through it. Every caller would otherwise have to leave room for an overhang
   -- it cannot see, and two of them did not.
   inset:SetPoint("BOTTOMRIGHT", scroll, "BOTTOMRIGHT", 14, 0)
@@ -178,7 +178,16 @@ function Addon.CreateStyledScrollFrame(parent)
   bar:SetPoint("BOTTOMLEFT", scroll, "BOTTOMRIGHT", 6, 0)
   for _, name in ipairs({ "ScrollUpButton", "ScrollDownButton", "Top", "Bottom", "Middle" }) do
     local region = rawget(bar, name)
-    if region then region:Hide() end
+    if region then
+      region:Hide()
+      -- The template shows its two arrows again every time the scroll range
+      -- changes, which is whenever the text overflows -- so the column with
+      -- more text than room grew arrows and the one that fitted did not. Hiding
+      -- them once was never going to last; they are hidden whenever shown.
+      if name:find("Button", 1, true) and region.HookScript then
+        region:HookScript("OnShow", function(self) self:Hide() end)
+      end
+    end
   end
   local function threePieces(anchor, layer, names)
     local top = bar:CreateTexture(nil, layer)
@@ -278,14 +287,61 @@ function Addon.createFlatButton(parent, text, color)
   return button
 end
 
+local WHITE = "Interface\\Buttons\\WHITE8X8"
+
 function Addon.createActionButton(parent, text)
-  local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+  -- SharedButtonTemplate uses Blizzard's 128RedButton art and scales its caps.
+  local template = hasAtlas("128-RedButton-Left") and "SharedButtonTemplate" or "UIPanelButtonTemplate"
+  local button = CreateFrame("Button", nil, parent, template)
   button:SetText(text)
   return button
 end
 
+-- Matching text fields in place of the game's bevelled InputBoxTemplate art.
+-- The editor's two fields did not even match each other:
+-- one carried the single-line frame and the other the thicker scroll-box frame.
+-- Done only when the frame can carry a backdrop; otherwise the template's own
+-- border is left exactly as it was, because a field with neither is invisible.
+local FIELD_FILL, FIELD_EDGE, FIELD_FOCUS = { 0.04, 0.05, 0.06, 1 }, { 0.35, 0.37, 0.42, 1 }, { 1, 0.82, 0, 1 }
+
+function Addon.StyleInputField(frame, editBox)
+  if not frame.SetBackdrop then return false end
+  frame:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+  frame:SetBackdropColor(FIELD_FILL[1], FIELD_FILL[2], FIELD_FILL[3], FIELD_FILL[4])
+  frame:SetBackdropBorderColor(FIELD_EDGE[1], FIELD_EDGE[2], FIELD_EDGE[3], FIELD_EDGE[4])
+  -- Only the template's own border pieces: they are the frame's regions, while
+  -- the text, the scroll bar and the caret all live on child frames or on the
+  -- edit box itself.
+  for _, region in ipairs({ frame:GetRegions() }) do
+    if region.GetObjectType and region:GetObjectType() == "Texture" then region:Hide() end
+  end
+  editBox:HookScript("OnEditFocusGained", function()
+    frame:SetBackdropBorderColor(FIELD_FOCUS[1], FIELD_FOCUS[2], FIELD_FOCUS[3], FIELD_FOCUS[4])
+  end)
+  editBox:HookScript("OnEditFocusLost", function()
+    frame:SetBackdropBorderColor(FIELD_EDGE[1], FIELD_EDGE[2], FIELD_EDGE[3], FIELD_EDGE[4])
+  end)
+  return true
+end
+
+-- Equal-width buttons across a window's width, `margin` in from both sides. The
+-- status row was laid out at a fixed 95 pixels a step, which is
+-- exactly the width of an editor nobody has resized: stretch the window and the
+-- fields beside them grew while the row stayed put against the left edge.
+function Addon.SpreadButtons(frame, buttons, y, margin, gap)
+  local count = #buttons
+  if count == 0 then return end
+  local width = (frame:GetWidth() - 2 * margin - gap * (count - 1)) / count
+  if width < 1 then return end
+  for index, button in ipairs(buttons) do
+    button:ClearAllPoints()
+    button:SetWidth(width)
+    button:SetPoint("TOPLEFT", frame, "TOPLEFT", margin + (index - 1) * (width + gap), y)
+  end
+end
+
 function Addon.createEditBox(parent)
-  local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+  local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate,BackdropTemplate")
   box:SetFontObject("ChatFontNormal")
   -- For the family and the colour only. ChatFontNormal's size is whatever the
   -- player set for their chat window, which is not a decision anybody made
@@ -296,6 +352,9 @@ function Addon.createEditBox(parent)
   Addon.ApplyFontRole(box, "body")
   box:SetAutoFocus(false)
   box:SetHeight(28)
+  -- The template drew its text against its own bevel; with a flat edge the
+  -- letters need the room back.
+  if Addon.StyleInputField(box, box) then box:SetTextInsets(7, 7, 0, 0) end
   return box
 end
 
@@ -424,7 +483,7 @@ function Addon.showCopyText(title, value, hint, opener)
     copyDialog.hint:SetPoint("TOPRIGHT", -20, -52)
     copyDialog.hint:SetJustifyH("LEFT")
 
-    copyDialog.scroll = CreateFrame("ScrollFrame", nil, copyDialog, "InputScrollFrameTemplate")
+    copyDialog.scroll = CreateFrame("ScrollFrame", nil, copyDialog, "InputScrollFrameTemplate,BackdropTemplate")
     -- Under the hint rather than at a fixed offset, so a hint that wraps pushes
     -- the box down instead of being covered by it. The export's hint is three
     -- times the length of the generic one and only just fits on a line.
@@ -440,6 +499,7 @@ function Addon.showCopyText(title, value, hint, opener)
     Addon.ApplyFontRole(copyDialog.text, "body")
     copyDialog.text:SetMultiLine(true)
     copyDialog.text:SetAutoFocus(false)
+    Addon.StyleInputField(copyDialog.scroll, copyDialog.text)
     -- 0 means "no letters" on some clients, not "unlimited". A harvest blob is
     -- tens of kilobytes; the default cap is 255 and the box looks empty.
     if copyDialog.text.SetMaxLetters then copyDialog.text:SetMaxLetters(1024 * 1024) end
