@@ -302,19 +302,18 @@ end
 -- one carried the single-line frame and the other the thicker scroll-box frame.
 -- Done only when the frame can carry a backdrop; otherwise the template's own
 -- border is left exactly as it was, because a field with neither is invisible.
-local FIELD_FILL, FIELD_EDGE, FIELD_FOCUS = { 0.04, 0.05, 0.06, 1 }, { 0.35, 0.37, 0.42, 1 }, { 1, 0.82, 0, 1 }
+local FIELD_FILL, FIELD_EDGE, FIELD_FOCUS = { 0.10, 0.12, 0.17, 1 }, { 0.45, 0.49, 0.57, 1 }, { 1, 0.82, 0, 1 }
 
 function Addon.StyleInputField(frame, editBox)
   if not frame.SetBackdrop then return false end
-  frame:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
-  frame:SetBackdropColor(FIELD_FILL[1], FIELD_FILL[2], FIELD_FILL[3], FIELD_FILL[4])
-  frame:SetBackdropBorderColor(FIELD_EDGE[1], FIELD_EDGE[2], FIELD_EDGE[3], FIELD_EDGE[4])
-  -- Only the template's own border pieces: they are the frame's regions, while
-  -- the text, the scroll bar and the caret all live on child frames or on the
-  -- edit box itself.
+  -- Hide template art before creating the backdrop, or its new textures vanish too.
   for _, region in ipairs({ frame:GetRegions() }) do
     if region.GetObjectType and region:GetObjectType() == "Texture" then region:Hide() end
   end
+  frame:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+  if NineSliceUtil and NineSliceUtil.ShowLayout then NineSliceUtil.ShowLayout(frame) end
+  frame:SetBackdropColor(FIELD_FILL[1], FIELD_FILL[2], FIELD_FILL[3], FIELD_FILL[4])
+  frame:SetBackdropBorderColor(FIELD_EDGE[1], FIELD_EDGE[2], FIELD_EDGE[3], FIELD_EDGE[4])
   editBox:HookScript("OnEditFocusGained", function()
     frame:SetBackdropBorderColor(FIELD_FOCUS[1], FIELD_FOCUS[2], FIELD_FOCUS[3], FIELD_FOCUS[4])
   end)
