@@ -353,6 +353,10 @@ function Addon.StyleInputField(frame, editBox)
   if NineSliceUtil and NineSliceUtil.ShowLayout then NineSliceUtil.ShowLayout(frame) end
   frame:SetBackdropColor(FIELD_FILL[1], FIELD_FILL[2], FIELD_FILL[3], FIELD_FILL[4])
   frame:SetBackdropBorderColor(FIELD_EDGE[1], FIELD_EDGE[2], FIELD_EDGE[3], FIELD_EDGE[4])
+  -- A scroll box's text is a separate edit box laid over the frame, and with the
+  -- bevel gone nothing kept it off the edge: the first letter sat on the border
+  -- and blurred into it. The single-line box gets its room in createEditBox.
+  if editBox ~= frame then editBox:SetTextInsets(7, 7, 4, 4) end
   editBox:HookScript("OnEditFocusGained", function()
     frame:SetBackdropBorderColor(FIELD_FOCUS[1], FIELD_FOCUS[2], FIELD_FOCUS[3], FIELD_FOCUS[4])
   end)
