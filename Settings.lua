@@ -1049,7 +1049,10 @@ function Addon.CreateSettingsPanel()
   local checker = preview:CreateTexture(nil, "BACKGROUND", nil, 0)
   window.previewChecker = checker
   checker:SetTexture("Interface\\AddOns\\WordHunterWoW\\Textures\\checker", "REPEAT", "REPEAT")
-  checker:SetAllPoints(preview)
+  -- Under the reading surface, so over the same rectangle and no further: drawn
+  -- across the whole frame it showed in the strip around the surface and past
+  -- the frame's rounded corners.
+  Addon.AnchorNativeFill(checker, preview)
   local tileFlags = checker.SetHorizTile and checker.SetVertTile and true or false
   if tileFlags then
     checker:SetHorizTile(true)
@@ -1251,7 +1254,8 @@ function Addon.CreateSettingsPanel()
     if not tileFlags then
       -- Clients without the tile flags repeat the texture through texture
       -- coordinates past 1, which the REPEAT wrap mode allows.
-      checker:SetTexCoord(0, MOCK_W / CHECKER_TILE, 0, height / CHECKER_TILE)
+      local fillW, fillH = Addon.NativeFillSize(MOCK_W, height)
+      checker:SetTexCoord(0, fillW / CHECKER_TILE, 0, fillH / CHECKER_TILE)
     end
   end
 
