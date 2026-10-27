@@ -1351,69 +1351,124 @@ end
 
 local sideTabStrata = { BACKGROUND=1, LOW=2, MEDIUM=3, HIGH=4, DIALOG=5,
   FULLSCREEN=6, FULLSCREEN_DIALOG=7, TOOLTIP=8 }
+
+-- Spoken's panel beside the map and the tab that reopens it, under the names
+-- it has had. In Forever's gamepad UI they hang from UIParent, outside the map.
+local SPOKEN_MAP_FRAMES = { "SpokenPlacesPanel", "SpokenPlacesPanelToggle",
+  "SpokenZonesPanel", "SpokenZonesPanelToggle" }
+
+local function isSecret(value)
+  return Addon.IsSecretValue and Addon.IsSecretValue(value) or false
+end
+
+-- Retail 12.1.7 can hide strata; nil then, and the tab keeps its last layer.
+local function readableLayer(frame)
+  local strata, level = frame:GetFrameStrata(), frame:GetFrameLevel()
+  if isSecret(strata) or isSecret(level) then return nil end
+  return strata, level
+end
+
+local function overlapsOnScreen(a, b)
+  local al, ab, aw, ah = a:GetRect()
+  local bl, bb, bw, bh = b:GetRect()
+  local as, bs = a:GetEffectiveScale(), b:GetEffectiveScale()
+  for _, v in ipairs({ al, ab, aw, ah, bl, bb, bw, bh, as, bs }) do
+    if isSecret(v) or type(v) ~= "number" then return false end
+  end
+  al, ab, aw, ah = al * as, ab * as, aw * as, ah * as
+  bl, bb, bw, bh = bl * bs, bb * bs, bw * bs, bh * bs
+  return al < bl + bw and bl < al + aw and ab < bb + bh and bb < ab + ah
+end
+
+local function sideTabLayer(button, host)
+  local strata, level
+  local tab = rawget(button, "wordHunterLayerTab")
+  if tab then
+    -- Hung under one of the game's own side tabs, it stands in that tab's
+    -- layer: a window that covers the game's tabs covers this one too.
+    strata, level = readableLayer(tab)
+    if not strata then return nil end
+  else
+    strata, level = readableLayer(host)
+    if not strata then return nil end
+    -- The map draws its border on a child with a strata of its own.
+    local border = usableFrame(rawget(host, "BorderFrame"))
+    local borderStrata, borderLevel
+    if border then borderStrata, borderLevel = readableLayer(border) end
+    if borderStrata and (sideTabStrata[borderStrata] or 0) > (sideTabStrata[strata] or 0) then
+      strata, level = borderStrata, borderLevel
+    end
+    -- Above the window's art in its strata. A child in a higher one (a menu, a
+    -- map pin, another addon's panel) is a layer of its own, and following it
+    -- put the tab over every window in front of this one.
+    local function include(frame)
+      local other, otherLevel = readableLayer(frame)
+      if other == strata and otherLevel > level then level = otherLevel end
+      if type(frame.GetChildren) == "function" then
+        for _, child in ipairs({ frame:GetChildren() }) do
+          if child:IsShown() then include(child) end
+        end
+      end
+    end
+    include(host)
+    level = level + 1
+  end
+  -- Over Spoken's map panel and its tab, rim and all, only where they cover
+  -- this tab: Spoken makes room only for tabs it can see, and where the game's
+  -- are hidden it lays its panel where these hang.
+  if host == WorldMapFrame then
+    local function clear(frame)
+      local other, otherLevel = readableLayer(frame)
+      if other and (sideTabStrata[other] or 0) > (sideTabStrata[strata] or 0) then
+        strata, level = other, otherLevel + 1
+      elseif other == strata and otherLevel >= level then
+        level = otherLevel + 1
+      end
+      if type(frame.GetChildren) == "function" then
+        for _, child in ipairs({ frame:GetChildren() }) do
+          if child:IsShown() then clear(child) end
+        end
+      end
+    end
+    for _, name in ipairs(SPOKEN_MAP_FRAMES) do
+      local dock = usableFrame(rawget(_G, name))
+      if dock and dock:IsShown() and overlapsOnScreen(button, dock) then clear(dock) end
+    end
+  end
+  return strata, level
+end
+
 local function syncSideTabLayer(button, elapsed)
   if elapsed then
-    button.wordHunterTreeElapsed = (rawget(button, 'wordHunterTreeElapsed') or 0) + elapsed
     button.wordHunterLayerElapsed = (rawget(button, 'wordHunterLayerElapsed') or 0) + elapsed
+    -- The tab's own layer is all that needs watching ten times a second; the
+    -- window's art rarely moves, so its tree is walked once a second.
+    button.wordHunterTreeElapsed = (rawget(button, 'wordHunterTreeElapsed') or 0) + elapsed
     if button.wordHunterLayerElapsed < .1 then return end
     button.wordHunterLayerElapsed = 0
   end
   local host = rawget(button, "wordHunterLayerHost")
   if not host then return end
-  local strata, level = host:GetFrameStrata(), host:GetFrameLevel()
-  if Addon.IsSecretValue and (Addon.IsSecretValue(strata) or Addon.IsSecretValue(level)) then return end
-  -- Native child layers rarely change at rest; avoid walking the tree ten times a second.
   local cached = rawget(button, "wordHunterLayerCache")
-  if elapsed and cached and cached.host == host and cached.hostStrata == strata and cached.hostLevel == level
+  local strata, level
+  if elapsed and cached and cached.host == host and not rawget(button, "wordHunterLayerTab")
       and button.wordHunterTreeElapsed < 1 then
-    local ownStrata, ownLevel = button:GetFrameStrata(), button:GetFrameLevel()
-    if not Addon.IsSecretValue or not (Addon.IsSecretValue(ownStrata) or Addon.IsSecretValue(ownLevel)) then
-      if ownStrata ~= cached.strata then button:SetFrameStrata(cached.strata) end
-      if ownLevel ~= cached.level then button:SetFrameLevel(cached.level) end
-    end
-    return
+    strata, level = cached.strata, cached.level
+  else
+    button.wordHunterTreeElapsed = 0
+    strata, level = sideTabLayer(button, host)
+    if not strata then return end
+    button.wordHunterLayerCache = { host = host, strata = strata, level = level }
   end
-  local hostStrata, hostLevel = strata, level
-  button.wordHunterTreeElapsed = 0
-  local function include(frame)
-    local other, otherLevel = frame:GetFrameStrata(), frame:GetFrameLevel()
-    -- Retail 12.1.7 can hide strata; retain the last readable layer instead.
-    if not Addon.IsSecretValue or not (Addon.IsSecretValue(other) or Addon.IsSecretValue(otherLevel)) then
-      if (sideTabStrata[other] or 0) > (sideTabStrata[strata] or 0) then
-        strata, level = other, otherLevel
-      elseif other == strata then
-        level = math.max(level, otherLevel)
-      end
-    end
-    if type(frame.GetChildren) == "function" then
-      for _, child in ipairs({ frame:GetChildren() }) do
-        if child:IsShown() then include(child) end
-      end
-    end
-  end
-  -- Window artwork may live on children with their own strata and levels.
-  include(host)
-  -- Spoken docks these to UIParent in Forever's gamepad mode, outside the map tree.
-  if host == WorldMapFrame then
-    for _, name in ipairs({ "SpokenZonesPanel", "SpokenZonesPanelToggle" }) do
-      local dock = usableFrame(_G[name])
-      if dock and dock:IsShown() then include(dock) end
-    end
-  end
-  local content = rawget(button, "wordHunterLayerContent")
-  if content then include(content) end
-
-  level = level + 1
-  button.wordHunterLayerCache = { host = host, hostStrata = hostStrata, hostLevel = hostLevel,
-    strata = strata, level = level }
   local ownStrata, ownLevel = button:GetFrameStrata(), button:GetFrameLevel()
-  if (Addon.IsSecretValue and Addon.IsSecretValue(ownStrata)) or ownStrata ~= strata then button:SetFrameStrata(strata) end
-  if (Addon.IsSecretValue and Addon.IsSecretValue(ownLevel)) or ownLevel ~= level then button:SetFrameLevel(level) end
+  if isSecret(ownStrata) or ownStrata ~= strata then button:SetFrameStrata(strata) end
+  if isSecret(ownLevel) or ownLevel ~= level then button:SetFrameLevel(level) end
 end
 
-local function followSideTabHost(button, host, content)
+-- `tab` is the game's side tab this one hangs under, when there is one.
+local function followSideTabHost(button, host, tab)
   button.wordHunterLayerHost = host
-  button.wordHunterLayerContent = content
+  button.wordHunterLayerTab = tab
   button:SetScript("OnUpdate", syncSideTabLayer)
   syncSideTabLayer(button)
 end
@@ -1564,7 +1619,7 @@ function Addon.RefreshQuestLogButton()
   Addon.RefreshNpcReaderButton()
   if not logButton then return end
   if not questsLogButton or not questsLogRoot then logButton:Hide(); return end
-  followSideTabHost(logButton, questsLogRoot, rawget(questsLogButton, "wordHunterLayerContent"))
+  followSideTabHost(logButton, questsLogRoot, rawget(questsLogButton, "wordHunterLayerTab"))
   logButton:ClearAllPoints()
   logButton:SetPoint("TOPLEFT", questsLogButton, "BOTTOMLEFT", 0, -8)
   logButton:SetScale(questsLogButton:GetScale())
@@ -1626,7 +1681,7 @@ function Addon.RefreshQuestsLogButton()
       if tab and (not anchor or tab:IsShown()) then anchor = tab end
     end
   end
-  followSideTabHost(b, questsLogRoot, anchor or host)
+  followSideTabHost(b, questsLogRoot, anchor)
   b:ClearAllPoints()
   if anchor then
     -- Reserve a neighbour at -3, its 32px height, and an 8px gap (Lorever).
@@ -1697,7 +1752,7 @@ local function hookQuestTooltip()
   EventRegistry:RegisterCallback("QuestMapLogTitleButton.OnEnter", function(_, button)
     local tooltip = usableFrame(GameTooltip)
     if not tooltip or not tooltip:IsShown() or tooltip:GetOwner() ~= button then return end
-    local spoken = usableFrame(rawget(_G, "SpokenZonesPanel"))
+    local spoken = usableFrame(rawget(_G, "SpokenPlacesPanel")) or usableFrame(rawget(_G, "SpokenZonesPanel"))
     if not (frameVisible(questsLogButton) or frameVisible(logButton) or frameVisible(spoken)) then return end
     -- The native right anchor covers the book tabs and Spoken's docked map panel.
     tooltip:ClearAllPoints()
