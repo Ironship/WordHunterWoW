@@ -99,6 +99,10 @@ Addon.WH_LANGUAGE_MAP = {
 Addon.LABELS = {
   meaning = "Meaning / translation",
   note = "Note",
+  -- Beside the word in the editor when it is one half of a split verb: the
+  -- verb, its particle, the word they make together, and that word's meaning.
+  splitVerb = "%s … %s = %s: %s",
+  splitVerbBare = "%s … %s = %s",
   copyWord = "Copy word",
   copyQuest = "Copy quest",
   copyHint = "Press Ctrl+C to copy",
@@ -1344,6 +1348,163 @@ function Addon.FlattenTokens(text)
   return tokens
 end
 
+-- English words are compared by their stem, so a gloss saying "finds" lights
+-- "findings", "reported" lights "report" and "goes" lights "Go". The stem is
+-- Porter's (1980), after a short list of irregular forms no suffix rule can
+-- reach: "found" is "find", "went" is "go". Both sides of every comparison go
+-- through it, so what it has to be is consistent rather than linguistically
+-- right -- and it has to stay identical to the copy in the tool that builds
+-- the alignment lexicons, whose English side is stored as these stems.
+local EN_IRREGULAR = {}
+for base, forms in ([[go=went,gone,goes,going be=am,is,are,was,were,been,being have=has,had,having
+do=does,did,done,doing find=found see=saw,seen bring=brought fight=fought slay=slain,slew tell=told
+take=took,taken give=gave,given come=came make=made send=sent hold=held keep=kept lose=lost lead=led
+speak=spoke,spoken think=thought seek=sought buy=bought catch=caught teach=taught build=built
+know=knew,known begin=began,begun fall=fell,fallen stand=stood run=ran write=wrote,written eat=ate,eaten
+draw=drew,drawn fly=flew,flown grow=grew,grown throw=threw,thrown choose=chose,chosen break=broke,broken
+steal=stole,stolen freeze=froze,frozen hide=hid,hidden feed=fed meet=met pay=paid say=said hear=heard
+feel=felt deal=dealt mean=meant lie=lying,lay,lain,lies,lied die=dying,dies,died tie=tying,ties,tied
+man=men woman=women child=children foot=feet tooth=teeth mouse=mice goose=geese dwarf=dwarves elf=elves
+wolf=wolves thief=thieves knife=knives half=halves win=won strike=struck swear=swore,sworn tear=tore,torn
+wear=wore,worn ride=rode,ridden shoot=shot sell=sold stick=stuck hang=hung dig=dug flee=fled bleed=bled
+bind=bound wake=woke,woken awake=awoke,awoken forget=forgot,forgotten forgive=forgave,forgiven
+understand=understood withdraw=withdrew,withdrawn overcome=overcame undertake=undertook,undertaken
+foresee=foresaw,foreseen mistake=mistook,mistaken sink=sank,sunk sing=sang,sung swim=swam,swum
+drink=drank,drunk shake=shook,shaken forsake=forsook,forsaken weave=wove,woven bend=bent lend=lent
+spend=spent creep=crept sleep=slept sweep=swept weep=wept kneel=knelt light=lit become=became
+behold=beheld arise=arose,arisen north=northern south=southern east=eastern west=western]]):gmatch("(%a+)=([%a,]+)") do
+  for form in forms:gmatch("%a+") do EN_IRREGULAR[form] = base end
+end
+
+local function isConsonant(w, i)
+  local c = w:byte(i)
+  if c == 97 or c == 101 or c == 105 or c == 111 or c == 117 then return false end
+  if c == 121 then return i == 1 or not isConsonant(w, i - 1) end
+  return true
+end
+
+-- Porter's m: how many vowel-consonant runs the first j letters hold.
+local function measure(w, j)
+  local n, i = 0, 1
+  while i <= j and isConsonant(w, i) do i = i + 1 end
+  while i <= j do
+    while i <= j and not isConsonant(w, i) do i = i + 1 end
+    if i > j then break end
+    while i <= j and isConsonant(w, i) do i = i + 1 end
+    n = n + 1
+  end
+  return n
+end
+
+local function hasVowel(w, j)
+  for i = 1, j do
+    if not isConsonant(w, i) then return true end
+  end
+  return false
+end
+
+-- Consonant, vowel, consonant ending at letter j, the last not w, x or y.
+local function endsCVC(w, j)
+  if j < 3 then return false end
+  local c = w:byte(j)
+  return isConsonant(w, j - 2) and not isConsonant(w, j - 1) and isConsonant(w, j)
+    and c ~= 119 and c ~= 120 and c ~= 121
+end
+
+local function endsWith(w, suffix)
+  return #w >= #suffix and w:sub(-#suffix) == suffix
+end
+
+local STEM_STEP2 = { { "ational", "ate" }, { "tional", "tion" }, { "enci", "ence" }, { "anci", "ance" },
+  { "izer", "ize" }, { "bli", "ble" }, { "alli", "al" }, { "entli", "ent" }, { "eli", "e" },
+  { "ousli", "ous" }, { "ization", "ize" }, { "ation", "ate" }, { "ator", "ate" }, { "alism", "al" },
+  { "iveness", "ive" }, { "fulness", "ful" }, { "ousness", "ous" }, { "aliti", "al" },
+  { "iviti", "ive" }, { "biliti", "ble" }, { "logi", "log" } }
+local STEM_STEP3 = { { "icate", "ic" }, { "ative", "" }, { "alize", "al" }, { "iciti", "ic" },
+  { "ical", "ic" }, { "ful", "" }, { "ness", "" } }
+local STEM_STEP4 = { { "al" }, { "ance" }, { "ence" }, { "er" }, { "ic" }, { "able" }, { "ible" },
+  { "ant" }, { "ement" }, { "ment" }, { "ent" }, { "ion" }, { "ou" }, { "ism" }, { "ate" },
+  { "iti" }, { "ous" }, { "ive" }, { "ize" } }
+
+-- The longest listed suffix the word ends with is the one that decides, as in
+-- Porter's own code: when its condition fails no shorter one is tried.
+local function deciding(w, list)
+  local best
+  for _, entry in ipairs(list) do
+    if endsWith(w, entry[1]) and (not best or #entry[1] > #best[1]) then best = entry end
+  end
+  return best
+end
+
+local function porter(w)
+  if #w <= 2 then return w end
+  if endsWith(w, "sses") or endsWith(w, "ies") then
+    w = w:sub(1, -3)
+  elseif not endsWith(w, "ss") and endsWith(w, "s") then
+    w = w:sub(1, -2)
+  end
+  local stripped = false
+  if endsWith(w, "eed") then
+    if measure(w, #w - 3) > 0 then w = w:sub(1, -2) end
+  elseif endsWith(w, "ed") and hasVowel(w, #w - 2) then
+    w, stripped = w:sub(1, -3), true
+  elseif endsWith(w, "ing") and hasVowel(w, #w - 3) then
+    w, stripped = w:sub(1, -4), true
+  end
+  if stripped then
+    if endsWith(w, "at") or endsWith(w, "bl") or endsWith(w, "iz") then
+      w = w .. "e"
+    elseif #w >= 2 and w:byte(-1) == w:byte(-2) and isConsonant(w, #w) and not w:find("[lsz]$") then
+      w = w:sub(1, -2)
+    elseif measure(w, #w) == 1 and endsCVC(w, #w) then
+      w = w .. "e"
+    end
+  end
+  if endsWith(w, "y") and hasVowel(w, #w - 1) then w = w:sub(1, -2) .. "i" end
+  for _, list in ipairs({ STEM_STEP2, STEM_STEP3 }) do
+    local entry = deciding(w, list)
+    if entry and measure(w, #w - #entry[1]) > 0 then w = w:sub(1, #w - #entry[1]) .. entry[2] end
+  end
+  local entry = deciding(w, STEM_STEP4)
+  if entry then
+    local j = #w - #entry[1]
+    if measure(w, j) > 1 and (entry[1] ~= "ion" or (j > 0 and w:sub(j, j):find("[st]") ~= nil)) then
+      w = w:sub(1, j)
+    end
+  end
+  if endsWith(w, "e") then
+    local m = measure(w, #w - 1)
+    if m > 1 or (m == 1 and not endsCVC(w, #w - 1)) then w = w:sub(1, -2) end
+  end
+  if endsWith(w, "ll") and measure(w, #w) > 1 then w = w:sub(1, -2) end
+  return w
+end
+
+-- Words Porter would fold into an English function word -- use into us, ore
+-- into or, one into on -- which a gloss would then find in "help us".
+local EN_FIXED = { use = "use", used = "use", uses = "use", using = "use", useful = "useful",
+  ore = "ore", ores = "ore", one = "one", ones = "one", willing = "willing", beings = "being",
+  herring = "herring" }
+
+local stemCache, stemCacheSize = {}, 0
+
+-- key is a word already through wordKey: lower case, outer punctuation gone.
+function Addon.EnglishStem(key)
+  key = tostring(key or "")
+  local cached = stemCache[key]
+  if cached then return cached end
+  local stem = key:gsub("'s$", ""):gsub("\226\128\153s$", "")
+  if EN_FIXED[stem] then
+    stem = EN_FIXED[stem]
+  else
+    stem = EN_IRREGULAR[stem] or stem
+    if stem:find("^[a-z]+$") then stem = porter(stem) end
+  end
+  if stemCacheSize > 20000 then stemCache, stemCacheSize = {}, 0 end
+  stemCache[key], stemCacheSize = stem, stemCacheSize + 1
+  return stem
+end
+
 -- One typo apart. Only for words long enough that a single letter cannot turn
 -- one word into another, and only behind a five-letter shared opening: that is
 -- what keeps refuge/refuse and head/heal apart while letting a hand-typed
@@ -1367,16 +1528,24 @@ end
 local function glossKeyMatches(enKey, glossKey, tolerant)
   if enKey == "" or glossKey == "" then return false end
   if enKey == glossKey then return true end
-  if #glossKey < 4 or #enKey < 4 then return false end
-  -- Only regular English endings, never arbitrary prefixes (head/headmaster).
-  if enKey == glossKey .. "s" then return true end
-  if glossKey:find("[sxz]$") or glossKey:find("[cs]h$") then
-    if enKey == glossKey .. "es" then return true end
-  elseif glossKey:find("[^aeiou]y$") and enKey == glossKey:sub(1, -2) .. "ies" then
+  -- Same stem, never a bare prefix: head is not headmaster, art not artifact,
+  -- but "goes" is "Go" and "was" is "is".
+  if #glossKey >= 2 and #enKey >= 2 and Addon.EnglishStem(enKey) == Addon.EnglishStem(glossKey) then
     return true
   end
   return tolerant and withinOneEdit(enKey, glossKey) or false
 end
+
+-- The words a gloss is made of that say something. A gloss of several words
+-- -- "fork in the road", "to the east" -- is matched whole first; when the
+-- translator used only part of it, the part that carries the meaning is what
+-- may light up, and "the" or "in" never are.
+local EN_FUNCTION_WORDS = {}
+for word in ([[a an the of to in on at for with by from and or but be am is are was were been being have has
+had do does did it its this that these those i you he she we they me him her us them my your his our their
+not no so as if then there here what who whom which when where why how will would can could shall should may
+might must up out all some any into about over back off than too also very just only own such each other both
+either neither one]]):gmatch("%S+") do EN_FUNCTION_WORDS[word] = true end
 
 local function senseWords(sense)
   local words = {}
@@ -1402,78 +1571,616 @@ local function addSenses(packed, seen, translation)
   end
 end
 
-function Addon.MatchEnglishTokenIndexes(enSentence, deWord, occurrence, locale)
-  local tokens = Addon.FlattenTokens(enSentence)
-  if #tokens == 0 then return {} end
+-- Alignment lexicons: for a word of the language being learned, the English
+-- words translators actually used for it across the game's own quest texts.
+-- A dictionary gloss names one or two meanings and a translator picks
+-- whichever reads well -- "möchte" is "would like" in the dictionary and
+-- "want" in the quest, "Vorbote" is "harbinger" and "herald" -- so a word the
+-- gloss does not name used to light nothing at all. Kept apart from the
+-- dictionary because it is not a meaning to show anyone: only a list of
+-- English stems (EnglishStem) with how often, in percent, each one stood for
+-- the word: entries["möchte"] = "want 63 wish 6".
+Addon.AlignmentLexicons = Addon.AlignmentLexicons or {}
+
+function Addon.RegisterAlignmentLexicon(locale, providerId, entries)
+  if not Addon.SUPPORTED_LOCALES[locale] or type(providerId) ~= "string" or type(entries) ~= "table" then return false end
+  if type(Addon.AlignmentLexicons[locale]) ~= "table" then Addon.AlignmentLexicons[locale] = {} end
+  Addon.AlignmentLexicons[locale][providerId] = entries
+  return true
+end
+
+-- Sentence links: for German sentences of the game's own quest texts, the
+-- English words a multilingual language model paired with words the glosses and
+-- the lexicon leave unlit -- "fabelhafte Schätze" is "great treasures" in that
+-- one sentence and in no dictionary. Worked out once, outside the game, for
+-- the very sentence pairs MatchEnglishSentence makes; a sentence the pack does
+-- not know lights as it always did. entries[SentenceLinkKey(tokens)] =
+-- "m n i j i j ...": the sentence's German and English word counts, then
+-- German word i -> English token j.
+Addon.SentenceLinks = Addon.SentenceLinks or {}
+
+function Addon.RegisterSentenceLinks(locale, providerId, entries)
+  if not Addon.SUPPORTED_LOCALES[locale] or type(providerId) ~= "string" or type(entries) ~= "table" then return false end
+  if type(Addon.SentenceLinks[locale]) ~= "table" then Addon.SentenceLinks[locale] = {} end
+  Addon.SentenceLinks[locale][providerId] = entries
+  return true
+end
+
+-- The words the key leaves out: the game writes the character's name, class
+-- and race where the stored texts say {name}, {class} and {race}.
+local function characterWords()
+  local out = {}
+  local name = Addon.PlayerName and Addon.PlayerName()
+  if name then out[Addon.wordKey(name)] = true end
+  for _, read in ipairs({ UnitClass, UnitRace }) do
+    if type(read) == "function" then
+      local ok, value = pcall(read, "player")
+      if ok and type(value) == "string" and not (Addon.IsSecretValue and Addon.IsSecretValue(value)) then
+        out[Addon.wordKey(value)] = true
+      end
+    end
+  end
+  return out
+end
+
+-- Two running hashes over the sentence's words, so the key is short. Both stay
+-- below 2^53 at every step, where Lua's numbers are still exact, and below 2^31,
+-- so %x formats them alike in every client.
+function Addon.SentenceLinkKey(tokens)
+  local skip = characterWords()
+  local h1, h2 = 5381, 7
+  for _, token in ipairs(tokens) do
+    local key = Addon.wordKey(Addon.cleanWord(token))
+    if key ~= "" and not token:find("{", 1, true) and not skip[key] then
+      for c = 1, #key do
+        local b = key:byte(c)
+        h1 = (h1 * 33 + b) % 2147483647
+        h2 = (h2 * 131 + b) % 2147483629
+      end
+      h1 = (h1 * 33 + 32) % 2147483647
+      h2 = (h2 * 131 + 32) % 2147483629
+    end
+  end
+  return string.format("%x.%x", h1, h2)
+end
+
+local function sentenceLinks(tokens, m, n, locale)
+  local registered = Addon.SentenceLinks[locale or Addon.GetTargetLocale()]
+  if type(registered) ~= "table" or not next(registered) then return nil end
+  local key = Addon.SentenceLinkKey(tokens)
+  for _, entries in pairs(registered) do
+    local packed = entries[key]
+    if type(packed) == "string" then
+      local numbers = {}
+      for v in packed:gmatch("%d+") do numbers[#numbers + 1] = tonumber(v) end
+      -- Same words, same counts: anything else is another sentence after all.
+      if numbers[1] == m and numbers[2] == n then
+        local out = {}
+        for k = 3, #numbers - 1, 2 do out[numbers[k]] = numbers[k + 1] end
+        return out
+      end
+    end
+  end
+  return nil
+end
+
+local function lexiconStems(key, locale)
+  local found = {}
+  local lexicons = Addon.AlignmentLexicons[locale or Addon.GetTargetLocale()]
+  if type(lexicons) ~= "table" then return found end
+  for _, entries in pairs(lexicons) do
+    local packed = entries[key]
+    if type(packed) == "string" then
+      for stem, share in packed:gmatch("(%S+)%s+(%d+)") do
+        share = tonumber(share) / 100
+        if not found[stem] or found[stem] < share then found[stem] = share end
+      end
+    end
+  end
+  return found
+end
+
+-- Everything that may stand for one word on the English side, strongest first.
+-- Every gloss anyone holds for the word counts, not only the one that wins the
+-- lookup. GetEffectiveWord answers with the player's own entry whenever they
+-- have saved one, which meant that editing the meaning -- rewording it, or
+-- adding a single letter -- took the dictionary's wording out of the match and
+-- the English word quietly stopped lighting up. An edit may add a way to
+-- match; it must never remove one.
+local function wordCandidates(deWord, locale)
   local key = Addon.wordKey(deWord)
   local packed, seen = {}, {}
-  -- Every gloss anyone holds for this word, not only the one that wins the
-  -- lookup. GetEffectiveWord answers with the player's own entry whenever they
-  -- have saved one, which meant that editing the meaning -- rewording it, or
-  -- adding a single letter -- took the dictionary's wording out of the match
-  -- and the English word quietly stopped lighting up. An edit may add a way to
-  -- match; it must never remove one.
   local own = Addon.GetWordsTable and Addon.GetWordsTable(locale)[key]
   if own then addSenses(packed, seen, own.translation) end
   local dict = Addon.GetDictionaryEntry and Addon.GetDictionaryEntry(key, locale)
   if dict then addSenses(packed, seen, dict.translation) end
   -- A proper noun is spelled the same in both languages and its gloss, when it
-  -- has one, is itself: Azshara stays Azshara.
-  if #key >= 3 then addSenses(packed, seen, deWord) end
-  local ranked = {}
-  for i, sense in ipairs(packed) do
-    ranked[i] = { sense = sense, words = senseWords(sense), i = i }
+  -- has one, is itself: Azshara stays Azshara. Only for a word nobody has
+  -- glossed, though: German shares too many spellings with English that mean
+  -- something else -- war, will, also, Gift, Kind -- and once the dictionary
+  -- has said what one means, its look-alike in the English is a false friend.
+  local alike
+  if #key >= 3 then
+    if #packed == 0 then
+      addSenses(packed, seen, deWord)
+    elseif not seen[Addon.utf8Lower(Addon.trim(deWord))] then
+      -- ...but the look-alike may still be the word: Form is glossed "shape"
+      -- and the English says "in the form of". It goes in as the weakest
+      -- claim there is, so any real gloss in the sentence takes the English
+      -- word first -- and German "Krieg" claims "war" long before German
+      -- "war" (was) could.
+      alike = key
+    end
   end
-  table.sort(ranked, function(a, b)
+  local phrases = {}
+  for i, sense in ipairs(packed) do
+    local words = senseWords(sense)
+    if #words > 0 then phrases[#phrases + 1] = { sense = sense, words = words, i = i } end
+  end
+  table.sort(phrases, function(a, b)
     if #a.words ~= #b.words then return #a.words > #b.words end
     if #a.sense ~= #b.sense then return #a.sense > #b.sense end
     return a.i < b.i
   end)
-  local function findHits(words, tolerant)
-    if #words == 0 then return {} end
-    local hits = {}
-    for i = 1, #tokens - #words + 1 do
-      local ok = true
+  return phrases, lexiconStems(key, locale), key, alike
+end
+
+local function englishSide(enSentence)
+  local tokens = Addon.FlattenTokens(enSentence)
+  local keys, stems = {}, {}
+  for i, token in ipairs(tokens) do
+    keys[i] = Addon.wordKey(token)
+    stems[i] = keys[i] ~= "" and Addon.EnglishStem(keys[i]) or ""
+  end
+  return keys, stems
+end
+
+-- How strongly position counts. Two words at the same relative place in their
+-- sentences keep their whole score; at opposite ends a link keeps about a
+-- fifth of it. German puts its verbs last where English does not, so this
+-- only decides between rivals -- a gloss match nobody else wants is taken
+-- wherever it is.
+local DIAGONAL = 1.6
+-- A lexicon stem below this, after position, is a guess rather than a link.
+local LEXICON_FLOOR = 0.25
+-- What a small word gains from sitting next to its neighbour's English.
+local NEIGHBOUR = 2
+
+-- Every place the candidates of one word land in the sentence, as
+-- { start, len, score }. 1 is the whole of a gloss, 0.8 a gloss one typo away,
+-- 0.6 the meaningful word of a longer gloss, 0.5 the same spelling, and a
+-- lexicon stem 0.2 to 0.6 by how often translators chose it. Appended to
+-- `out` when one is given; `weight` scales the gloss matches.
+local function placements(phrases, lexicon, enKeys, enStems, alike, out, weight)
+  out, weight = out or {}, weight or 1
+  if alike then
+    for i = 1, #enKeys do
+      if enKeys[i] == alike then out[#out + 1] = { start = i, len = 1, score = 0.5 * weight } end
+    end
+  end
+  for _, phrase in ipairs(phrases) do
+    local words = phrase.words
+    for i = 1, #enKeys - #words + 1 do
+      local exact, near = true, true
       for j, w in ipairs(words) do
-        if not glossKeyMatches(Addon.wordKey(tokens[i + j - 1]), w, tolerant) then
-          ok = false
-          break
+        local enKey = enKeys[i + j - 1]
+        if not glossKeyMatches(enKey, w, false) then
+          exact = false
+          if not glossKeyMatches(enKey, w, true) then near = false break end
         end
       end
-      if ok then hits[#hits + 1] = { start = i, len = #words } end
+      if exact then
+        out[#out + 1] = { start = i, len = #words, score = (1 + #words / 100) * weight }
+      elseif near then
+        out[#out + 1] = { start = i, len = #words, score = 0.8 * weight }
+      end
     end
-    return hits
-  end
-  local function collect(tolerant)
-    local chosen, occupied = {}, {}
-    for _, item in ipairs(ranked) do
-      for _, hit in ipairs(findHits(item.words, tolerant)) do
-        local overlaps = false
-        for i = hit.start, hit.start + hit.len - 1 do
-          if occupied[i] then overlaps = true end
-        end
-        if not overlaps then
-          chosen[#chosen + 1] = hit
-          for i = hit.start, hit.start + hit.len - 1 do occupied[i] = true end
+    if #words > 1 then
+      for _, w in ipairs(words) do
+        if not EN_FUNCTION_WORDS[w] and #w >= 3 then
+          local stem = Addon.EnglishStem(w)
+          for i = 1, #enKeys do
+            if enStems[i] == stem then out[#out + 1] = { start = i, len = 1, score = 0.6 * weight } end
+          end
         end
       end
     end
-    table.sort(chosen, function(a, b) return a.start < b.start end)
-    return chosen
   end
-  local chosen = collect(false)
-  -- Second pass only when the sentence held nothing the gloss names exactly.
-  -- A near miss must never take a token away from an exact one.
-  if #chosen == 0 then chosen = collect(true) end
+  for stem, share in pairs(lexicon) do
+    for i = 1, #enKeys do
+      if enStems[i] == stem then out[#out + 1] = { start = i, len = 1, score = 0.2 + 0.4 * share } end
+    end
+  end
+  return out
+end
+
+-- The old way, kept for a caller that has only the word and not the German
+-- sentence around it: the occurrence-th place in text order where anything the
+-- word may stand for appears. A gloss match first; a near miss only when there
+-- is none, and the lexicon only when there is neither.
+local function matchWordAlone(enSentence, deWord, occurrence, locale)
+  local enKeys, enStems = englishSide(enSentence)
+  if #enKeys == 0 then return {} end
+  local phrases, lexicon, _, alike = wordCandidates(deWord, locale)
+  local found = placements(phrases, lexicon, enKeys, enStems, alike)
+  local chosen
+  for _, band in ipairs({ { 1, 99 }, { 0.8, 1 }, { 0, 0.8 } }) do
+    local inBand = {}
+    for _, hit in ipairs(found) do
+      if hit.score >= band[1] and hit.score < band[2] and hit.score >= LEXICON_FLOOR then
+        inBand[#inBand + 1] = hit
+      end
+    end
+    table.sort(inBand, function(a, b)
+      if a.score ~= b.score then return a.score > b.score end
+      return a.start < b.start
+    end)
+    chosen = {}
+    local occupied = {}
+    for _, hit in ipairs(inBand) do
+      local free = true
+      for i = hit.start, hit.start + hit.len - 1 do
+        if occupied[i] then free = false end
+      end
+      if free then
+        chosen[#chosen + 1] = hit
+        for i = hit.start, hit.start + hit.len - 1 do occupied[i] = true end
+      end
+    end
+    if #chosen > 0 then break end
+  end
+  table.sort(chosen, function(a, b) return a.start < b.start end)
   -- ponytail: occurrence order is only a hint across languages; do not clamp
-  -- a missing occurrence to a different word. Exact links need bilingual data.
+  -- a missing occurrence to a different word.
   local hit = chosen[occurrence or 1]
   if not hit then return {} end
   local set = {}
-  for i = hit.start, hit.start + hit.len - 1 do
-    set[i] = true
-  end
+  for i = hit.start, hit.start + hit.len - 1 do set[i] = true end
   return set
+end
+
+-- Articles, pronouns, prepositions, auxiliaries: every sentence has several
+-- and so does its English, and position alone pairs them badly -- "ein
+-- Bergbauexperte" is "A mining expert", not the "a" of "take a look" that
+-- happens to sit where "ein" sits. They are placed after the words with
+-- meaning, beside whichever of their neighbours already has its English.
+local SMALL_WORDS = {}
+for word in ([[der die das den dem des ein eine einen einem einer eines kein keine keinen keinem keiner
+im ins am ans zum zur vom beim aufs in an auf aus bei mit nach von vor zu für über unter durch gegen
+ohne um bis seit und oder aber doch denn sondern dass ob wenn als wie weil da damit ich du er sie es wir
+ihr mich mir dich dir ihn ihm ihnen uns euch sich man mein meine meinen meinem meiner meines dein deine
+deinen deinem deiner sein seine seinen seinem seiner seines ihre ihren ihrem ihrer ihres unser unsere
+unseren unserem unserer euer eure euren eurem eurer eures ist sind bin bist seid sei war waren wart hat
+habe habt haben hast hatte hatten wird werden wirst werdet wurde wurden worden kann können könnt muss
+müssen müsst soll sollen sollt will wollen wollt nicht noch schon nur auch so ja dies diese dieser
+diesen diesem dieses]]):gmatch("%S+") do SMALL_WORDS[word] = true end
+
+-- The particles German splits off a verb and sends to the end of the clause.
+-- "Kehrt zu Lor'themar zurück" is zurückkehren, return; its first word alone
+-- is kehren, sweep, and its last alone is "back". Neither half means what the
+-- sentence says, so each half is read as the whole verb.
+local SEPARABLE = {}
+for word in ([[ab an auf aus bei dar ein fest fort frei her heran herauf heraus herbei herein herüber herum
+herunter hervor hin hinab hinauf hinaus hinein hinüber hinunter hinweg hinzu hoch los mit nach nieder vor
+voran voraus vorbei vorüber weg weiter wieder zu zurecht zurück zusammen entgegen empor bereit bekannt
+kaputt offen fertig heim entlang auseinander teil statt kennen inne]]):gmatch("%S+") do SEPARABLE[word] = true end
+
+-- Never the verb a particle was split from. "die rohe Macht des Chaos aus" is
+-- strahlt ... aus, not Macht; "an der Wand an" is not "ander"; "Bitte stattet
+-- ihm einen Besuch ab" is stattet ... ab, not Abbitte.
+local NOT_A_VERB = {}
+for word in ([[der die das den dem des ein eine einen einem einer eines kein keine keinen keinem keiner
+ich du er sie es wir ihr mich mir dich dir ihn ihm ihnen uns euch sich man mein meine meinen meinem meiner
+meines dein deine deinen deinem deiner sein seine seinen seinem seiner seines ihre ihren ihrem ihrer ihres
+unser unsere unseren unserem unserer euer eure euren eurem eurer eures dies diese dieser diesen diesem
+dieses im ins am ans zum zur vom beim in an auf aus bei mit nach von vor zu für über unter durch gegen
+ohne um bis seit und oder aber doch denn sondern dass ob wenn als wie weil da damit bitte]]):gmatch("%S+") do
+  NOT_A_VERB[word] = true
+end
+
+local COORDINATORS = { und = true, oder = true, aber = true, sondern = true, denn = true, doch = true }
+
+local function endsClause(token)
+  local bare = token:gsub("[\"'%)%]>]+$", "")
+  for _, mark in ipairs({ "“", "”", "»", "«" }) do bare = stripMark(bare, mark) end
+  return bare:find("[%.,;:!?]$") ~= nil or bare:sub(-3) == ELLIPSIS
+end
+
+-- "Spürt die Gnolle auf und tötet sie": a particle also ends its clause where
+-- "und", "oder", ... start the next one, which German writes with no comma --
+-- unless another particle follows, as in "ab und zu", "auf und ab", "hin und
+-- her", which are no verb's halves.
+local function beforeCoordinator(tokens, j)
+  local nextKey = tokens[j + 1] and Addon.wordKey(tokens[j + 1])
+  if not (nextKey and COORDINATORS[nextKey]) then return false end
+  local after = tokens[j + 2] and Addon.wordKey(tokens[j + 2])
+  return not (after and SEPARABLE[after])
+end
+
+-- The second particle of such a pair: "Er geht auf und ab." is not abgehen.
+local function closesParticlePair(tokens, j)
+  local before = tokens[j - 1] and Addon.wordKey(tokens[j - 1])
+  if not (before and COORDINATORS[before]) then return false end
+  local first = tokens[j - 2] and Addon.wordKey(tokens[j - 2])
+  return (first and SEPARABLE[first]) == true
+end
+
+-- Lower case, by the first letter: a capital mid-clause is a noun. ä ö ü are
+-- C3 A4, C3 B6, C3 BC; their capitals sit below C3 A0.
+local function startsLower(word)
+  local a, b = word:byte(1, 2)
+  return (a and a >= 97 and a <= 122) or (a == 195 and b and b >= 160) or false
+end
+
+-- The dictionary word for particle and verb together: the split form joined
+-- up when the dictionary has it ("kehrt" + "zurück" is "zurückkehrt"), or
+-- else the particle with the infinitive the verb's own note names -- "hebe",
+-- "present tense of heben", with "auf" is aufheben, where the dictionary has
+-- no "aufhebe".
+local function wholeVerb(particle, key, locale)
+  if not Addon.GetDictionaryEntry then return nil end
+  if Addon.GetDictionaryEntry(particle .. key, locale) then return particle .. key end
+  local entry = Addon.GetDictionaryEntry(key, locale)
+  local note = entry and type(entry.note) == "string" and entry.note or ""
+  -- Lower-case letters, ä ö ü ß included (C3 A4, C3 B6, C3 BC, C3 9F).
+  for lemma in note:gmatch("of ([a-z\195\159\164\182\188]+)") do
+    -- Keys write ß as ss: "of reißen" with "auf" is aufreissen.
+    lemma = lemma:gsub("\195\159", "ss")
+    if lemma:sub(-1) == "n" and Addon.GetDictionaryEntry(particle .. lemma, locale) then
+      return particle .. lemma
+    end
+  end
+  return nil
+end
+
+-- Adverbs ending in -t that may open a coordinated clause without being its
+-- verb: "und nicht ... an", "und jetzt ... los".
+local NOT_OWN_VERB = {}
+for word in ([[nicht jetzt gut selbst erst zuerst sofort bereits längst meist zumindest fast sonst oft
+recht weit leicht bestimmt zuletzt nebst samt bisher]]):gmatch("%S+") do NOT_OWN_VERB[word] = true end
+
+-- "Geht nach Morgenluft und klärt ... auf": the clause after und/oder starts
+-- with its own finite verb, so the particle is not borrowed by an earlier
+-- one (that made aufgeht). Not when that word stands right before the
+-- particle ("sieht verwirrt und verängstigt aus") or is an adverb.
+local function ownVerb(tokens, s, j)
+  if s + 1 >= j then return false end
+  local before = tokens[s - 1] and Addon.wordKey(tokens[s - 1])
+  if before ~= "und" and before ~= "oder" then return false end
+  local word = Addon.cleanWord(tokens[s])
+  local key = Addon.wordKey(word)
+  return #key >= 3 and startsLower(word) and key:sub(-1) == "t" and not NOT_A_VERB[key]
+    and not SEPARABLE[key] and not NOT_OWN_VERB[key]
+end
+
+-- Which tokens of a German sentence are the two halves of one split verb.
+-- A particle counts only where German puts it -- last in its clause, written
+-- small -- and only when the dictionary knows particle and verb as one word,
+-- which is what keeps "Zeigt mir den Weg." and "Was ist los?" from pairing:
+-- there is no "wegzeigt" and no "losist". The verb is looked for from the
+-- start of the nearest coordinated clause, where German keeps it: "Tötet
+-- zwölf und kehrt dann zurück" pairs zurück with kehrt, not with Tötet.
+-- Returns token index -> { verb, particle, key } for both halves, and the
+-- tokens (FlattenTokens) the indexes count.
+function Addon.SeparableVerbPairs(sentence, locale)
+  local tokens = Addon.FlattenTokens(sentence)
+  local found = {}
+  local clauseStart = 1
+  for j, token in ipairs(tokens) do
+    local word = Addon.cleanWord(token)
+    local particle = Addon.wordKey(word)
+    if SEPARABLE[particle] and startsLower(word) and j > clauseStart
+      and (endsClause(token) or j == #tokens or beforeCoordinator(tokens, j))
+      and not closesParticlePair(tokens, j) then
+      local starts = { clauseStart }
+      for i = clauseStart + 1, j - 1 do
+        if COORDINATORS[Addon.wordKey(tokens[i])] then starts[#starts + 1] = i + 1 end
+      end
+      local pair
+      for s = #starts, 1, -1 do
+        for i = starts[s], j - 1 do
+          local verb = Addon.cleanWord(tokens[i])
+          local key = Addon.wordKey(verb)
+          local whole = key ~= "" and not NOT_A_VERB[key] and (startsLower(verb) or i == clauseStart)
+            and wholeVerb(particle, key, locale)
+          if whole then
+            pair = { verb = i, particle = j, key = whole }
+            break
+          end
+        end
+        if pair then break end
+        if s > 1 and ownVerb(tokens, starts[s], j) then break end
+      end
+      if pair then found[pair.verb], found[pair.particle] = pair, pair end
+    end
+    if endsClause(token) then clauseStart = j + 1 end
+  end
+  return found, tokens
+end
+
+-- The whole German sentence against the whole English one. Every German word
+-- puts in its claims -- the gloss, the near miss, the lexicon -- and the
+-- strongest claim anywhere in the sentence is settled first, so an English
+-- word goes to the German word that has the best case for it and is then no
+-- longer available. Asking about one word alone had each word take the first
+-- English word its gloss named: "nach", glossed "to", took the "to" of "Go to
+-- the village" two clauses away, and "Übels" ("evil") took the "evil" that
+-- translates "das Böse" because the dictionary says "wicked" for that one.
+local function alignSentence(deSentence, enSentence, locale)
+  local enKeys, enStems = englishSide(enSentence)
+  local split, tokens = Addon.SeparableVerbPairs(deSentence, locale)
+  local deWords, wordOfToken, tokenOfWord = {}, {}, {}
+  for t, token in ipairs(tokens) do
+    local word = Addon.cleanWord(token)
+    if word ~= "" then
+      deWords[#deWords + 1] = word
+      wordOfToken[t], tokenOfWord[#deWords] = #deWords, t
+    end
+  end
+  local m, n = #deWords, #enKeys
+  local first, second = {}, {}
+  local keys, follows, wholeOf = {}, {}, {}
+  for i, word in ipairs(deWords) do
+    local pair = split[tokenOfWord[i]]
+    local phrases, lexicon, key, alike = wordCandidates(word, locale)
+    keys[i] = key
+    local hits
+    if pair and pair.particle == tokenOfWord[i] then
+      -- The particle has no English of its own: it lights whatever its verb does.
+      follows[i] = wordOfToken[pair.verb]
+      hits = {}
+    elseif pair then
+      -- The verb is read as the whole verb; its own gloss stays in, weaker, in
+      -- case the dictionary's one word was a coincidence.
+      local whole, wholeLexicon = wordCandidates(pair.key, locale)
+      wholeOf[i] = whole
+      for stem, share in pairs(lexicon) do
+        if not wholeLexicon[stem] or wholeLexicon[stem] < share then wholeLexicon[stem] = share end
+      end
+      hits = placements(whole, wholeLexicon, enKeys, enStems, nil)
+      placements(phrases, {}, enKeys, enStems, alike, hits, 0.75)
+    else
+      hits = placements(phrases, lexicon, enKeys, enStems, alike)
+    end
+    local here = (i - 0.5) / m
+    for _, hit in ipairs(hits) do
+      local from, to = (hit.start - 0.5) / n, (hit.start + hit.len - 1.5) / n
+      local distance = here < from and from - here or here > to and here - to or 0
+      local score = hit.score * math.exp(-DIAGONAL * distance)
+      local small = SMALL_WORDS[key] and not pair
+      -- A small word's lexicon claim may still be lifted over the floor by
+      -- its neighbour, so it is judged after that, below.
+      if hit.score >= 0.5 or score * (small and NEIGHBOUR or 1) >= LEXICON_FLOOR then
+        local claim = { de = i, start = hit.start, len = hit.len, score = score, base = hit.score }
+        local round = small and second or first
+        round[#round + 1] = claim
+      end
+    end
+  end
+  -- An English contraction is two words in one: "I've" is "ich" and "habe",
+  -- so it may be claimed twice. Not "'s", which is as often a possessive.
+  local room = {}
+  for j, key in ipairs(enKeys) do
+    room[j] = (key:find("'ve$") or key:find("'m$") or key:find("'re$") or key:find("'ll$")
+      or key:find("'d$") or key:find("n't$")) and 2 or 1
+  end
+  local links, taken = {}, {}
+  local function free(claim)
+    if links[claim.de] then return false end
+    for i = claim.start, claim.start + claim.len - 1 do
+      if (taken[i] or 0) >= room[i] then return false end
+    end
+    return true
+  end
+  local function take(claim)
+    links[claim.de] = claim
+    for i = claim.start, claim.start + claim.len - 1 do taken[i] = (taken[i] or 0) + 1 end
+  end
+  local function better(a, sa, b, sb)
+    if sa ~= sb then return sa > sb end
+    if a.len ~= b.len then return a.len > b.len end
+    if a.de ~= b.de then return a.de < b.de end
+    return a.start < b.start
+  end
+  table.sort(first, function(a, b) return better(a, a.score, b, b.score) end)
+  for _, claim in ipairs(first) do
+    if free(claim) then take(claim) end
+  end
+  -- The small words one at a time, each time the best case given what is
+  -- already placed: "in der Zitadelle" places "der" beside "Citadel" first,
+  -- and "in" then finds "der" placed right after it.
+  while true do
+    local best, bestScore
+    for _, claim in ipairs(second) do
+      if free(claim) then
+        local score = claim.score
+        local before, after = links[claim.de - 1], links[claim.de + 1]
+        if (after and after.start == claim.start + claim.len)
+          or (before and before.start + before.len == claim.start) then
+          score = score * NEIGHBOUR
+        end
+        if (claim.base >= 0.5 or score >= LEXICON_FLOOR)
+          and (not best or better(claim, score, best, bestScore)) then
+          best, bestScore = claim, score
+        end
+      end
+    end
+    if not best then break end
+    take(best)
+  end
+  -- Last, the sentence links: only for a word still unlit and only onto an
+  -- English word nobody holds, so they add to the glosses and never overrule
+  -- one. A particle stays with its verb.
+  local known = sentenceLinks(tokens, m, n, locale)
+  if known then
+    for i, j in pairs(known) do
+      local claim = { de = i, start = j, len = 1, score = 0, base = 0 }
+      if not follows[i] and room[j] and free(claim) then take(claim) end
+    end
+  end
+  -- The particle takes the rest of the whole verb's gloss when the English
+  -- split it too -- "bringt die Flaschen zurück" is "bring the bottles back"
+  -- -- and otherwise its verb's English. Either half then lights both.
+  local partner = {}
+  for i, verb in pairs(follows) do
+    local link = links[verb]
+    if link then
+      local rest
+      for _, phrase in ipairs(wholeOf[verb] or {}) do
+        local stems, covered = {}, false
+        for k, w in ipairs(phrase.words) do
+          stems[k] = Addon.EnglishStem(w)
+          for j = link.start, link.start + link.len - 1 do
+            if enStems[j] == stems[k] then covered = true end
+          end
+        end
+        if covered and #stems > 1 then
+          for _, stem in ipairs(stems) do
+            for j = link.start + link.len, math.min(n, link.start + link.len + 6) do
+              if not taken[j] and enStems[j] == stem then rest = { start = j, len = 1 } break end
+            end
+            if rest then break end
+          end
+        end
+        if rest then break end
+      end
+      if rest then taken[rest.start] = 1 end
+      links[i] = rest or link
+      partner[i], partner[verb] = verb, i
+    end
+  end
+  return links, keys, partner
+end
+-- For the tool that builds sentence links outside the game.
+Addon.AlignSentence = alignSentence
+
+-- deSentence is optional and is what makes the answer good: with it the word
+-- is placed among all its neighbours (alignSentence); without it -- a caller
+-- written before it existed -- the word is matched on its own as it always was.
+function Addon.MatchEnglishTokenIndexes(enSentence, deWord, occurrence, locale, deSentence)
+  if #Addon.FlattenTokens(enSentence) == 0 then return {} end
+  if deSentence and Addon.trim(deSentence) ~= "" then
+    local links, keys, partner = alignSentence(deSentence, enSentence, locale)
+    local want, seen = Addon.wordKey(deWord), 0
+    for i, key in ipairs(keys) do
+      if key == want then
+        seen = seen + 1
+        if seen == (occurrence or 1) then
+          local set = {}
+          for _, at in ipairs({ i, partner[i] }) do
+            local link = links[at]
+            if link then
+              for j = link.start, link.start + link.len - 1 do set[j] = true end
+            end
+          end
+          return set
+        end
+      end
+    end
+    -- The word is not in that sentence (a caller's sentence and word
+    -- disagree): fall through to the word on its own.
+  end
+  return matchWordAlone(enSentence, deWord, occurrence, locale)
 end
 
 function Addon.cleanWord(token)

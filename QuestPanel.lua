@@ -535,7 +535,10 @@ function Addon.HighlightEnglishForWord(word, deSentenceIndex, wordOccurrence, se
   end
   local wordTokens
   if sentence and not sentenceOnly and Addon.MatchEnglishTokenIndexes then
-    wordTokens = Addon.MatchEnglishTokenIndexes(sentence, word, wordOccurrence, Addon.lastQuest.wordLocale)
+    -- With the German sentence the word sits in, so it is placed among its
+    -- neighbours rather than matched on its own: see alignSentence in Core.lua.
+    local deSentence = deSentenceIndex and Addon.SplitSentences(Addon.lastQuest.text)[deSentenceIndex]
+    wordTokens = Addon.MatchEnglishTokenIndexes(sentence, word, wordOccurrence, Addon.lastQuest.wordLocale, deSentence)
   end
   paintEnglishHighlight(index, wordTokens)
   if Addon.OnHighlightEnglishForWord then
@@ -888,7 +891,10 @@ local function refreshPanel(preserveWord)
         local context = (self.sentenceIndex and deSentences[self.sentenceIndex])
           or sentenceForWord(lastQuest.text, self.word)
         Addon.lastOpened = { index = self.gridIndex, serial = panel.layoutSerial, key = self.key }
-        Addon.openEditor(self.word, context, lastQuest.id, lastQuest.title, { origin = "panel", locale = wordLocale })
+        -- Which of the sentence's copies of the word this is, so the editor can
+        -- tell whether it is one half of a split verb.
+        Addon.openEditor(self.word, context, lastQuest.id, lastQuest.title,
+          { origin = "panel", locale = wordLocale, occurrence = self.wordOccurrence })
       end)
       button:SetEnabled(not readOnly and word ~= "")
       button:Show()

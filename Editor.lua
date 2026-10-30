@@ -175,6 +175,33 @@ local function rate(score, fromKey)
   reveal(fromKey)
 end
 
+-- The split verb a word clicked in a quest belongs to, as one line: "Schließt
+-- die Aufgabe ab" is abschließen, complete, and the dictionary can only say
+-- what "schließt" (closes) and "ab" (off) mean on their own. `occurrence` is
+-- which of the sentence's copies of the word was clicked. nil when the word is
+-- not half of a split verb.
+local function splitVerbHint(key, context, occurrence, locale)
+  if not Addon.SeparableVerbPairs or type(context) ~= "string" or Addon.trim(context) == "" then return nil end
+  local halves, tokens = Addon.SeparableVerbPairs(context, locale)
+  local seen = 0
+  for i, token in ipairs(tokens) do
+    if Addon.wordKey(token) == key then
+      seen = seen + 1
+      if seen == (occurrence or 1) then
+        local pair = halves[i]
+        if not pair then return nil end
+        local whole = Addon.GetEffectiveWord(pair.key, locale)
+        local verb, particle = Addon.cleanWord(tokens[pair.verb]), Addon.cleanWord(tokens[pair.particle])
+        local joined = whole and whole.word or pair.key
+        local meaning = whole and Addon.trim(whole.translation or "") or ""
+        if meaning == "" then return string.format(LABELS.splitVerbBare, verb, particle, joined) end
+        return string.format(LABELS.splitVerb, verb, particle, joined, meaning)
+      end
+    end
+  end
+  return nil
+end
+
 -- `opts.origin` says where the click came from. Only the quest panel passes
 -- "panel": a word met in a quest is the moment to ask whether it is known,
 -- and the word list -- which shows the meaning beside the word -- is not.
@@ -219,6 +246,15 @@ function Addon.openEditor(word, context, questId, questTitle, opts)
   }
   local selected = Addon.selected
   editor.word:SetText(selected.word)
+  -- Placed after the word as it is drawn, so it starts where the word ends.
+  local hint = fromPanel and splitVerbHint(key, context, opts.occurrence, locale) or nil
+  editor.splitVerb:SetText(hint or "")
+  if hint then
+    local width = tonumber(editor.word.GetStringWidth and editor.word:GetStringWidth()) or 0
+    editor.splitVerb:ClearAllPoints()
+    editor.splitVerb:SetPoint("TOPLEFT", 20 + math.ceil(width) + 12, -40)
+    editor.splitVerb:SetPoint("TOPRIGHT", -20, -40)
+  end
   editor.context:SetText(context)
   updateStatusButtons()
   -- Previous and Next step through the quest the word was clicked in. A word
@@ -413,6 +449,16 @@ function Addon.createEditor()
   editor.word:SetHeight(22)
   editor.word:SetJustifyH("LEFT")
 
+  -- On the word's own line, after it, when the word is half of a split verb
+  -- (splitVerbHint). Read-only and outside the boxes on purpose: what is in
+  -- the boxes is compared with the dictionary on Save, and a hint written there
+  -- would be saved as the player's own wording.
+  editor.splitVerb = editor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  editor.splitVerb:SetPoint("TOPLEFT", 20, -40)
+  editor.splitVerb:SetPoint("TOPRIGHT", -20, -40)
+  editor.splitVerb:SetHeight(22)
+  editor.splitVerb:SetJustifyH("LEFT")
+  editor.splitVerb:SetWordWrap(false)
 
   editor.context = editor:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   editor.context:SetTextColor(unpack(COLORS.muted))
