@@ -192,6 +192,8 @@ Addon.SETTINGS = {
   { key = "readingMode", tab = "panel" },
   { key = "targetLocale", tab = "learning" },
   { key = "targetLocaleChosen", where = "by picking a language, on the Learning tab or with /whw lang" },
+  { key = "lockMeaningEditing", tab = "learning", reset = "clear",
+    after = function() if Addon.RefreshMeaningEditingLock then Addon.RefreshMeaningEditingLock() end end },
   { key = "recallCheck", tab = "learning", reset = "clear" },
   { key = "readyAfter", tab = "learning", reset = "clear" },
   { key = "difficultMinRatings", tab = "learning", reset = "clear" },
@@ -778,7 +780,7 @@ function Addon.CreateSettingsPanel()
 
   -- One of the addon's own buttons, which grows in both directions: a caption
   -- in Blizzard's fixed button font needs the box around it to grow with it.
-  local function action(tab, text, onClick)
+  local function action(tab, text, onClick, fullWidth)
     local row = newRow(tab, "action")
     local button = Addon.createActionButton(row.frame, text)
     button:SetScript("OnClick", onClick)
@@ -788,7 +790,8 @@ function Addon.CreateSettingsPanel()
     function row.Layout(scale)
       button:ClearAllPoints()
       button:SetPoint("TOPLEFT", row.frame, "TOPLEFT", 0, 0)
-      button:SetSize(ACTION_W * scale, Addon.RoleButtonHeight(scale))
+      local width = math.max(1, tab.scroll:GetWidth() - 16)
+      button:SetSize(fullWidth and width or math.min(ACTION_W * scale, width), Addon.RoleButtonHeight(scale))
       if button.GetFontString then Addon.ApplyFontRole(button:GetFontString(), "body", scale) end
       return buttonRowHeight(scale)
     end
@@ -924,6 +927,34 @@ function Addon.CreateSettingsPanel()
   choice(learning, "WordHunterWoWLanguageDropdown", "targetLocale", LABELS.languageLabel,
     languageEntries, Addon.GetTargetLocale, Addon.SetTargetLocale)
   note(learning, LABELS.languageNote)
+  window.lockMeaningEditing = check(learning, "WordHunterWoWLockMeaningEditingCheck",
+    "lockMeaningEditing", LABELS.lockMeaningEditing,
+    Addon.GetMeaningEditingLocked, Addon.SetMeaningEditingLocked)
+  window.resetAllText = action(learning, LABELS.resetAllText, function()
+    Addon.showConfirm(LABELS.resetAllText, LABELS.resetAllTextBody, LABELS.confirmAction, function()
+      local count, meanings, notes = Addon.ResetAllMeaningsAndNotes()
+      if count == nil then
+        Addon.showConfirm(LABELS.resetAllText, LABELS.resetDictionaryUnavailable, nil, nil, window)
+        return
+      end
+      if print then
+        print("|cff59aefaWordHunterWoW:|r " .. string.format(LABELS.resetAllTextDone, count, meanings, notes))
+      end
+      window.refresh()
+    end, window)
+  end, true)
+  window.resetAllStatuses = action(learning, LABELS.resetAllStatuses, function()
+    Addon.showConfirm(LABELS.resetAllStatuses, LABELS.resetAllStatusesBody,
+      LABELS.confirmAction, function()
+        local count = Addon.ResetAllWordStatuses()
+        if count == nil then
+          Addon.showConfirm(LABELS.resetAllStatuses, LABELS.resetDictionaryUnavailable, nil, nil, window)
+          return
+        end
+        if print then print("|cff59aefaWordHunterWoW:|r " .. string.format(LABELS.resetAllStatusesDone, count)) end
+        window.refresh()
+      end, window)
+  end, true)
   local function recallOn() return Addon.GetRecallCheck and Addon.GetRecallCheck() or false end
   window.recallCheck = check(learning, "WordHunterWoWRecallCheck", "recallCheck", LABELS.recallLabel,
     recallOn, function(v) if Addon.SetRecallCheck then Addon.SetRecallCheck(v) end end)

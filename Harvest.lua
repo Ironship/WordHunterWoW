@@ -16,6 +16,27 @@ local MAX_ENTRIES = 20000
 local MAX_TEXT = 4000
 local KINDS = { title = true, description = true, objectives = true,
                 progress = true, reward = true, gossip = true, word = true }
+local counts = {}
+local normalizedWordBuckets = setmetatable({}, { __mode = "k" })
+
+local function normalizeWordKeys(bucket, locale)
+  if normalizedWordBuckets[bucket] then return end
+  -- SavedVariables may still have pre-fix, case-sensitive word keys.
+  local entries, keys = {}, {}
+  for key, entry in pairs(bucket) do
+    if type(entry) == "table" and entry.kind == "word" and type(entry.text) == "string" then
+      local flavor = type(entry.flavor) == "string" and entry.flavor or "retail"
+      local normalized = (flavor ~= "retail" and flavor .. ":" or "")
+        .. "word:" .. Addon.wordKey(entry.text)
+      keys[#keys + 1] = key
+      if not entries[normalized] or key == normalized then entries[normalized] = entry end
+    end
+  end
+  for _, key in ipairs(keys) do bucket[key] = nil end
+  for key, entry in pairs(entries) do bucket[key] = entry end
+  normalizedWordBuckets[bucket] = true
+  counts[locale] = nil
+end
 
 function Addon.GetHarvestEnabled()
   local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.harvestCorpus
@@ -46,19 +67,20 @@ local function corpusTable(locale)
   if type(WordHunterWoWCorpus.byLocale[locale]) ~= "table" then
     WordHunterWoWCorpus.byLocale[locale] = {}
   end
-  return WordHunterWoWCorpus.byLocale[locale]
+  local bucket = WordHunterWoWCorpus.byLocale[locale]
+  normalizeWordKeys(bucket, locale)
+  return bucket
 end
 
 -- Counting by walking the table is fine once per quest, but unknown words are
 -- offered once per word per redraw, so the count is cached per locale and only
 -- recomputed when this session has not seen the bucket before.
-local counts = {}
-
 function Addon.HarvestCount(locale)
   locale = locale or Addon.GetTargetLocale()
   if type(WordHunterWoWCorpus) ~= "table" or type(WordHunterWoWCorpus.byLocale) ~= "table" then return 0 end
   local bucket = WordHunterWoWCorpus.byLocale[locale]
   if type(bucket) ~= "table" then return 0 end
+  normalizeWordKeys(bucket, locale)
   if not counts[locale] then
     local n = 0
     for _ in pairs(bucket) do n = n + 1 end
@@ -226,7 +248,7 @@ function Addon.HarvestText(kind, questId, text, locale, observedPassage)
   -- itself: the same unknown word in a second quest is not new information.
   local key
   if kind == "word" then
-    key = "word:" .. text
+    key = "word:" .. Addon.wordKey(text)
   elseif questId > 0 then
     key = kind .. ":" .. questId
   else
@@ -301,6 +323,7 @@ function Addon.HarvestWordCount(locale)
   if type(WordHunterWoWCorpus) ~= "table" or type(WordHunterWoWCorpus.byLocale) ~= "table" then return 0 end
   local bucket = WordHunterWoWCorpus.byLocale[locale]
   if type(bucket) ~= "table" then return 0 end
+  normalizeWordKeys(bucket, locale)
   local n = 0
   for _, entry in pairs(bucket) do
     if entry.kind == "word" then n = n + 1 end

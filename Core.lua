@@ -161,6 +161,14 @@ Addon.LABELS = {
   statsScaleLabel = "Statistics window",
   languageLabel = "Target (learned and in game) language",
   resetDictionary = "Reset to dictionary",
+  resetAllText = "Reset meanings and notes",
+  resetAllTextDone = "%d words changed: %d meanings and %d notes reset. Statuses unchanged.",
+  resetAllTextBody = "This resets every saved meaning and note for the current target language to its built-in dictionary version. Words without a dictionary entry will have their saved meaning and note cleared.\n\nWord statuses (New, Learning, Known and Ignored) and encounter history are kept. This cannot be undone.",
+  resetAllStatuses = "Reset word statuses",
+  resetAllStatusesDone = "%d word statuses reset.",
+  resetAllStatusesBody = "This resets every saved word status for the current target language to its built-in dictionary status, or New when the word is not in the dictionary.\n\nMeanings, notes and encounter history are kept. This cannot be undone.",
+  resetDictionaryUnavailable = "The dictionary for this language is not available. Nothing was reset.",
+  lockMeaningEditing = "Lock editing of meanings and notes",
   confirmAction = "Reset",
   confirmCancel = "Cancel",
   -- Shown before the reset happens. Someone checking whether they still have
@@ -877,6 +885,93 @@ function Addon.GetWordsTable(locale)
   -- written out twice. Nothing has read that key since the pre-v8 migration,
   -- which cannot run again.
   return WordHunterWoWDB.wordsByLocale[locale]
+end
+
+function Addon.GetMeaningEditingLocked()
+  return WordHunterWoWDB and WordHunterWoWDB.settings
+    and WordHunterWoWDB.settings.lockMeaningEditing == true or false
+end
+
+function Addon.SetMeaningEditingLocked(value)
+  if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
+  if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
+  local wasLocked = Addon.GetMeaningEditingLocked()
+  WordHunterWoWDB.settings.lockMeaningEditing = not not value
+  if value and not wasLocked and Addon.selected and Addon.editor then
+    if Addon.editor.translation then
+      Addon.editor.translation:SetText(Addon.selected.translationText or "")
+    end
+    if Addon.editor.note then
+      Addon.editor.note:SetText(Addon.selected.noteText or "")
+    end
+  end
+  if Addon.RefreshMeaningEditingLock then Addon.RefreshMeaningEditingLock() end
+end
+
+local function refreshResetWordData()
+  if Addon.editor and Addon.editor:IsShown() then Addon.editor:Hide() end
+  Addon.rebuildExport()
+  if Addon.refreshWordList then Addon.refreshWordList() end
+  if Addon.panel and Addon.panel:IsShown() and Addon.lastQuest and Addon.refreshPanel then
+    Addon.refreshPanel(true)
+  end
+end
+
+local function ensureResetDictionary(locale)
+  local providers = Addon.DictionaryProviders[locale]
+  local order = Addon.DictionaryProviderOrder[locale]
+  if type(providers) ~= "table" or type(order) ~= "table" or #order == 0 then
+    Addon.EnsureDictionary(locale)
+    providers = Addon.DictionaryProviders[locale]
+    order = Addon.DictionaryProviderOrder[locale]
+  end
+  return type(providers) == "table" and type(order) == "table" and #order > 0
+end
+
+function Addon.ResetAllMeaningsAndNotes()
+  local locale = Addon.GetTargetLocale()
+  if not ensureResetDictionary(locale) then return nil end
+  local words = Addon.GetWordsTable(locale)
+  local changed, meaningsChanged, notesChanged = 0, 0, 0
+  for key, entry in pairs(words) do
+    if type(entry) == "table" and not entry.encounterOnly then
+      local dictionary = Addon.GetDictionaryEntry(key, locale)
+      local translation = dictionary and dictionary.translation or ""
+      local note = dictionary and dictionary.note or ""
+      local meaningChanged = (entry.translation or "") ~= translation
+      local noteChanged = (entry.note or "") ~= note
+      if meaningChanged then meaningsChanged = meaningsChanged + 1 end
+      if noteChanged then notesChanged = notesChanged + 1 end
+      if meaningChanged or noteChanged then
+        changed = changed + 1
+      end
+      entry.translation = translation
+      entry.note = note
+      entry.noteUpdatedAt = 0
+    end
+  end
+  refreshResetWordData()
+  return changed, meaningsChanged, notesChanged
+end
+
+function Addon.ResetAllWordStatuses()
+  local locale = Addon.GetTargetLocale()
+  if not ensureResetDictionary(locale) then return nil end
+  local words = Addon.GetWordsTable(locale)
+  local changed, now = 0, time()
+  for key, entry in pairs(words) do
+    if type(entry) == "table" and not entry.encounterOnly then
+      local dictionary = Addon.GetDictionaryEntry(key, locale)
+      local status = Addon.EffectiveStatus(dictionary)
+      if Addon.EffectiveStatus(entry) ~= status then
+        entry.status = status
+        entry.statusChangedAt = now
+        changed = changed + 1
+      end
+    end
+  end
+  refreshResetWordData()
+  return changed
 end
 
 Addon.DictionaryProviders = Addon.DictionaryProviders or {}

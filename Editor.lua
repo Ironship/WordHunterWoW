@@ -132,6 +132,7 @@ local function reveal(fromKey)
   editor.translation:SetText(selected.translationText or "")
   editor.note:SetText(selected.noteText or "")
   showFields(false)
+  if Addon.RefreshMeaningEditingLock then Addon.RefreshMeaningEditingLock() end
   Addon.updateResetDictionary()
   updateEditorHistory()
   if fromKey then
@@ -140,7 +141,8 @@ local function reveal(fromKey)
     -- which HighlightText has just selected -- and Enter would save "3" as the
     -- translation. Focus once the keystroke is over.
     C_Timer.After(0, function()
-      if editor:IsShown() and Addon.selected and not Addon.selected.recallPending then
+      if editor:IsShown() and Addon.selected and not Addon.selected.recallPending
+          and not (Addon.GetMeaningEditingLocked and Addon.GetMeaningEditingLocked()) then
         editor.translation:SetFocus()
         editor.translation:HighlightText()
       end
@@ -288,6 +290,7 @@ function Addon.openEditor(word, context, questId, questTitle, opts)
     editor.translation:SetText(selected.translationText or "")
     editor.note:SetText(selected.noteText or "")
     showFields(true)
+    if Addon.RefreshMeaningEditingLock then Addon.RefreshMeaningEditingLock() end
     Addon.updateResetDictionary()
     updateEditorHistory()
     if editor.cover and editor.cover.soFar then
@@ -302,10 +305,16 @@ function Addon.openEditor(word, context, questId, questTitle, opts)
     editor.translation:SetText(selected.translationText)
     editor.note:SetText(selected.noteText)
     showFields(false)
+    if Addon.RefreshMeaningEditingLock then Addon.RefreshMeaningEditingLock() end
     Addon.updateResetDictionary()
     updateEditorHistory()
-    editor.translation:SetFocus()
-    editor.translation:HighlightText()
+    if Addon.GetMeaningEditingLocked and Addon.GetMeaningEditingLocked() then
+      editor.translation:ClearFocus()
+      editor.note:ClearFocus()
+    else
+      editor.translation:SetFocus()
+      editor.translation:HighlightText()
+    end
   end
   Addon.PlaceFrame(editor, "editor")
   editor:Show()
@@ -324,8 +333,11 @@ local function saveSelected()
   local now = time()
   local selected = Addon.selected
   local key = selected.key
-  local translation = Addon.trim(editor.translation:GetText())
-  local note = Addon.trim(editor.note:GetText())
+  local locked = Addon.GetMeaningEditingLocked and Addon.GetMeaningEditingLocked()
+  local translation = locked and Addon.trim(selected.translationText or "")
+    or Addon.trim(editor.translation:GetText())
+  local note = locked and Addon.trim(selected.noteText or "")
+    or Addon.trim(editor.note:GetText())
   -- The sentence goes with the word from the moment it is marked Learning,
   -- whichever branch below the entry itself takes.
   if selected.status == "learning" and Addon.RecordExample then
@@ -750,11 +762,29 @@ function Addon.updateResetDictionary()
   local pending = Addon.selected and Addon.selected.recallPending
   editor.resetDictionary:SetShown(dict ~= nil and not pending)
   if not dict then return end
-  if Addon.editorDiffersFromDictionary() then
+  if Addon.GetMeaningEditingLocked and Addon.GetMeaningEditingLocked() then
+    editor.resetDictionary:Disable()
+  elseif Addon.editorDiffersFromDictionary() then
     editor.resetDictionary:Enable()
   else
     editor.resetDictionary:Disable()
   end
+end
+
+function Addon.RefreshMeaningEditingLock()
+  if not editor then return end
+  local locked = Addon.GetMeaningEditingLocked and Addon.GetMeaningEditingLocked()
+  for _, box in ipairs({ editor.translation, editor.note }) do
+    if box then
+      if locked then
+        box:ClearFocus()
+        box:Disable()
+      else
+        box:Enable()
+      end
+    end
+  end
+  Addon.updateResetDictionary()
 end
 
 -- Previous and Next go grey at the ends of the quest, and both go grey with no
