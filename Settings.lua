@@ -60,6 +60,10 @@ LABELS.optionsPageButton = "Open WordHunterWoW settings"
 LABELS.aboutVersion = "WordHunterWoW %s  ·  game: %s  ·  client %s (%s)"
 LABELS.aboutWords = "Learning %s: %d of your words in this language, %d across all languages."
 LABELS.aboutCommandsHeading = "Slash commands"
+LABELS.buttonStyleLabel = "Buttons"
+LABELS.paletteLabel = "Colours of words and text"
+LABELS.paletteNote = "Pick a set, then change any single colour below it. The quest parchment keeps its own dark inks."
+LABELS.colorNames = { text = "Text", new = "New words", learning = "Learning words", known = "Known words", ignored = "Ignored words" }
 LABELS.aboutCommands = "/whw — open or close the quest panel\n"
   .. "/whw words  ·  /whw stats — the word list and the statistics\n"
   .. "/whw quests — quests and the words saved from each\n"
@@ -173,6 +177,9 @@ Addon.SETTINGS = {
     default = function() return Addon.DefaultBackgroundStyle() end, set = "SetBackgroundStyle" },
   { key = "opacity", tab = "appearance", reset = "default", default = 1.0, set = "SetOpacity" },
   { key = "wordMarking", tab = "appearance", reset = "clear", after = refreshQuestPanel },
+  { key = "buttonStyle", tab = "appearance", reset = "clear", after = function() if Addon.Kit then Addon.Kit.Refresh() end end },
+  { key = "palette", tab = "appearance", reset = "clear", after = function() Addon.RefreshPalette() end },
+  { key = "colors", tab = "appearance", reset = "clear", after = function() Addon.RefreshPalette() end },
   { key = "textScale", tab = "sizes", reset = "default", default = 1.0, set = "SetTextScale" },
   { key = "enPanelTextScale", tab = "sizes", reset = "default", default = 1.0, set = "SetEnPanelTextScale" },
   { key = "editorScale", tab = "sizes", reset = "default", default = 1.0, set = "SetEditorScale" },
@@ -355,9 +362,7 @@ local function openMenu(owner, entries, current, pick)
     menu:SetFrameLevel(MENU_LEVEL)
     menu:SetClampedToScreen(true)
     menu:EnableMouse(true)
-    menu:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
-    menu:SetBackdropColor(0.07, 0.08, 0.1, 0.98)
-    menu:SetBackdropBorderColor(0.35, 0.37, 0.42, 1)
+    Addon.Kit.SkinField(menu, nil)
     menu.buttons = {}
     -- Registered only while the menu is open: the event fires on every click
     -- anywhere, and a closed menu has nothing to say about any of them.
@@ -506,8 +511,8 @@ function Addon.CreateSettingsPanel()
   window.closeButton = close
 
   local divider = window:CreateTexture(nil, "ARTWORK")
-  setColor(divider, 0.35, 0.37, 0.42, 1)
   divider:SetHeight(1)
+  Addon.Kit.OnRefresh(function(theme) setColor(divider, theme.rule[1], theme.rule[2], theme.rule[3], 1) end)
 
   local pane = CreateFrame("Frame", nil, window)
   window.previewPane = pane
@@ -594,7 +599,7 @@ function Addon.CreateSettingsPanel()
     -- would change the text size while the player was only scrolling -- and
     -- re-lay the tab out under the cursor as it did.
     local track = s:CreateTexture(nil, "BACKGROUND")
-    setColor(track, 0.3, 0.31, 0.34, 1)
+    Addon.Kit.OnRefresh(function(theme) setColor(track, theme.track[1], theme.track[2], theme.track[3], 1) end)
     track:SetPoint("LEFT", s, "LEFT", 0, 0)
     track:SetPoint("RIGHT", s, "RIGHT", 0, 0)
     s:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
@@ -653,9 +658,7 @@ function Addon.CreateSettingsPanel()
     local caption = addString(row, row.frame:CreateFontString(nil, "ARTWORK", "GameFontNormal"), "label")
     caption:SetText(label)
     local button = CreateFrame("Button", name, row.frame, "BackdropTemplate")
-    button:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
-    button:SetBackdropColor(0.1, 0.11, 0.13, 1)
-    button:SetBackdropBorderColor(0.35, 0.37, 0.42, 1)
+    Addon.Kit.SkinField(button, nil)
     local highlight = button:CreateTexture(nil, "HIGHLIGHT")
     highlight:SetAllPoints()
     setColor(highlight, 1, 1, 1, 0.08)
@@ -695,6 +698,49 @@ function Addon.CreateSettingsPanel()
       text:SetText(shown)
     end
     return button, row
+  end
+
+  -- The colours the player can change, one row holding a swatch for each: the
+  -- swatch is in the field's frame and opens the game's picker, with its name
+  -- beside it.
+  local function colours(tab, namePrefix)
+    local row = newRow(tab, "colour", { key = "colors" })
+    local items = {}
+    for index, key in ipairs(Addon.COLOR_KEYS) do
+      local button = CreateFrame("Button", namePrefix .. key:sub(1, 1):upper() .. key:sub(2), row.frame, "BackdropTemplate")
+      Addon.Kit.SkinField(button, nil)
+      local swatch = button:CreateTexture(nil, "ARTWORK")
+      swatch:SetPoint("TOPLEFT", 4, -4)
+      swatch:SetPoint("BOTTOMRIGHT", -4, 4)
+      local text = addString(row, row.frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight"), "body")
+      text:SetJustifyH("LEFT")
+      text:SetText(LABELS.colorNames[key])
+      button:SetScript("OnClick", function()
+        Addon.PickColor(Addon.COLORS[key], function(r, g, b) Addon.SetCustomColor(key, r, g, b) end)
+      end)
+      items[index] = { key = key, button = button, swatch = swatch, text = text }
+      row.sized[#row.sized + 1] = { frame = button, w = 44, h = CHOICE_H }
+    end
+    row.control = items[1].button
+    items[1].button.settingsRow = row
+    function row.Layout(scale)
+      local step = math.max(CHOICE_H * scale, lineHeight("body", scale)) + 4 * scale
+      for index, item in ipairs(items) do
+        item.button:ClearAllPoints()
+        item.button:SetPoint("TOPLEFT", row.frame, "TOPLEFT", 0, -(index - 1) * step)
+        item.button:SetSize(44 * scale, CHOICE_H * scale)
+        item.text:ClearAllPoints()
+        item.text:SetPoint("LEFT", item.button, "RIGHT", 10, 0)
+      end
+      return #items * step - 4 * scale
+    end
+    function row.Refresh()
+      for _, item in ipairs(items) do
+        local c = Addon.COLORS[item.key]
+        setColor(item.swatch, c[1], c[2], c[3], 1)
+      end
+    end
+    return row
   end
 
   -- A wrapped line of small print, across the row.
@@ -773,6 +819,8 @@ function Addon.CreateSettingsPanel()
     button.selectedBar:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 6, 0)
     button.selectedBar:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -6, 0)
     button:SetScript("OnClick", function() window.selectTab(tab.id) end)
+    button:SetScript("OnEnter", function(self) window.paintTab(tab, false, true) end)
+    button:SetScript("OnLeave", function(self) window.paintTab(tab, nil, false) end)
     tab.button = button
     chrome[#chrome + 1] = { fs = button.text, role = "label" }
     tabs[#tabs + 1] = tab
@@ -799,6 +847,23 @@ function Addon.CreateSettingsPanel()
   window.opacitySlider = opacity
   choice(appearance, "WordHunterWoWWordMarkingDropdown", "wordMarking", Addon.LABELS.wordMarkingLabel,
     markingEntries, Addon.GetWordMarking, Addon.SetWordMarking)
+  choice(appearance, "WordHunterWoWButtonStyleDropdown", "buttonStyle", LABELS.buttonStyleLabel,
+    function()
+      local list = {}
+      for _, key in ipairs(Addon.BUTTON_STYLE_ORDER) do list[#list + 1] = { value = key, label = Addon.BUTTON_STYLES[key].name } end
+      return list
+    end, Addon.GetButtonStyle, Addon.SetButtonStyle)
+  note(appearance, LABELS.paletteNote)
+  choice(appearance, "WordHunterWoWPaletteDropdown", "palette", LABELS.paletteLabel,
+    function()
+      local list = {}
+      for _, key in ipairs(Addon.PALETTE_ORDER) do list[#list + 1] = { value = key, label = Addon.PALETTES[key].name } end
+      if Addon.HasCustomColors() then list[#list + 1] = { value = "custom", label = "Custom" } end
+      return list
+    end,
+    function() return Addon.HasCustomColors() and "custom" or Addon.GetPalette() end,
+    function(value) if value ~= "custom" then Addon.SetPalette(value) end end)
+  colours(appearance, "WordHunterWoWColor")
 
   -- --- 2. Sizes ------------------------------------------------------------------
   -- Every size slider, generated from the table that says which family a key
@@ -1075,7 +1140,7 @@ function Addon.CreateSettingsPanel()
     word.underline:SetPoint("BOTTOMRIGHT", word, "BOTTOMRIGHT", -1, 1)
     word:SetHighlightTexture(WHITE, "BLEND")
     local hl = word:GetHighlightTexture()
-    if hl and hl.SetVertexColor then hl:SetVertexColor(0.30, 0.42, 0.55, 0.20) end
+    if hl and hl.SetVertexColor then hl:SetVertexColor(1.00, 0.82, 0.30, 0.14) end
     -- Pointing at a word lights up its English, as it does in the panel --
     -- through a highlighter of this window's own, never the panel's.
     word:SetScript("OnEnter", function(self)
@@ -1275,10 +1340,13 @@ function Addon.CreateSettingsPanel()
     title:ClearAllPoints()
     title:SetPoint("TOPLEFT", window, "TOPLEFT", 16, -12)
     local tabHeight = lineHeight("label", scale) + 12
+    -- The game's tab art is a fixed shape; a tab drawn from it is never shorter.
+    if Addon.ChartTheme().kit == "stone" and Addon.Kit.CanTabs() then tabHeight = math.max(tabHeight, 30) end
     local x = 12
     for _, tab in ipairs(tabs) do
       local width = math.ceil(tab.button.text:GetStringWidth()) + 20
       tab.button:SetSize(width, tabHeight)
+      Addon.Kit.SizeTabArt(tab.button, tabHeight)
       tab.button:ClearAllPoints()
       tab.button:SetPoint("TOPLEFT", window, "TOPLEFT", x, -headerHeight)
       x = x + width + 2
@@ -1335,6 +1403,41 @@ function Addon.CreateSettingsPanel()
   end
   window.layout = layout
 
+  -- One tab's look: the game's tab art under the stone styles, the gold bar
+  -- under the others. `on` nil leaves the current choice alone, `hover` lifts a
+  -- tab that is not chosen.
+  function window.paintTab(tab, on, hover)
+    local button = tab.button
+    if on == nil then on = window.activeTab == tab end
+    local theme = Addon.ChartTheme()
+    if theme.kit == "stone" and Addon.Kit.AttachTabArt(button) then
+      Addon.Kit.SizeTabArt(button, button:GetHeight() > 0 and button:GetHeight() or 30)
+      Addon.Kit.ShowTabArt(button, on and "active" or "inactive")
+      button.selectedBar:Hide()
+      button.text:SetTextColor(1, on and 0.94 or 0.82, on and 0.77 or 0)
+      button.text:ClearAllPoints()
+      button.text:SetPoint("CENTER", 0, 2)
+      return
+    end
+    Addon.Kit.ShowTabArt(button, nil)
+    button.text:ClearAllPoints()
+    button.text:SetPoint("CENTER", button, "CENTER", 0, 0)
+    local a = theme.accent
+    if on then
+      button.text:SetTextColor(1, 0.82, 0)
+      button.selectedBar:Show()
+    else
+      button.text:SetTextColor(hover and a[1] or 0.62, hover and a[2] or 0.64, hover and a[3] or 0.68)
+      button.selectedBar:Hide()
+    end
+  end
+  Addon.Kit.OnRefresh(function()
+    if window.activeTab then
+      for _, other in ipairs(tabs) do window.paintTab(other) end
+      window.layout()
+    end
+  end)
+
   function window.selectTab(id)
     local tab = tabsById[id] or tabs[1]
     closeMenu()
@@ -1343,8 +1446,7 @@ function Addon.CreateSettingsPanel()
     for _, other in ipairs(tabs) do
       local on = other == tab
       if on then other.scroll:Show() else other.scroll:Hide() end
-      other.button.text:SetTextColor(on and 1 or 0.62, on and 0.82 or 0.64, on and 0 or 0.68)
-      if on then other.button.selectedBar:Show() else other.button.selectedBar:Hide() end
+      window.paintTab(other, on)
     end
     if tabResets(tab.id) then reset:Show() else reset:Hide() end
     -- The preview holds its slice of the window only on the tabs that change

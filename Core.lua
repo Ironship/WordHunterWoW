@@ -637,6 +637,127 @@ function Addon.SetWordMarking(value)
   Addon.RefreshSettingsWindow()
 end
 
+-- The command buttons (Save, Next, Stats, Copy quest...): the game's own red
+-- buttons, which is what they are unless the player asks for them to be drawn in
+-- the background style's materials instead (Kit.PaintAction).
+Addon.BUTTON_STYLE_ORDER = { "blizzard", "match" }
+Addon.BUTTON_STYLES = {
+  blizzard = { name = "Blizzard (red)" },
+  match    = { name = "Match the background style" },
+}
+
+function Addon.GetButtonStyle()
+  local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.buttonStyle
+  if Addon.BUTTON_STYLES[v] then return v end
+  return "blizzard"
+end
+
+function Addon.SetButtonStyle(value)
+  if not Addon.BUTTON_STYLES[value] then return end
+  if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
+  if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
+  WordHunterWoWDB.settings.buttonStyle = value
+  if Addon.Kit then Addon.Kit.Refresh() end
+  Addon.RefreshSettingsWindow()
+end
+
+-- The colours a status is drawn in, and the one body text is drawn in.
+--
+-- There are two sets to choose from and any of the five can be changed one by
+-- one. "Natural" is the default: a status colour that is saturated and a little
+-- dark, which is what the bar in the statistics window looks like and is much
+-- easier on the eye over a whole paragraph than the same colours at full
+-- brightness. "Vivid" is the brighter set this addon used to have.
+--
+-- The colours live in Addon.COLORS, which every file holds a reference to, so a
+-- change is written into those tables rather than replacing them. The
+-- parchment's dark inks (Addon.COLORS_ON_LIGHT) are measured against the
+-- parchment and are not part of this.
+Addon.COLOR_KEYS = { "text", "new", "learning", "known", "ignored" }
+Addon.PALETTE_ORDER = { "natural", "vivid" }
+Addon.PALETTES = {
+  natural = { name = "Natural (muted)",
+    text = { 0.90, 0.89, 0.84 }, new = { 0.21, 0.56, 1.00 }, learning = { 1.00, 0.54, 0.08 },
+    known = { 0.16, 0.82, 0.33 }, ignored = { 0.49, 0.54, 0.63 } },
+  vivid = { name = "Vivid",
+    text = { 0.93, 0.94, 0.96 }, new = { 0.35, 0.68, 1.00 }, learning = { 1.00, 0.66, 0.18 },
+    known = { 0.30, 0.88, 0.48 }, ignored = { 0.62, 0.66, 0.73 } },
+}
+
+local function colorSettings()
+  if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
+  if type(WordHunterWoWDB.settings) ~= "table" then WordHunterWoWDB.settings = {} end
+  return WordHunterWoWDB.settings
+end
+
+local function validColor(c)
+  if type(c) ~= "table" then return nil end
+  for index = 1, 3 do
+    if type(c[index]) ~= "number" or c[index] < 0 or c[index] > 1 then return nil end
+  end
+  return c
+end
+
+function Addon.GetPalette()
+  local v = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.palette
+  if Addon.PALETTES[v] then return v end
+  return "natural"
+end
+
+-- True when any of the five has been changed from its set.
+function Addon.HasCustomColors()
+  local custom = WordHunterWoWDB and WordHunterWoWDB.settings and WordHunterWoWDB.settings.colors
+  if type(custom) ~= "table" then return false end
+  for _, key in ipairs(Addon.COLOR_KEYS) do
+    if validColor(custom[key]) then return true end
+  end
+  return false
+end
+
+-- Writes the chosen set, and whatever has been changed on top of it, into the
+-- colour tables. Called when the saved settings have loaded and after every
+-- change; it draws nothing itself (see Addon.RefreshPalette).
+function Addon.ApplyPalette()
+  local settings = WordHunterWoWDB and WordHunterWoWDB.settings
+  local custom = type(settings) == "table" and type(settings.colors) == "table" and settings.colors or {}
+  local base = Addon.PALETTES[Addon.GetPalette()]
+  for _, key in ipairs(Addon.COLOR_KEYS) do
+    local c = validColor(custom[key]) or base[key]
+    local target = Addon.COLORS[key]
+    target[1], target[2], target[3] = c[1], c[2], c[3]
+  end
+end
+
+-- Every window that draws a status colour, drawn again.
+function Addon.RefreshPalette()
+  Addon.ApplyPalette()
+  if Addon.Kit then Addon.Kit.Refresh() end
+  if Addon.RefreshStatsTheme then Addon.RefreshStatsTheme() end
+  if Addon.refreshWordList then Addon.refreshWordList() end
+  if Addon.refreshPanel and Addon.panel and Addon.panel:IsShown() then Addon.refreshPanel() end
+  if Addon.refreshQuestBrowser then Addon.refreshQuestBrowser() end
+  Addon.RefreshSettingsWindow()
+end
+
+-- Choosing a set puts every change away: the set is what the player asked for.
+function Addon.SetPalette(value)
+  if not Addon.PALETTES[value] then return end
+  local settings = colorSettings()
+  settings.palette = value
+  settings.colors = nil
+  Addon.RefreshPalette()
+end
+
+function Addon.SetCustomColor(key, r, g, b)
+  local valid = false
+  for _, name in ipairs(Addon.COLOR_KEYS) do if name == key then valid = true end end
+  if not valid or not validColor({ r, g, b }) then return end
+  local settings = colorSettings()
+  if type(settings.colors) ~= "table" then settings.colors = {} end
+  settings.colors[key] = { r, g, b }
+  Addon.RefreshPalette()
+end
+
 -- A one-pixel rule under twenty-four point letters is a smudge, and the quest
 -- text size goes to 200%. The mark has to grow with the text it belongs to, or
 -- turning the text up makes the words harder to read rather than easier.
@@ -1093,6 +1214,10 @@ function Addon.RefreshAllBackdrops()
       end
     end
   end
+  -- Fields, drop-downs and toggles in every window, then the statistics window,
+  -- which draws charts and cards of its own in the style's colours.
+  if Addon.Kit then Addon.Kit.Refresh() end
+  if Addon.RefreshStatsTheme then Addon.RefreshStatsTheme() end
 end
 
 function Addon.trim(value)
@@ -2457,7 +2582,7 @@ Addon.LAYOUT_DEFAULTS = {
     panel = { point = "LEFT", relPoint = "LEFT", x = 420, y = 40, w = 720, h = 500 },
     list = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -16, y = -36, w = 420, h = 520 },
     quests = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -16, y = -36, w = 560, h = 460 },
-    stats = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -448, y = -36, w = 340, h = 420 },
+    stats = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -448, y = -36, w = 460, h = 560 },
     editor = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -448, y = -448, w = 430, h = 400 },
     settings = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0, w = 860, h = 580 },
   },
@@ -2465,7 +2590,7 @@ Addon.LAYOUT_DEFAULTS = {
     panel = { point = "RIGHT", relPoint = "RIGHT", x = -20, y = 40, w = 680, h = 500 },
     list = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -16, y = -36, w = 420, h = 500 },
     quests = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 16, y = -36, w = 560, h = 460 },
-    stats = { point = "BOTTOMRIGHT", relPoint = "BOTTOMRIGHT", x = -16, y = 90, w = 340, h = 420 },
+    stats = { point = "BOTTOMRIGHT", relPoint = "BOTTOMRIGHT", x = -16, y = 90, w = 460, h = 560 },
     editor = { point = "CENTER", relPoint = "CENTER", x = 180, y = 50, w = 430, h = 400 },
     settings = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0, w = 860, h = 580 },
   },
@@ -2483,7 +2608,7 @@ Addon.LAYOUT_DEFAULTS = {
     panel = { point = "CENTER", relPoint = "CENTER", x = 0, y = 20, w = 980, h = 660 },
     list = { point = "TOPRIGHT", relPoint = "TOPRIGHT", x = -16, y = -36, w = 420, h = 520 },
     quests = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 16, y = -36, w = 560, h = 460 },
-    stats = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 16, y = -36, w = 340, h = 420 },
+    stats = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 16, y = -36, w = 460, h = 560 },
     editor = { point = "BOTTOMRIGHT", relPoint = "BOTTOMRIGHT", x = -16, y = 16, w = 430, h = 400 },
     -- The settings window is the same in every context: it is opened on
     -- purpose, and centred is where a window opened on purpose belongs.

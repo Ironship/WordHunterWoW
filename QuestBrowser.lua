@@ -193,7 +193,7 @@ local function paintRows()
       row.variants.label = row.variants:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
       row.variants.label:SetPoint("RIGHT")
       row.variants:SetHighlightTexture("Interface\\Buttons\\WHITE8X8", "BLEND")
-      row.variants:GetHighlightTexture():SetVertexColor(0.30, 0.42, 0.55, 0.20)
+      row.variants:GetHighlightTexture():SetVertexColor(1.00, 0.82, 0.30, 0.14)
       row.variants:SetScript("OnClick", function()
         local key = row.item.groupKey
         f.expandedGroups[key] = not f.expandedGroups[key]

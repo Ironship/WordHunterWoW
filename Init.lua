@@ -72,6 +72,8 @@ events:SetScript("OnEvent", function(_, event, a1, a2)
         end
       end
       Addon.initializeDatabase()
+      -- Before any window is built, so the first thing drawn is in the colours chosen.
+      Addon.ApplyPalette()
       Addon.createPanel()
       Addon.createEditor()
       Addon.hookQuestUi()

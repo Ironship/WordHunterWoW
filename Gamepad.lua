@@ -666,6 +666,10 @@ local function dispatch(button)
   local over = firstShown({ "listFrame", "statsFrame" })
   if over then
     if button == "PAD2" or button == "PAD3" then return putAway(over, button) end
+    if over == Addon.statsFrame and (button == "PADLSHOULDER" or button == "PADRSHOULDER") then
+      Addon.StatsStepTab(button == "PADLSHOULDER" and -1 or 1)
+      return true
+    end
     if over == Addon.listFrame and (button == "PADLTRIGGER" or button == "PADRTRIGGER") then
       Addon.StepWordListPage(over, button == "PADLTRIGGER" and -1 or 1)
       return true

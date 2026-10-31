@@ -165,6 +165,39 @@ function Addon.SetWindowTitle(frame, title, fontString)
   end
 end
 
+-- The game's colour picker, which changed shape between clients: Retail takes
+-- one table of settings, Classic sets fields on the frame. `onPick(r, g, b)` is
+-- called as the player moves about the wheel, `current` is where it opens.
+function Addon.PickColor(current, onPick)
+  if not ColorPickerFrame then return end
+  local r, g, b = current[1], current[2], current[3]
+  local function picked()
+    local nr, ng, nb = ColorPickerFrame:GetColorRGB()
+    onPick(nr, ng, nb)
+  end
+  local function cancelled() onPick(r, g, b) end
+  if type(ColorPickerFrame.SetupColorPickerAndShow) == "function" then
+    ColorPickerFrame:SetupColorPickerAndShow({
+      r = r, g = g, b = b, hasOpacity = false,
+      swatchFunc = picked, cancelFunc = cancelled,
+    })
+    ColorPickerFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    ColorPickerFrame:Raise()
+    return
+  end
+  ColorPickerFrame.hasOpacity = false
+  ColorPickerFrame.opacity = nil
+  ColorPickerFrame.previousValues = { r = r, g = g, b = b }
+  ColorPickerFrame.func = picked
+  ColorPickerFrame.cancelFunc = cancelled
+  ColorPickerFrame:SetColorRGB(r, g, b)
+  ColorPickerFrame:Hide()
+  ColorPickerFrame:Show()
+  -- Above the settings window, which sits in the same strata.
+  ColorPickerFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+  ColorPickerFrame:Raise()
+end
+
 function Addon.CreateSearchBox(parent)
   if not hasAtlas("common-search-magnifyingglass") then return Addon.createEditBox(parent) end
   local ok, box = pcall(CreateFrame, "EditBox", nil, parent, "SearchBoxTemplate")
@@ -204,6 +237,15 @@ function Addon.CreateContentInset(parent, scroll, native)
   inset:EnableMouse(false)
   local bg = rawget(inset, "Bg")
   if bg then bg:Hide() end
+  -- Stone behind the content under the stone styles, so a list sits in the
+  -- same dark stone the statistics charts do rather than in a black hole.
+  local ground = inset:CreateTexture(nil, "BACKGROUND", nil, 1)
+  ground:SetPoint("TOPLEFT", 3, -3)
+  ground:SetPoint("BOTTOMRIGHT", -3, 3)
+  Addon.Kit.OnRefresh(function(theme)
+    Addon.Kit.Ground(ground, theme, "plot")
+    ground:SetShown(theme.kit == "stone")
+  end)
   return inset
 end
 
@@ -289,7 +331,20 @@ end
 -- the tint is what threatens it: the brighter the chosen background, the closer
 -- the white label gets to it. 0.38 measures 7.64:1 at worst -- that is `known`,
 -- the palest of the four -- and the dimmed label measures 6.05:1 on black.
-function Addon.styleFlatButton(button, color, active)
+-- Every one made, so a change of background style can paint them again.
+Addon.flatButtons = {}
+Addon.actionButtons = {}
+
+function Addon.styleFlatButton(button, color, active, hover)
+  button.whwActive = active and true or false
+  -- The game's own tab art where the style and the client have it (Kit.lua);
+  -- the flat look below is what every other style, and any client without it, gets.
+  if Addon.Kit and Addon.Kit.PaintToggle(button, color, active, hover) then return end
+  if rawget(button, "whwKitLabel") then
+    button.whwKitLabel = nil
+    button.label:ClearAllPoints()
+    button.label:SetPoint("CENTER")
+  end
   if active then
     button:SetBackdropColor(color[1] * 0.38, color[2] * 0.38, color[3] * 0.38, 1)
     button:SetBackdropBorderColor(color[1], color[2], color[3], 1)
@@ -315,8 +370,11 @@ function Addon.createFlatButton(parent, text, color)
   button.label:SetPoint("CENTER")
   button.label:SetText(text)
   button.color = color
+  Addon.flatButtons[#Addon.flatButtons + 1] = button
   Addon.styleFlatButton(button, color, false)
   button:SetScript("OnEnter", function(self)
+    if Addon.Kit and Addon.Kit.PaintToggle(self, self.color, self.status ~= nil and Addon.selected ~= nil
+        and self.status == Addon.selected.status, true) then return end
     self:SetBackdropBorderColor(self.color[1], self.color[2], self.color[3], 1)
   end)
   button:SetScript("OnLeave", function(self)
@@ -328,11 +386,34 @@ end
 
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 
+-- A command button (Save, Next, Stats, Copy quest). The game's red button, which
+-- is what it stays unless the player picks "Match the background style" in
+-- Settings: then Kit.PaintAction hides the template's art and draws the button
+-- from the same pieces as the tabs, fields and toggles. The template's art is
+-- only hidden (alpha), never removed, so the choice can be changed back and
+-- forth without a reload.
 function Addon.createActionButton(parent, text)
   -- SharedButtonTemplate uses Blizzard's 128RedButton art and scales its caps.
   local template = hasAtlas("128-RedButton-Left") and "SharedButtonTemplate" or "UIPanelButtonTemplate"
-  local button = CreateFrame("Button", nil, parent, template)
+  local button = CreateFrame("Button", nil, parent, template .. ",BackdropTemplate")
   button:SetText(text)
+  button.label = button:GetFontString()
+  -- Every texture the template drew, taken before any of ours exist.
+  local art = {}
+  for _, region in ipairs({ button:GetRegions() }) do
+    if region.GetObjectType and region:GetObjectType() == "Texture" then art[#art + 1] = region end
+  end
+  button.whwTemplateArt = art
+  Addon.actionButtons[#Addon.actionButtons + 1] = button
+  local function paint() Addon.Kit.PaintAction(button) end
+  button:HookScript("OnEnter", function(self) self.whwHover = true; paint() end)
+  button:HookScript("OnLeave", function(self) self.whwHover = nil; self.whwPressed = nil; paint() end)
+  button:HookScript("OnMouseDown", function(self) self.whwPressed = true; paint() end)
+  button:HookScript("OnMouseUp", function(self) self.whwPressed = nil; paint() end)
+  button:HookScript("OnEnable", paint)
+  button:HookScript("OnDisable", paint)
+  button:HookScript("OnSizeChanged", paint)
+  paint()
   return button
 end
 
@@ -341,7 +422,6 @@ end
 -- one carried the single-line frame and the other the thicker scroll-box frame.
 -- Done only when the frame can carry a backdrop; otherwise the template's own
 -- border is left exactly as it was, because a field with neither is invisible.
-local FIELD_FILL, FIELD_EDGE, FIELD_FOCUS = { 0.10, 0.12, 0.17, 1 }, { 0.45, 0.49, 0.57, 1 }, { 1, 0.82, 0, 1 }
 
 function Addon.StyleInputField(frame, editBox)
   if not frame.SetBackdrop then return false end
@@ -349,19 +429,20 @@ function Addon.StyleInputField(frame, editBox)
   for _, region in ipairs({ frame:GetRegions() }) do
     if region.GetObjectType and region:GetObjectType() == "Texture" then region:Hide() end
   end
-  frame:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
   if NineSliceUtil and NineSliceUtil.ShowLayout then NineSliceUtil.ShowLayout(frame) end
-  frame:SetBackdropColor(FIELD_FILL[1], FIELD_FILL[2], FIELD_FILL[3], FIELD_FILL[4])
-  frame:SetBackdropBorderColor(FIELD_EDGE[1], FIELD_EDGE[2], FIELD_EDGE[3], FIELD_EDGE[4])
+  Addon.Kit.SkinField(frame, nil)
   -- A scroll box's text is a separate edit box laid over the frame, and with the
   -- bevel gone nothing kept it off the edge: the first letter sat on the border
   -- and blurred into it. The single-line box gets its room in createEditBox.
   if editBox ~= frame then editBox:SetTextInsets(7, 7, 4, 4) end
+  -- Focus lights the border in gold, whatever the style; Kit repaints it.
   editBox:HookScript("OnEditFocusGained", function()
-    frame:SetBackdropBorderColor(FIELD_FOCUS[1], FIELD_FOCUS[2], FIELD_FOCUS[3], FIELD_FOCUS[4])
+    frame.whwFocus = true
+    Addon.Kit.PaintField(frame)
   end)
   editBox:HookScript("OnEditFocusLost", function()
-    frame:SetBackdropBorderColor(FIELD_EDGE[1], FIELD_EDGE[2], FIELD_EDGE[3], FIELD_EDGE[4])
+    frame.whwFocus = nil
+    Addon.Kit.PaintField(frame)
   end)
   return true
 end
