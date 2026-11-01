@@ -1568,13 +1568,30 @@ function Addon.ToggleReaderFromNpc()
   end
 end
 
+-- The game's speaker preview (model, name, greeting), when it is showing next
+-- to `host`. It is parented to the window it was opened for.
+local function npcPortraitOn(host)
+  local portrait = usableFrame(rawget(_G, "QuestModelScene"))
+  if portrait and frameVisible(portrait) and portrait:GetParent() == host then
+    return portrait
+  end
+end
+
 function Addon.RefreshNpcReaderButton()
   if not npcReaderButton then return end
   local host = npcReaderHost()
   if not host then npcReaderButton:Hide(); return end
   followSideTabHost(npcReaderButton, host)
   npcReaderButton:ClearAllPoints()
-  npcReaderButton:SetPoint("TOPLEFT", host, "TOPRIGHT", 2, -110)
+  local portrait = npcPortraitOn(host)
+  if portrait then
+    -- The speaker's preview hangs off the window's right edge in a higher
+    -- layer and would cover the tab, so the tab goes on the preview's far side
+    -- (same height as it would have had on the window).
+    npcReaderButton:SetPoint("TOPLEFT", portrait, "TOPRIGHT", 2, -68)
+  else
+    npcReaderButton:SetPoint("TOPLEFT", host, "TOPRIGHT", 2, -110)
+  end
   npcReaderButton:SetScale(host:GetEffectiveScale() / UIParent:GetEffectiveScale())
   npcReaderButton:SetChecked(panel and panel:IsShown() or false)
   npcReaderButton:Show()
@@ -1603,6 +1620,13 @@ function Addon.AttachNpcReaderButton()
       host:HookScript("OnShow", Addon.RefreshNpcReaderButton)
       host:HookScript("OnHide", Addon.RefreshNpcReaderButton)
     end
+  end
+  -- The preview comes and goes with the quest page, and the tab moves with it.
+  local portrait = usableFrame(rawget(_G, "QuestModelScene"))
+  if portrait and not npcReaderHosts[portrait] then
+    npcReaderHosts[portrait] = true
+    portrait:HookScript("OnShow", Addon.RefreshNpcReaderButton)
+    portrait:HookScript("OnHide", Addon.RefreshNpcReaderButton)
   end
   if not npcReaderButton and next(npcReaderHosts) then
     npcReaderButton = createQuestSideTab("Interface\\Icons\\INV_Misc_Book_11", Addon.ToggleReaderFromNpc)
