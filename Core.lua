@@ -1515,6 +1515,26 @@ local function matchInPair(deText, enText, word, deIndex, locale)
     if hit then return hit, enSentences[hit] end
   end
   local mapped = mapSentenceIndex(deIndex, math.max(1, #deSentences), #enSentences)
+  -- Counts differ, so position is a guess: "mines ... the Fargodeep mine ..."
+  -- is three English sentences against two German ones and the proportional
+  -- pick lands the second German sentence on the middle English one. Settle it
+  -- by how many of the German sentence's words find a partner in each English
+  -- sentence; the proportional pick only breaks ties.
+  local deSentence = deSentences[deIndex]
+  if deSentence and Addon.AlignSentence and #enSentences > 1 then
+    local best, bestScore, bestDistance
+    for j, enSentence in ipairs(enSentences) do
+      local links = Addon.AlignSentence(deSentence, enSentence, locale)
+      local score = 0
+      for _ in pairs(links) do score = score + 1 end
+      local distance = math.abs(j - mapped)
+      if score > 0 and (not best or score > bestScore
+        or (score == bestScore and distance < bestDistance)) then
+        best, bestScore, bestDistance = j, score, distance
+      end
+    end
+    if best then return best, enSentences[best] end
+  end
   return mapped, enSentences[mapped]
 end
 
