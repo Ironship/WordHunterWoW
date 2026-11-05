@@ -1045,6 +1045,38 @@ function Addon.SetQuestVoiceAutoPlay(value)
   if Addon.RefreshSettingsWindow then Addon.RefreshSettingsWindow() end
 end
 
+-- Quest audio belongs to the German voice engine, which already has one switch
+-- for it: the flag that /whwv on|off and the voice page in the game's AddOns
+-- options turn. This is that same flag rather than a second setting that could
+-- disagree with it. Off, the engine reads nothing, shows no narrator window and
+-- no Play buttons and, since the flag is its master switch, does not speak single
+-- words either. With no voice add-on installed there is nothing to switch.
+local function voiceEngine()
+  local voice = rawget(_G, "WordHunterWoW_Voice")
+  if type(voice) == "table" and type(voice.GetEnabled) == "function"
+      and type(voice.SetEnabled) == "function" then
+    return voice
+  end
+end
+
+function Addon.QuestAudioInstalled()
+  return voiceEngine() ~= nil
+end
+
+function Addon.GetQuestAudioEnabled()
+  local voice = voiceEngine()
+  return voice ~= nil and voice.GetEnabled() and true or false
+end
+
+function Addon.SetQuestAudioEnabled(value)
+  local voice = voiceEngine()
+  if not voice then return end
+  voice.SetEnabled(value and true or false)
+  -- The engine draws its Play buttons, and keeps room for them, with the panel.
+  if Addon.refreshPanel and Addon.panel and Addon.panel:IsShown() then Addon.refreshPanel() end
+  if Addon.RefreshSettingsWindow then Addon.RefreshSettingsWindow() end
+end
+
 -- `requested` is the player having pressed the quest log's own button. It is
 -- the only thing that opens the panel from the log while the setting above is
 -- off, and it is deliberately not inferred from anything: a rule that guessed

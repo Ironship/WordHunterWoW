@@ -187,6 +187,8 @@ Addon.SETTINGS = {
   { key = "statsScale", tab = "sizes", reset = "default", default = 1.0, set = "SetStatsScale" },
   { key = "integratedLayout", tab = "panel", reset = "default", default = true, set = "SetIntegratedLayout" },
   { key = "questLogAutoOpen", tab = "panel", reset = "clear" },
+  -- Not stored with these: it is the voice engine's own flag, see GetQuestAudioEnabled.
+  { key = "questAudio", tab = "panel", reset = "default", default = true, set = "SetQuestAudioEnabled" },
   { key = "questVoiceAutoPlay", tab = "panel", reset = "clear" },
   { key = "npcReaderAutoOpen", tab = "panel", reset = "clear" },
   { key = "readingMode", tab = "panel" },
@@ -546,8 +548,8 @@ function Addon.CreateSettingsPanel()
     return fs
   end
 
-  local function check(tab, name, key, label, get, set)
-    local row = newRow(tab, "check", { key = key })
+  local function check(tab, name, key, label, get, set, enabledIf)
+    local row = newRow(tab, "check", { key = key, enabledIf = enabledIf })
     local box = CreateFrame("CheckButton", name, row.frame)
     box:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
     box:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
@@ -909,6 +911,12 @@ function Addon.CreateSettingsPanel()
   -- over the quest that had just been clicked.
   window.questLogAutoCheck = check(panelTab, "WordHunterWoWQuestLogAutoCheck", "questLogAutoOpen",
     LABELS.questLogAutoLabel, Addon.GetQuestLogAutoOpen, Addon.SetQuestLogAutoOpen)
+  -- On out of the box, and dimmed with nothing to switch when no voice add-on is
+  -- installed. Off is for a player whose quests are read by another add-on.
+  window.questAudioCheck = check(panelTab, "WordHunterWoWQuestAudioCheck", "questAudio",
+    "Enable quest audio", Addon.GetQuestAudioEnabled, Addon.SetQuestAudioEnabled,
+    Addon.QuestAudioInstalled)
+  note(panelTab, "Turn it off if another add-on, such as Spoken, reads your quests: the narrator window and the Play buttons go away, and so does the voice for single words. Requires German voice packs.")
   window.questVoiceAutoCheck = check(panelTab, "WordHunterWoWQuestVoiceAutoCheck", "questVoiceAutoPlay",
     "Automatically read quests when Reader opens", Addon.GetQuestVoiceAutoPlay, Addon.SetQuestVoiceAutoPlay)
   note(panelTab, "When off, the narrator window waits for Play. Requires German voice packs.")
