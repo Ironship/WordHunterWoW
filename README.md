@@ -92,6 +92,36 @@ their missing descriptions.
 Completion history is stored per character. There is no upload. After updating
 the addon, use `/reload` to load the new files.
 
+## What changed in 1.22
+
+**A new statistics window.** Four tabs — Overview, Growth, Forecast and Recall —
+with figure tiles, your Known words over time and a 30-day pace projection, a
+forecast of the words that are ready for Known, and your recall ratings.
+
+**One look for every window.** The windows share the game's own stone and
+parchment pieces (with a flat fallback on a client that lacks them), and each of
+the five background styles has its own set. There is a natural and a vivid
+colour palette, and you can change any of the five text and status colours in
+**Settings → Appearance**.
+
+**The other languages' dictionaries load only when needed.** The French, Spanish,
+Italian and Portuguese packs take 24 to 54 MiB each and were all read at login.
+Now only the pack for the language you are learning is. They need 1.22.6 or
+newer, and they run on Retail, Classic Era and WoW Forever.
+
+**Shortcut hints on buttons and side tabs.** They use the client's own button
+names and follow keyboard and controller changes. On Forever they show only in
+Gamepad Mode. If the client names a pad's face buttons by number, they now read
+A, B, X and Y instead of 1 to 4.
+
+**Reading.** The word colours stay readable on the parchment, readable items such
+as a journal, a letter or a book page open in the same reader as an NPC's
+conversation, German quest sentences highlight better and show split-verb hints,
+and with English Quest Panel the English sentence is picked by the words that
+link the two even when the sentence counts differ.
+
+**Dictionary words** can be reset to the pack's meaning from the word window.
+
 ## What changed in 1.21
 
 The library has **My quests**, **All in game quests** and **Words** book side tabs, bilingual titles,
@@ -167,8 +197,8 @@ stored sizes are unchanged; a window you had at 1.2 now says 120%.
 
 ## Install
 
-Unzip into `_retail_\Interface\AddOns\`, or `_classic_era_\Interface\AddOns\`
-— the download carries a build for each, then:
+Unzip into `_retail_\Interface\AddOns\`, `_classic_era_\Interface\AddOns\` or
+`_forever_\Interface\AddOns\` — the download carries a build for each, then:
 
 1. Set WoW's language and the addon's **Target language** to the same thing — `/whw lang`
 2. Open a quest or NPC dialogue, then click the **WordHunterWoW - Reader** book tab
@@ -185,7 +215,8 @@ You don't have to define every word yourself. A dictionary pack fills them in fo
 | | |
 |---|---|
 | [German](https://github.com/Ironship/WordHunterWoW-Dictionary-DE) | 104,274 words, every one checked by hand |
-| [French](https://github.com/Ironship/WordHunterWoW-Dictionary-FR) · [Spanish](https://github.com/Ironship/WordHunterWoW-Dictionary-ES) · [Italian](https://github.com/Ironship/WordHunterWoW-Dictionary-IT) · [Portuguese](https://github.com/Ironship/WordHunterWoW-Dictionary-PTBR) | machine-translated, not hand-checked |
+| [French](https://github.com/Ironship/WordHunterWoW-Dictionary-FR) | 70,326 words, machine-translated and then read through and corrected by hand (proper names excepted) |
+| [Spanish](https://github.com/Ironship/WordHunterWoW-Dictionary-ES) · [Italian](https://github.com/Ironship/WordHunterWoW-Dictionary-IT) · [Portuguese](https://github.com/Ironship/WordHunterWoW-Dictionary-PTBR) | machine-translated, not hand-checked |
 
 The French, Spanish, Italian and Portuguese packs load on demand: QuestWordHunter reads the one for the language you are learning at login, or when you pick it in the settings, so the others cost no memory (each is 24 to 54 MiB once loaded). A pack needs QuestWordHunter 1.22.6 or newer for that — an older one never loads it. The German dictionary also hosts the voice engine and loads with the game.
 
@@ -214,7 +245,7 @@ The recall check has the same shape:
 /whw difficult export   open them in a box you can copy into a flashcard app
 ```
 
-Supported languages: English, German, French, Spanish, Italian, Portuguese (Brazil). Retail 12.1 and Classic Era 1.15.9.
+Supported languages: English, German, French, Spanish, Italian, Portuguese (Brazil). Retail 12.1, Classic Era 1.15.9 and WoW Forever.
 
 Everything stays on your machine. No uploads.
 
