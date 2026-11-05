@@ -348,6 +348,14 @@ events:SetScript("OnEvent", function(_, event, name)
   Addon.RefreshInputHints()
 end)
 
+-- The icon set the game draws its prompts from changes under an open window --
+-- another pad, a switch to the mouse and back -- and the hints are drawn from it.
+local iconSets = rawget(_G, "InputDeviceIconSetManager")
+if type(iconSets) == "table" and type(iconSets.RegisterActiveInputDeviceIconSetUpdatedCallback) == "function" then
+  pcall(iconSets.RegisterActiveInputDeviceIconSetUpdatedCallback, iconSets,
+    function() Addon.RefreshInputHints() end, Addon)
+end
+
 -- Gamepad Mode raises no event when it is switched, so it is looked at twice a
 -- second and the hints are redrawn only when the answer changes.
 if C_InputInterfaceStyle and type(C_InputInterfaceStyle.GetCurrentStyle) == "function" then

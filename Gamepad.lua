@@ -30,21 +30,59 @@ function UI.EnableButtons(frame)
   end
 end
 
--- The client names the four face buttons by the pad's label style, and for a
--- pad it does not recognise ("Generic") that is a number: PAD3 reads "3". The
--- letters stay for the styles that already answer with a name of their own
--- (A/B/X/Y, Reverse, shapes).
+-- The game draws its own prompts from an icon set that follows the pad in use:
+-- letters for an Xbox pad, shapes for a PlayStation one, numbers for one it does
+-- not know. GetBindingText does not follow it. It answers with the numbered set
+-- whatever the pad is, so a prompt of the game's own saying A B X Y sat beside
+-- hints here reading 1 2 3 4. Where the client has the system its own prompts
+-- come from, ask it, and draw the atlas it names; the older answer stays for a
+-- client without it. Every call is probed, as in Compat.lua.
+local GLYPH_SIZE = 24
+
+local function gameGlyph(key)
+  local util = rawget(_G, "InputIconTextureSetUtility")
+  if type(util) ~= "table" or type(CreateAtlasMarkup) ~= "function"
+      or type(util.GetInputIconNameFromBindingKey) ~= "function"
+      or type(util.GetActiveInputIconButtonTextures) ~= "function"
+      or type(util.GetNormalActiveInputIconButtonTexture) ~= "function" then
+    return nil
+  end
+  local ok, text = pcall(function()
+    local labels = {}
+    for _, part in ipairs(util.GetInputIconNameFromBindingKey(key)) do
+      local textures = util.GetActiveInputIconButtonTextures(part)
+      local atlas = textures and util.GetNormalActiveInputIconButtonTexture(part)
+      -- A part with no icon of its own leaves the whole key to the older answer.
+      if type(atlas) ~= "string" then return nil end
+      labels[#labels + 1] = CreateAtlasMarkup(atlas, GLYPH_SIZE, GLYPH_SIZE)
+    end
+    if #labels > 0 then return table.concat(labels, " + ") end
+  end)
+  if ok and type(text) == "string" and text ~= "" then return text end
+end
+
+-- What GetBindingText gives for a pad the client files under "Generic" is a
+-- number, or an icon of the numbered set. The four face buttons are the same
+-- four on every pad, so say what is printed on an Xbox pad's.
 local FACE_LETTERS = { PAD1 = "A", PAD2 = "B", PAD3 = "X", PAD4 = "Y" }
+local LETTER_ICONS = { ["1"] = "A", ["2"] = "B", ["3"] = "X", ["4"] = "Y" }
 
 function UI.Key(key)
   if ConsolePort and type(ConsolePort.GetFormattedButtonCombination) == "function" then
     local glyph = ConsolePort:GetFormattedButtonCombination(key, "")
     if glyph then return glyph end
   end
+  local glyph = gameGlyph(key)
+  if glyph then return glyph end
   local text = GetBindingText and GetBindingText(key, 1)
   local letter = FACE_LETTERS[key]
   if letter and (type(text) ~= "string" or text == "" or text == key or text:match("^%d+$")) then
     return letter
+  end
+  if type(text) == "string" and letter then
+    text = text:gsub("Gamepad_Gen_(%d)_", function(n)
+      return LETTER_ICONS[n] and ("Gamepad_Ltr_" .. LETTER_ICONS[n] .. "_") or nil
+    end)
   end
   return text or _G["KEY_" .. key] or key
 end
