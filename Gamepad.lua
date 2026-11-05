@@ -30,12 +30,23 @@ function UI.EnableButtons(frame)
   end
 end
 
+-- The client names the four face buttons by the pad's label style, and for a
+-- pad it does not recognise ("Generic") that is a number: PAD3 reads "3". The
+-- letters stay for the styles that already answer with a name of their own
+-- (A/B/X/Y, Reverse, shapes).
+local FACE_LETTERS = { PAD1 = "A", PAD2 = "B", PAD3 = "X", PAD4 = "Y" }
+
 function UI.Key(key)
   if ConsolePort and type(ConsolePort.GetFormattedButtonCombination) == "function" then
     local glyph = ConsolePort:GetFormattedButtonCombination(key, "")
     if glyph then return glyph end
   end
-  return GetBindingText and GetBindingText(key, 1) or _G["KEY_" .. key] or key
+  local text = GetBindingText and GetBindingText(key, 1)
+  local letter = FACE_LETTERS[key]
+  if letter and (type(text) ~= "string" or text == "" or text == key or text:match("^%d+$")) then
+    return letter
+  end
+  return text or _G["KEY_" .. key] or key
 end
 
 function UI.Hint()
