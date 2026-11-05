@@ -1048,9 +1048,9 @@ end
 -- Quest audio belongs to the German voice engine, which already has one switch
 -- for it: the flag that /whwv on|off and the voice page in the game's AddOns
 -- options turn. This is that same flag rather than a second setting that could
--- disagree with it. Off, the engine reads nothing, shows no narrator window and
--- no Play buttons and, since the flag is its master switch, does not speak single
--- words either. With no voice add-on installed there is nothing to switch.
+-- disagree with it. Off, the engine reads nothing and shows no narrator window
+-- or Play buttons. Single words have their own switch below. With no voice add-on
+-- installed there is nothing to switch.
 local function voiceEngine()
   local voice = rawget(_G, "WordHunterWoW_Voice")
   if type(voice) == "table" and type(voice.GetEnabled) == "function"
@@ -1074,6 +1074,33 @@ function Addon.SetQuestAudioEnabled(value)
   voice.SetEnabled(value and true or false)
   -- The engine draws its Play buttons, and keeps room for them, with the panel.
   if Addon.refreshPanel and Addon.panel and Addon.panel:IsShown() then Addon.refreshPanel() end
+  if Addon.RefreshSettingsWindow then Addon.RefreshSettingsWindow() end
+end
+
+function Addon.WordAudioInstalled()
+  local voice = voiceEngine()
+  if not voice or voice.IndependentWordAudio ~= true
+      or type(voice.GetWordsEnabled) ~= "function"
+      or type(voice.SetWordsEnabled) ~= "function" then
+    return false
+  end
+  if type(voice.InstalledPacks) == "function" then
+    local _, _, words = voice.InstalledPacks()
+    return words and true or false
+  end
+  return true
+end
+
+function Addon.GetWordAudioEnabled()
+  local voice = voiceEngine()
+  return voice ~= nil and type(voice.GetWordsEnabled) == "function"
+    and voice.GetWordsEnabled() and true or false
+end
+
+function Addon.SetWordAudioEnabled(value)
+  local voice = voiceEngine()
+  if not voice or type(voice.SetWordsEnabled) ~= "function" then return end
+  voice.SetWordsEnabled(value and true or false)
   if Addon.RefreshSettingsWindow then Addon.RefreshSettingsWindow() end
 end
 
