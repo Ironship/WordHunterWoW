@@ -109,10 +109,17 @@ Italian and Portuguese packs take 24 to 54 MiB each and were all read at login.
 Now only the pack for the language you are learning is. They need 1.22.6 or
 newer, and they run on Retail, Classic Era and WoW Forever.
 
-**Shortcut hints on buttons and side tabs.** They use the client's own button
-names and follow keyboard and controller changes. On Forever they show only in
-Gamepad Mode. If the client names a pad's face buttons by number, they now read
+**Shortcut hints on buttons and side tabs.** They follow keyboard and controller
+changes, and on Forever they show only in Gamepad Mode. On a controller they are
+drawn from the same icon set the game's own prompts use, so an Xbox pad shows
 A, B, X and Y instead of 1 to 4.
+
+**Quest audio and word audio can be switched off separately.** **Settings → Quest
+panel** has **Enable quest audio** and **Enable word audio**, both on by default.
+Turn quest audio off if another add-on, such as Spoken, reads your quests: the
+narrator window and the Play buttons go away. Word audio, the voice that says a
+German word when you click it, keeps working. The word switch needs the updated
+German voice engine (2.0.9) and the word voice pack.
 
 **Reading.** The word colours stay readable on the parchment, readable items such
 as a journal, a letter or a book page open in the same reader as an NPC's
