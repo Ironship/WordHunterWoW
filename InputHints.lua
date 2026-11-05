@@ -16,8 +16,19 @@ BINDING_NAME_WORDHUNTERVOICE_PAUSE = "Pause / resume voice"
 BINDING_NAME_WORDHUNTERVOICE_REPLAY = "Replay passage"
 BINDING_NAME_WORDHUNTERVOICE_STOP = "Stop voice"
 
+-- Forever has a Gamepad Mode of its own, apart from controller support being
+-- on: the game's interface switches with it, and the hints here go with it.
+-- A client without that mode answers yes and leaves it to the checks below.
+local function gamePadInterface()
+  local style = C_InputInterfaceStyle and C_InputInterfaceStyle.GetCurrentStyle
+  local kinds = Enum and Enum.InputDeviceInterfaceType
+  if type(style) ~= "function" or not (kinds and kinds.Gamepad) then return true end
+  return style() == kinds.Gamepad
+end
+
 function Addon.GamePadHintsEnabled()
   if not (Addon.GetGamePadEnabled and Addon.GetGamePadEnabled()) then return false end
+  if not gamePadInterface() then return false end
   if C_GamePad and C_GamePad.IsEnabled then return C_GamePad.IsEnabled() end
   if GetCVarBool then return GetCVarBool("GamePadEnable") end
   return false
@@ -149,8 +160,9 @@ end
 function Addon.WindowInputHint(frame)
   local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   hint:SetTextColor(unpack(Addon.COLORS.muted))
-  hint:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 2)
-  hint:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -12, 2)
+  -- Clear of the native frame's bottom rim, which covers the lowest few pixels.
+  hint:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 8)
+  hint:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -12, 8)
   hint:SetJustifyH("LEFT")
   hint:SetWordWrap(true)
   Addon.WatchInputHints(frame, function()
@@ -296,11 +308,11 @@ end
 
 function Addon.ControllerHelpText()
   if not Addon.GamePadHintsEnabled() then
-    return "Enable controller support in Options → Controls and the switch above to show controller hints. "
-      .. "Assign WordHunterWoW shortcuts in the game's Key Bindings settings."
+    return "Controller hints show while the switch above is on and the game's controller support "
+      .. "(Gamepad Mode) is on in Options > Controls."
   end
   local key = function(button) return Addon.ShortcutHint(nil, nil, button) end
-  return "Needs the game's own controller support (Options → Controls).\n"
+  return "Needs the game's own controller support (Options > Controls).\n"
     .. "Reader — " .. Addon.PanelShortcutText() .. "\n"
     .. "Editor — " .. key("PADDLEFT") .. "/" .. key("PADDRIGHT") .. ": status or rating; "
     .. Addon.ShortcutHint("SAVE", nil, "PAD1") .. ": save; "
@@ -335,3 +347,17 @@ events:SetScript("OnEvent", function(_, event, name)
   if event == "CVAR_UPDATE" and type(name) == "string" and not name:lower():match("^gamepad") then return end
   Addon.RefreshInputHints()
 end)
+
+-- Gamepad Mode raises no event when it is switched, so it is looked at twice a
+-- second and the hints are redrawn only when the answer changes.
+if C_InputInterfaceStyle and type(C_InputInterfaceStyle.GetCurrentStyle) == "function" then
+  local wait, last = 0, nil
+  events:SetScript("OnUpdate", function(_, elapsed)
+    wait = wait + (elapsed or 0)
+    if wait < 0.5 then return end
+    wait = 0
+    local now = Addon.GamePadHintsEnabled()
+    if last ~= nil and now ~= last then Addon.RefreshInputHints() end
+    last = now
+  end)
+end

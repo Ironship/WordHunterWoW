@@ -189,7 +189,7 @@ Addon.LABELS = {
   integratedLabel = "Integrated quest window",
   harvestLabel = "Collect quest and NPC text for the dictionary project",
   gamepadLabel = "Controller — the pad drives the panel while it is open",
-  gamepadNote = "Needs the game's own controller support (Options → Controls). "
+  gamepadNote = "Needs the game's own controller support (Options > Controls). "
     .. "The reader and word editor show the current controls using the client's controller labels. "
     .. "The sticks are never taken.",
   harvestNote = "Off by default. Records objectives, progress and hand-in text plus NPC dialogue you actually see — the passages Blizzard's quest API does not publish. Stored locally; %d passages and %d words no dictionary covers. Turning it off keeps what was collected until you export or /whw harvest clear.",

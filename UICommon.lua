@@ -413,6 +413,14 @@ function Addon.createActionButton(parent, text)
   button:HookScript("OnEnable", paint)
   button:HookScript("OnDisable", paint)
   button:HookScript("OnSizeChanged", paint)
+  -- BackdropTemplate's OnSizeChanged takes the place of the three-slice
+  -- template's, and that one is what rescales the red art. Without it the art
+  -- keeps the height the button had when it was last shown, and a button that
+  -- grows afterwards (a controller shortcut line appearing under its caption, a
+  -- new text size) has its label hanging out of the bottom of the art.
+  button:HookScript("OnSizeChanged", function(self)
+    if rawget(self, "leftAtlasInfo") and type(self.UpdateScale) == "function" then self:UpdateScale() end
+  end)
   paint()
   return button
 end

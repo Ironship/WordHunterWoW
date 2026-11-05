@@ -299,7 +299,7 @@ function Addon.toggleWordList()
     if Addon.WindowInputHint then
       local inputHint = Addon.WindowInputHint(listFrame)
       Addon.WatchInputHints(listFrame, function()
-        local padding = Addon.GamePadHintsEnabled() and math.max(36, inputHint:GetStringHeight() + 8) or 0
+        local padding = Addon.GamePadHintsEnabled() and math.max(36, inputHint:GetStringHeight() + 14) or 0
         listFrame.scroll:SetPoint("BOTTOMRIGHT", -34, 56 + padding)
         listFrame.prevPage:SetPoint("BOTTOMLEFT", 18, 12 + padding)
         listFrame.nextPage:SetPoint("BOTTOMRIGHT", -18, 12 + padding)

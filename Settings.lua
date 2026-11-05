@@ -1060,7 +1060,7 @@ function Addon.CreateSettingsPanel()
   if Addon.ControllerHelpText then
     function gamepadRow.Refresh() window.gamepadNote:SetText(Addon.ControllerHelpText()) end
     function windowNoteRow.Refresh()
-      local text = "Assign shortcuts in Options → Key Bindings → WordHunterWoW."
+      local text = "Assign shortcuts in Options > Key Bindings > WordHunterWoW."
       if Addon.GamePadHintsEnabled() then
         text = text .. "\nIn this window: " .. Addon.ShortcutHint(nil, nil, "PADLSHOULDER") .. "/"
           .. Addon.ShortcutHint(nil, nil, "PADRSHOULDER") .. " switch tabs; "
