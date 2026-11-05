@@ -187,8 +187,9 @@ Addon.SETTINGS = {
   { key = "statsScale", tab = "sizes", reset = "default", default = 1.0, set = "SetStatsScale" },
   { key = "integratedLayout", tab = "panel", reset = "default", default = true, set = "SetIntegratedLayout" },
   { key = "questLogAutoOpen", tab = "panel", reset = "clear" },
-  -- Not stored with these: it is the voice engine's own flag, see GetQuestAudioEnabled.
+  -- These live in the voice engine's saved variables, not WordHunterWoWDB.
   { key = "questAudio", tab = "panel", reset = "default", default = true, set = "SetQuestAudioEnabled" },
+  { key = "wordAudio", tab = "panel", reset = "default", default = true, set = "SetWordAudioEnabled" },
   { key = "questVoiceAutoPlay", tab = "panel", reset = "clear" },
   { key = "npcReaderAutoOpen", tab = "panel", reset = "clear" },
   { key = "readingMode", tab = "panel" },
@@ -916,7 +917,11 @@ function Addon.CreateSettingsPanel()
   window.questAudioCheck = check(panelTab, "WordHunterWoWQuestAudioCheck", "questAudio",
     "Enable quest audio", Addon.GetQuestAudioEnabled, Addon.SetQuestAudioEnabled,
     Addon.QuestAudioInstalled)
-  note(panelTab, "Turn it off if another add-on, such as Spoken, reads your quests: the narrator window and the Play buttons go away, and so does the voice for single words. Requires German voice packs.")
+  note(panelTab, "Turn it off if another add-on, such as Spoken, reads your quests: the narrator window and the Play buttons go away. Requires German voice packs.")
+  window.wordAudioCheck = check(panelTab, "WordHunterWoWWordAudioCheck", "wordAudio",
+    "Enable word audio", Addon.GetWordAudioEnabled, Addon.SetWordAudioEnabled,
+    Addon.WordAudioInstalled)
+  note(panelTab, "Requires the updated German voice engine and word voice pack.")
   window.questVoiceAutoCheck = check(panelTab, "WordHunterWoWQuestVoiceAutoCheck", "questVoiceAutoPlay",
     "Automatically read quests when Reader opens", Addon.GetQuestVoiceAutoPlay, Addon.SetQuestVoiceAutoPlay)
   note(panelTab, "When off, the narrator window waits for Play. Requires German voice packs.")
