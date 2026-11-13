@@ -627,6 +627,16 @@ function Addon.createEditor()
   cover.scale:SetJustifyH("LEFT")
   cover.scale:SetText(LABELS.recallScale)
 
+  -- The pad's controls, on a row of their own. They used to be appended to the
+  -- prompt, which is already most of a line wide: with the icons the tail
+  -- wrapped onto the scale line and the buttons below it.
+  cover.controls = cover:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  cover.controls:SetTextColor(unpack(COLORS.muted))
+  cover.controls:SetPoint("TOPLEFT", 20, -36)
+  cover.controls:SetPoint("TOPRIGHT", -20, -36)
+  cover.controls:SetJustifyH("LEFT")
+  cover.controls:SetWordWrap(false)
+
   -- Coloured as the verdict reads: not knowing a word is what New looks like,
   -- knowing it is what Known looks like, and the middle is Learning.
   local scoreColors = { COLORS.new, COLORS.new, COLORS.learning, COLORS.known, COLORS.known }
@@ -634,7 +644,7 @@ function Addon.createEditor()
   for score = 1, 5 do
     local button = Addon.createFlatButton(cover, tostring(score), scoreColors[score])
     button:SetSize(70, Addon.RoleButtonHeight())
-    button:SetPoint("TOPLEFT", 20 + (score - 1) * 76, -36)
+    button:SetPoint("TOPLEFT", 20 + (score - 1) * 76, -54)
     button.score = score
     button:SetScript("OnClick", function(self) rate(self.score) end)
     cover.buttons[score] = button
@@ -726,9 +736,9 @@ function Addon.createEditor()
       editor.statusLabel:SetText(LABELS.status .. (pad and direction ~= "" and ("  " .. direction) or ""))
       local rate = Addon.ShortcutHint(nil, nil, "PAD1")
       local controls = ""
-      if pad and direction ~= "" then controls = controls .. "  " .. direction .. ": pick" end
-      if pad and rate ~= "" then controls = controls .. "  " .. rate .. ": rate" end
-      cover.prompt:SetText(LABELS.recallPrompt .. controls)
+      if pad and direction ~= "" then controls = direction .. ": pick" end
+      if pad and rate ~= "" then controls = controls .. (controls ~= "" and "   " or "") .. rate .. ": rate" end
+      cover.controls:SetText(controls)
     end
     Addon.WatchInputHints(editor, refresh)
     cover:HookScript("OnShow", Addon.RefreshInputHints)
