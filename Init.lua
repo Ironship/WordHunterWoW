@@ -107,14 +107,14 @@ events:SetScript("OnEvent", function(_, event, a1, a2)
     if Addon.PlayerName then Addon.PlayerName() end
     -- History syncs here too: the bulk completion answer is per-character and
     -- only worth asking once the player is in the world.
-    if Addon.SyncCharacterQuestHistory then Addon.SyncCharacterQuestHistory() end
+    if Addon.SyncCharacterQuestHistoryIfNeeded then Addon.SyncCharacterQuestHistoryIfNeeded() end
   elseif event == "PLAYER_ENTERING_WORLD" then
     -- Its own branch: the last one below treats any event it is handed as a
     -- quest window opening.
     if Addon.PlayerName then Addon.PlayerName() end
-    if Addon.SyncCharacterQuestHistory then Addon.SyncCharacterQuestHistory() end
+    if Addon.SyncCharacterQuestHistoryIfNeeded then Addon.SyncCharacterQuestHistoryIfNeeded() end
   elseif event == "PLAYER_LOGOUT" then
-    if Addon.SyncCharacterQuestHistory then Addon.SyncCharacterQuestHistory() end
+    if Addon.SyncCharacterQuestHistoryIfNeeded then Addon.SyncCharacterQuestHistoryIfNeeded() end
   elseif event == "GOSSIP_SHOW" then
     Addon.AttachNpcReaderButton()
     Addon.lastPassage = "gossip"
@@ -319,6 +319,13 @@ SlashCmdList.WORDHUNTERWOW = function(message)
     -- Without one the only remedy is deleting the saved file, which takes the
     -- player's whole word list with it.
     Addon.ResetLayout()
+  elseif command == "undo" then
+    local restored, kind = Addon.UndoLastReset()
+    if restored then
+      print("|cff66ccffWordHunterWoW:|r " .. string.format(kind == "status" and Addon.LABELS.undoDoneStatus or Addon.LABELS.undoDoneText, restored))
+    else
+      print("|cff66ccffWordHunterWoW:|r " .. Addon.LABELS.undoNothing)
+    end
   elseif command == "words" then
     Addon.toggleWordList()
   elseif command == "stats" then

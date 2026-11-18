@@ -41,7 +41,7 @@ LABELS.tabAppearance = "Appearance"
 LABELS.tabSizes = "Sizes"
 LABELS.tabPanel = "Quest panel"
 LABELS.tabLearning = "Learning"
-LABELS.tabCollecting = "Collecting"
+LABELS.tabCollecting = "Data"
 LABELS.tabController = "Controller"
 LABELS.tabAbout = "About"
 LABELS.resetTab = "Reset this tab"
@@ -73,8 +73,28 @@ LABELS.aboutCommands = "/whw — open or close the quest panel\n"
   .. "/whw recall on|off  ·  /whw difficult [export]\n"
   .. "/whw harvest [on|off|export|clear]\n"
   .. "/whw reset — put every window back\n"
+  .. "/whw undo — undo the last bulk reset of words\n"
   .. "/whw diag — diagnostics in chat"
 LABELS.aboutDiagnostics = "Print diagnostics to chat"
+LABELS.dataResetHeading = "Reset words"
+LABELS.dataResetNote = "These overwrite what you saved for the current target language. The reset keeps one copy of what it changed, so the last one can be undone."
+LABELS.dataDifficultHeading = "Difficult words"
+LABELS.dataCollectHeading = "Collected text"
+LABELS.resetUndo = "Undo last reset"
+LABELS.undoNothing = "Nothing to undo."
+LABELS.undoLast = "Last reset: %s of %d words, %s. Undo puts them back."
+LABELS.undoKindText = "meanings and notes"
+LABELS.undoKindStatus = "statuses"
+LABELS.undoDoneText = "%d words got their meaning and note back."
+LABELS.undoDoneStatus = "%d words got their status back."
+LABELS.questAudioLabel = "Enable quest audio"
+LABELS.questAudioNote = "Turn it off if another add-on, such as Spoken, reads your quests: the narrator window and the Play buttons go away. Requires German voice packs."
+LABELS.wordAudioLabel = "Enable word audio"
+LABELS.wordAudioNote = "Requires the updated German voice engine and word voice pack."
+LABELS.questVoiceAutoLabel = "Automatically read quests when Reader opens"
+LABELS.questVoiceAutoNote = "When off, the narrator window waits for Play. Requires German voice packs."
+LABELS.npcReaderAutoLabel = "Open Reader automatically when talking to NPCs"
+LABELS.npcReaderAutoNote = "Quests and dialogue. When off, use the Reader tab beside the NPC window."
 LABELS.recallBadge = "A click on %s asks for a 1–5 rating first."
 
 local WHITE = "Interface\\Buttons\\WHITE8X8"
@@ -915,19 +935,19 @@ function Addon.CreateSettingsPanel()
   -- On out of the box, and dimmed with nothing to switch when no voice add-on is
   -- installed. Off is for a player whose quests are read by another add-on.
   window.questAudioCheck = check(panelTab, "WordHunterWoWQuestAudioCheck", "questAudio",
-    "Enable quest audio", Addon.GetQuestAudioEnabled, Addon.SetQuestAudioEnabled,
+    LABELS.questAudioLabel, Addon.GetQuestAudioEnabled, Addon.SetQuestAudioEnabled,
     Addon.QuestAudioInstalled)
-  note(panelTab, "Turn it off if another add-on, such as Spoken, reads your quests: the narrator window and the Play buttons go away. Requires German voice packs.")
+  note(panelTab, LABELS.questAudioNote)
   window.wordAudioCheck = check(panelTab, "WordHunterWoWWordAudioCheck", "wordAudio",
-    "Enable word audio", Addon.GetWordAudioEnabled, Addon.SetWordAudioEnabled,
+    LABELS.wordAudioLabel, Addon.GetWordAudioEnabled, Addon.SetWordAudioEnabled,
     Addon.WordAudioInstalled)
-  note(panelTab, "Requires the updated German voice engine and word voice pack.")
+  note(panelTab, LABELS.wordAudioNote)
   window.questVoiceAutoCheck = check(panelTab, "WordHunterWoWQuestVoiceAutoCheck", "questVoiceAutoPlay",
-    "Automatically read quests when Reader opens", Addon.GetQuestVoiceAutoPlay, Addon.SetQuestVoiceAutoPlay)
-  note(panelTab, "When off, the narrator window waits for Play. Requires German voice packs.")
+    LABELS.questVoiceAutoLabel, Addon.GetQuestVoiceAutoPlay, Addon.SetQuestVoiceAutoPlay)
+  note(panelTab, LABELS.questVoiceAutoNote)
   window.npcReaderAutoCheck = check(panelTab, "WordHunterWoWNpcReaderAutoCheck", "npcReaderAutoOpen",
-    "Open Reader automatically when talking to NPCs", Addon.GetNpcReaderAutoOpen, Addon.SetNpcReaderAutoOpen)
-  note(panelTab, "Quests and dialogue. When off, use the Reader tab beside the NPC window.")
+    LABELS.npcReaderAutoLabel, Addon.GetNpcReaderAutoOpen, Addon.SetNpcReaderAutoOpen)
+  note(panelTab, LABELS.npcReaderAutoNote)
   -- It also has a slash command and a pad button, which are what a player
   -- will actually use; the box is here so somebody who has never read the
   -- command list can find out it exists.
@@ -943,31 +963,6 @@ function Addon.CreateSettingsPanel()
   window.lockMeaningEditing = check(learning, "WordHunterWoWLockMeaningEditingCheck",
     "lockMeaningEditing", LABELS.lockMeaningEditing,
     Addon.GetMeaningEditingLocked, Addon.SetMeaningEditingLocked)
-  window.resetAllText = action(learning, LABELS.resetAllText, function()
-    Addon.showConfirm(LABELS.resetAllText, LABELS.resetAllTextBody, LABELS.confirmAction, function()
-      local count, meanings, notes = Addon.ResetAllMeaningsAndNotes()
-      if count == nil then
-        Addon.showConfirm(LABELS.resetAllText, LABELS.resetDictionaryUnavailable, nil, nil, window)
-        return
-      end
-      if print then
-        print("|cff59aefaWordHunterWoW:|r " .. string.format(LABELS.resetAllTextDone, count, meanings, notes))
-      end
-      window.refresh()
-    end, window)
-  end, true)
-  window.resetAllStatuses = action(learning, LABELS.resetAllStatuses, function()
-    Addon.showConfirm(LABELS.resetAllStatuses, LABELS.resetAllStatusesBody,
-      LABELS.confirmAction, function()
-        local count = Addon.ResetAllWordStatuses()
-        if count == nil then
-          Addon.showConfirm(LABELS.resetAllStatuses, LABELS.resetDictionaryUnavailable, nil, nil, window)
-          return
-        end
-        if print then print("|cff59aefaWordHunterWoW:|r " .. string.format(LABELS.resetAllStatusesDone, count)) end
-        window.refresh()
-      end, window)
-  end, true)
   local function recallOn() return Addon.GetRecallCheck and Addon.GetRecallCheck() or false end
   window.recallCheck = check(learning, "WordHunterWoWRecallCheck", "recallCheck", LABELS.recallLabel,
     recallOn, function(v) if Addon.SetRecallCheck then Addon.SetRecallCheck(v) end end)
@@ -1015,9 +1010,72 @@ function Addon.CreateSettingsPanel()
   end
   difficultRow.Refresh = window.refreshDifficultNote
 
+  -- --- 5. Data (the id stays "collecting", which /whw settings collecting still takes) --------------
+  local collecting = tabsById.collecting
+  heading(collecting, LABELS.dataResetHeading)
+  note(collecting, LABELS.dataResetNote)
+  window.resetAllText = action(collecting, LABELS.resetAllText, function()
+    local changed, own = Addon.PreviewResetAllMeaningsAndNotes()
+    local body = LABELS.resetAllTextBody
+    if changed then body = body .. "\n\n" .. string.format(LABELS.resetAllTextImpact, changed, own or 0) end
+    Addon.showConfirm(LABELS.resetAllText, body, LABELS.confirmAction, function()
+      local count, meanings, notes = Addon.ResetAllMeaningsAndNotes()
+      if count == nil then
+        Addon.showConfirm(LABELS.resetAllText, LABELS.resetDictionaryUnavailable, nil, nil, window)
+        return
+      end
+      if print then
+        print("|cff59aefaWordHunterWoW:|r " .. string.format(LABELS.resetAllTextDone, count, meanings, notes))
+      end
+      window.refresh()
+    end, window)
+  end, true)
+  window.resetAllStatuses = action(collecting, LABELS.resetAllStatuses, function()
+    local changed = Addon.PreviewResetAllWordStatuses()
+    local body = LABELS.resetAllStatusesBody
+    if changed then body = body .. "\n\n" .. string.format(LABELS.resetAllStatusesImpact, changed) end
+    Addon.showConfirm(LABELS.resetAllStatuses, body,
+      LABELS.confirmAction, function()
+        local count = Addon.ResetAllWordStatuses()
+        if count == nil then
+          Addon.showConfirm(LABELS.resetAllStatuses, LABELS.resetDictionaryUnavailable, nil, nil, window)
+          return
+        end
+        if print then print("|cff59aefaWordHunterWoW:|r " .. string.format(LABELS.resetAllStatusesDone, count)) end
+        window.refresh()
+      end, window)
+  end, true)
+  -- One copy of what the last reset overwrote: the line says what it is, the button puts it back.
+  local undoNote, undoNoteRow = note(collecting, "")
+  window.undoNote = undoNote
+  local undoButton, undoRow
+  local function undoState()
+    local kind, count, at = Addon.GetResetBackup()
+    return kind, count, at
+  end
+  function undoNoteRow.Refresh()
+    local kind, count, at = undoState()
+    if not kind then
+      undoNote:SetText(LABELS.undoNothing)
+    else
+      local when = date and date("%d %b %H:%M", at or 0) or ""
+      undoNote:SetText(string.format(LABELS.undoLast, kind == "status" and LABELS.undoKindStatus or LABELS.undoKindText,
+        count or 0, when))
+    end
+  end
+  undoButton, undoRow = action(collecting, LABELS.resetUndo, function()
+    local restored, kind = Addon.UndoLastReset()
+    if restored and print then
+      print("|cff59aefaWordHunterWoW:|r " .. string.format(kind == "status" and LABELS.undoDoneStatus or LABELS.undoDoneText, restored))
+    end
+    window.refresh()
+  end)
+  window.resetUndo = undoButton
+  undoRow.enabledIf = function() return Addon.GetResetBackup() ~= nil end
+  heading(collecting, LABELS.dataDifficultHeading)
   -- The same shape as the harvest export: the list goes into the copy box, and
   -- an empty list says so in a dialog with nothing to confirm.
-  window.difficultExport = action(learning, LABELS.difficultExport, function()
+  window.difficultExport = action(collecting, LABELS.difficultExport, function()
     local text = Addon.BuildDifficultExport and Addon.BuildDifficultExport() or ""
     if type(text) ~= "string" or text == "" then
       Addon.showConfirm(LABELS.difficultExport,
@@ -1029,8 +1087,7 @@ function Addon.CreateSettingsPanel()
     Addon.showCopyText(LABELS.difficultExport, text, LABELS.difficultExportHint, window)
   end)
 
-  -- --- 5. Collecting -------------------------------------------------------------
-  local collecting = tabsById.collecting
+  heading(collecting, LABELS.dataCollectHeading)
   window.harvestCheck = check(collecting, "WordHunterWoWHarvestCheck", "harvestCorpus", LABELS.harvestLabel,
     Addon.GetHarvestEnabled, Addon.SetHarvestEnabled)
   local harvestNote, harvestRow = note(collecting, "")

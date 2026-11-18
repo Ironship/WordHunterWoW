@@ -163,10 +163,12 @@ Addon.LABELS = {
   resetDictionary = "Reset to dictionary",
   resetAllText = "Reset meanings and notes",
   resetAllTextDone = "%d words changed: %d meanings and %d notes reset. Statuses unchanged.",
-  resetAllTextBody = "This resets every saved meaning and note for the current target language to its built-in dictionary version. Words without a dictionary entry will have their saved meaning and note cleared.\n\nWord statuses (New, Learning, Known and Ignored) and encounter history are kept. This cannot be undone.",
+  resetAllTextBody = "This resets every saved meaning and note for the current target language to its built-in dictionary version. Words without a dictionary entry will have their saved meaning and note cleared.\n\nWord statuses (New, Learning, Known and Ignored) and encounter history are kept. The last reset can be undone in Settings > Data (or /whw undo).",
   resetAllStatuses = "Reset word statuses",
+  resetAllTextImpact = "Right now: %d words would change; %d of them are your own words (no dictionary entry) and would lose the meaning and note you wrote.",
+  resetAllStatusesImpact = "Right now: %d word statuses would change.",
   resetAllStatusesDone = "%d word statuses reset.",
-  resetAllStatusesBody = "This resets every saved word status for the current target language to its built-in dictionary status, or New when the word is not in the dictionary.\n\nMeanings, notes and encounter history are kept. This cannot be undone.",
+  resetAllStatusesBody = "This resets every saved word status for the current target language to its built-in dictionary status, or New when the word is not in the dictionary.\n\nMeanings, notes and encounter history are kept. The last reset can be undone in Settings > Data (or /whw undo).",
   resetDictionaryUnavailable = "The dictionary for this language is not available. Nothing was reset.",
   lockMeaningEditing = "Lock editing of meanings and notes",
   confirmAction = "Reset",
@@ -928,10 +930,60 @@ local function ensureResetDictionary(locale)
   return type(providers) == "table" and type(order) == "table" and #order > 0
 end
 
+-- One copy of what the last bulk reset overwrote, so it can be undone. Only the words the reset really changes are kept,
+-- and each reset replaces the copy of the one before. kind: "text" (meanings and notes) or "status".
+local function startBackup(kind, locale)
+  if type(WordHunterWoWDB) ~= "table" then WordHunterWoWDB = {} end
+  local backup = { kind = kind, locale = locale, at = time(), count = 0, entries = {} }
+  WordHunterWoWDB.resetBackup = backup
+  return backup
+end
+
+-- The last reset that can still be undone: kind, how many words, when, locale. Nil when there is none.
+function Addon.GetResetBackup()
+  local backup = type(WordHunterWoWDB) == "table" and WordHunterWoWDB.resetBackup
+  if type(backup) ~= "table" or type(backup.entries) ~= "table" or (backup.count or 0) <= 0 then return nil end
+  return backup.kind, backup.count, backup.at, backup.locale
+end
+
+-- Counts what ResetAllMeaningsAndNotes would do without doing it: the words that change and, of those, the player's own
+-- (no dictionary entry) that would lose a meaning or a note they wrote. Nil while the dictionary is not available.
+function Addon.PreviewResetAllMeaningsAndNotes()
+  local locale = Addon.GetTargetLocale()
+  if not ensureResetDictionary(locale) then return nil end
+  local changed, own = 0, 0
+  for key, entry in pairs(Addon.GetWordsTable(locale)) do
+    if type(entry) == "table" and not entry.encounterOnly then
+      local dictionary = Addon.GetDictionaryEntry(key, locale)
+      local translation = dictionary and dictionary.translation or ""
+      local note = dictionary and dictionary.note or ""
+      if (entry.translation or "") ~= translation or (entry.note or "") ~= note then
+        changed = changed + 1
+        if not dictionary and ((entry.translation or "") ~= "" or (entry.note or "") ~= "") then own = own + 1 end
+      end
+    end
+  end
+  return changed, own
+end
+
+function Addon.PreviewResetAllWordStatuses()
+  local locale = Addon.GetTargetLocale()
+  if not ensureResetDictionary(locale) then return nil end
+  local changed = 0
+  for key, entry in pairs(Addon.GetWordsTable(locale)) do
+    if type(entry) == "table" and not entry.encounterOnly then
+      local dictionary = Addon.GetDictionaryEntry(key, locale)
+      if Addon.EffectiveStatus(entry) ~= Addon.EffectiveStatus(dictionary) then changed = changed + 1 end
+    end
+  end
+  return changed
+end
+
 function Addon.ResetAllMeaningsAndNotes()
   local locale = Addon.GetTargetLocale()
   if not ensureResetDictionary(locale) then return nil end
   local words = Addon.GetWordsTable(locale)
+  local backup = startBackup("text", locale)
   local changed, meaningsChanged, notesChanged = 0, 0, 0
   for key, entry in pairs(words) do
     if type(entry) == "table" and not entry.encounterOnly then
@@ -944,6 +996,10 @@ function Addon.ResetAllMeaningsAndNotes()
       if noteChanged then notesChanged = notesChanged + 1 end
       if meaningChanged or noteChanged then
         changed = changed + 1
+      end
+      if meaningChanged or noteChanged then
+        backup.entries[key] = { t = entry.translation, n = entry.note, u = entry.noteUpdatedAt }
+        backup.count = backup.count + 1
       end
       entry.translation = translation
       entry.note = note
@@ -958,12 +1014,15 @@ function Addon.ResetAllWordStatuses()
   local locale = Addon.GetTargetLocale()
   if not ensureResetDictionary(locale) then return nil end
   local words = Addon.GetWordsTable(locale)
+  local backup = startBackup("status", locale)
   local changed, now = 0, time()
   for key, entry in pairs(words) do
     if type(entry) == "table" and not entry.encounterOnly then
       local dictionary = Addon.GetDictionaryEntry(key, locale)
       local status = Addon.EffectiveStatus(dictionary)
       if Addon.EffectiveStatus(entry) ~= status then
+        backup.entries[key] = { s = entry.status, c = entry.statusChangedAt }
+        backup.count = backup.count + 1
         entry.status = status
         entry.statusChangedAt = now
         changed = changed + 1
@@ -972,6 +1031,30 @@ function Addon.ResetAllWordStatuses()
   end
   refreshResetWordData()
   return changed
+end
+
+-- Puts back what the last bulk reset overwrote. Returns how many words were restored and which reset it was, or nil
+-- when there is nothing to undo. A word deleted since the reset stays deleted.
+function Addon.UndoLastReset()
+  local backup = type(WordHunterWoWDB) == "table" and WordHunterWoWDB.resetBackup
+  if type(backup) ~= "table" or type(backup.entries) ~= "table" or (backup.count or 0) <= 0 then return nil end
+  local words = Addon.GetWordsTable(backup.locale)
+  local restored = 0
+  for key, saved in pairs(backup.entries) do
+    local entry = words[key]
+    if type(entry) == "table" then
+      if backup.kind == "text" then
+        entry.translation, entry.note, entry.noteUpdatedAt = saved.t, saved.n, saved.u
+      else
+        entry.status, entry.statusChangedAt = saved.s, saved.c
+      end
+      restored = restored + 1
+    end
+  end
+  local kind = backup.kind
+  WordHunterWoWDB.resetBackup = nil
+  refreshResetWordData()
+  return restored, kind
 end
 
 Addon.DictionaryProviders = Addon.DictionaryProviders or {}
@@ -3042,6 +3125,19 @@ function Addon.recordEncounter(item, questId, questTitle, now)
   return false
 end
 
+-- Escape: a confirmation or a copy box is cancelled on its own ("the safe way out should be the easy one") and leaves the
+-- window it was opened from; with none of them up, every window of the addon closes as before.
+function Addon.CloseTopmost()
+  for _, key in ipairs({ "confirmDialog", "copyDialog" }) do
+    local frame = Addon[key]
+    if frame and frame.IsShown and frame:IsShown() then
+      frame:Hide()
+      return true
+    end
+  end
+  return Addon.CloseAll()
+end
+
 function Addon.CloseAll()
   local closed = false
   for _, key in ipairs({ "panel", "editor", "listFrame", "statsFrame", "questsFrame", "copyDialog", "enPanel", "confirmDialog" }) do
@@ -3090,7 +3186,7 @@ function Addon.SetupEscapeClose(frame, onKey)
       Addon.SafePropagate(self, false)
     elseif key == "ESCAPE" then
       Addon.SafePropagate(self, false)
-      Addon.CloseAll()
+      Addon.CloseTopmost()
     else
       if onKey and onKey(self, key) then
         Addon.SafePropagate(self, false)

@@ -19,6 +19,7 @@ local Compat = Addon.Compat
 
 local legacyRequested = false
 local historyDirty = false
+local syncedOnce = false
 
 local function trim(value)
   if Addon.trim then return Addon.trim(value) end
@@ -281,5 +282,14 @@ function Addon.SyncCharacterQuestHistory()
     end
   end
   historyDirty = false
+  syncedOnce = true
   return true
+end
+
+-- The sync walks every completed quest of the character, so it is asked for when something may have changed: the first time,
+-- and after a quest log update. A loading screen (PLAYER_ENTERING_WORLD fires at every zone change) and the logout ask for it
+-- through this, not for the whole walk again.
+function Addon.SyncCharacterQuestHistoryIfNeeded()
+  if syncedOnce and not historyDirty then return true end
+  return Addon.SyncCharacterQuestHistory()
 end
