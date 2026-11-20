@@ -121,6 +121,22 @@ narrator window and the Play buttons go away. Word audio, the voice that says a
 German word when you click it, keeps working. The word switch needs the updated
 German voice engine (2.0.9) and the word voice pack.
 
+**The word list and the statistics window no longer go through the whole
+dictionary.** With the German dictionary the word list read all 143,000 entries
+on every refresh and every pause in typing, about half a second for a search.
+The first time you open the list after a login or `/reload`, the addon now
+prepares an index in the background (about three seconds, a few milliseconds a
+frame); until it is ready the list works as before, afterwards a search takes a
+few hundredths of a second. The index keeps about 12 MB of memory.
+
+**Logging in and reading a quest with a new word are lighter.** The saved text
+of your words (`WordHunterWoWExport`) was rebuilt at every login and each time a
+quest recorded a new word, about a tenth of a second each. It is now built once,
+when you log out.
+
+**The recall check's controller hints** sit on a row of their own, so with the
+icons they no longer wrap onto the 1 to 5 buttons.
+
 **Reading.** The word colours stay readable on the parchment, readable items such
 as a journal, a letter or a book page open in the same reader as an NPC's
 conversation, German quest sentences highlight better and show split-verb hints,
