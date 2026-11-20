@@ -1053,6 +1053,8 @@ Addon.ENCOUNTER_FIELDS = { "encounterCount", "encounteredQuests",
 local function carriesEncounters(entry)
   return type(entry) == "table" and entry.encounterOnly or nil
 end
+-- The word list tells the two kinds of entry apart itself (WordList.lua), without a walk through ForEachEffectiveWord.
+Addon.CarriesEncounters = carriesEncounters
 
 function Addon.GetEffectiveWord(key, locale)
   local user = Addon.GetWordsTable(locale)[key]
@@ -1166,6 +1168,22 @@ function Addon.EffectiveStatus(entry)
   return "new"
 end
 
+-- The player's own words alone, as ForEachEffectiveWord hands them out after the pack's entries: every entry that is
+-- not only a record of having met a pack word, and those records for the words no pack has. A caller that counts
+-- nothing else (the statistics) would otherwise walk the whole pack, 140,000 entries for German, to throw it away.
+function Addon.ForEachOwnWord(fn, locale)
+  locale = locale or Addon.GetTargetLocale()
+  if not Addon.DictionaryProviders[locale] then Addon.EnsureDictionary(locale) end
+  for key, entry in pairs(Addon.GetWordsTable(locale)) do
+    if not carriesEncounters(entry) then
+      fn(key, entry, false)
+    elseif Addon.GetDictionaryEntry(key, locale) == nil then
+      -- No pack has it either: this record of meeting the word is all there is.
+      fn(key, entry, false)
+    end
+  end
+end
+
 -- Walks the player's words plus every dictionary entry without building a merged
 -- copy first. A locale pack ships ~74k entries, so materialising the merge — as
 -- GetEffectiveWords has to — allocates a table per entry every call, and the word
@@ -1203,14 +1221,7 @@ function Addon.ForEachEffectiveWord(fn, locale)
       end
     end
   end
-  for key, entry in pairs(user) do
-    if not carriesEncounters(entry) then
-      fn(key, entry, false)
-    elseif Addon.GetDictionaryEntry(key, locale) == nil then
-      -- No pack has it either: this record of meeting the word is all there is.
-      fn(key, entry, false)
-    end
-  end
+  Addon.ForEachOwnWord(fn, locale)
 end
 
 function Addon.GetEffectiveWords()
