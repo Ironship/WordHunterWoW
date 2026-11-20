@@ -269,6 +269,7 @@ SlashCmdList.WORDHUNTERWOW = function(message)
   local command = strlower(raw)
   if command == "reload" or command == "export" then
     Addon.rebuildExport()
+    Addon.flushExport()
     print("|cff66ccffWordHunterWoW:|r /reload writes the import file to SavedVariables.")
   elseif command:match("^harvest") then
     local arg = strtrim(command:match("^%S+%s*(.*)$") or "")
