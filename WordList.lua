@@ -149,20 +149,110 @@ function Addon.SetupWordListView(view, margin, bottom)
   end)
 end
 
-local function refreshWordListView(listFrame)
-  if not listFrame or not listFrame:IsShown() then return end
-  if not rawget(listFrame, "prevPage") then Addon.SetupWordListView(listFrame, 0, 0) end
-  local mode = rawget(listFrame, "wordFilter") or "all"
-  local locale = rawget(listFrame, "wordLocale") or Addon.GetTargetLocale()
-  local query = Addon.utf8Lower(Addon.trim(listFrame.search:GetText()))
-  local hideIgnored = hideIgnoredSetting()
-  if rawget(listFrame, "lastWordQuery") ~= query or rawget(listFrame, "lastWordFilter") ~= mode
-      or rawget(listFrame, "lastWordLocale") ~= locale or rawget(listFrame, "lastHideIgnored") ~= hideIgnored then
-    listFrame.wordPage = 1
+---------------------------------------------------------------------------------------------
+-- The shipped dictionary, indexed
+---------------------------------------------------------------------------------------------
+-- A locale's pack ships 140,000 entries (German). Listing them walked every entry on every refresh -- opening the
+-- window, a status button, the hide-ignored box, each pause in typing -- and sorted what it kept; a search also made
+-- the lowercase "word translation" of every entry just to look for a few letters in it. Against a stand-in that was
+-- about 0.3 s to list and 0.5 s and 14 MB of garbage for a search. A pack is never written to once it is registered,
+-- so what depends on it alone is made once, a few milliseconds a frame in the background: its keys in order, and the
+-- lowercase text of every entry, word and translation, in one string that string.find searches in a few milliseconds.
+-- Until that is ready, or when it cannot answer (a locale with more than one pack, a search with a control character
+-- in it), the list is walked, as it always was.
+
+local wordIndexes = setmetatable({}, { __mode = "k" }) -- [a pack's entries] = its index; weak, the index holds no key
+local INDEX_BUDGET_MS = 4 -- what building it asks of one frame
+local clock = debugprofilestop or function() return (GetTime and GetTime() or 0) * 1000 end
+
+-- Runs as a coroutine: tick() gives the frame back once the budget is spent.
+local function buildWordIndex(index, entries)
+  local started = clock()
+  local function tick()
+    if clock() - started >= INDEX_BUDGET_MS then
+      coroutine.yield()
+      started = clock()
+    end
   end
-  listFrame.lastWordQuery, listFrame.lastWordFilter = query, mode
-  listFrame.lastWordLocale, listFrame.lastHideIgnored = locale, hideIgnored
-  updateListFilters(listFrame)
+  -- The keys, grouped by their first two bytes so that every sort is a short one.
+  local groups, prefixes, n = {}, {}, 0
+  for key in pairs(entries) do
+    local prefix = key:sub(1, 2)
+    local group = groups[prefix]
+    if not group then
+      group = {}
+      groups[prefix] = group
+      prefixes[#prefixes + 1] = prefix
+    end
+    group[#group + 1] = key
+    n = n + 1
+    if n % 2048 == 0 then tick() end
+  end
+  table.sort(prefixes)
+  local keys, at = {}, 0
+  for _, prefix in ipairs(prefixes) do
+    local group = groups[prefix]
+    groups[prefix] = nil
+    table.sort(group)
+    for i = 1, #group do
+      at = at + 1
+      keys[at] = group[i]
+    end
+    tick()
+  end
+  -- The groups give table.sort's order only where the client compares strings byte by byte. One pass makes sure, and
+  -- a client that does not gets the plain sort.
+  for i = 2, n do
+    if keys[i - 1] > keys[i] then
+      table.sort(keys)
+      break
+    end
+    if i % 4096 == 0 then tick() end
+  end
+  index.keys, index.count = keys, n
+  -- The text a search looks in: every entry's lowercase "word translation", a line each, and where each line starts.
+  local lower = Addon.utf8Lower
+  local lines, starts, size = {}, {}, 1
+  for i = 1, n do
+    local key = keys[i]
+    local entry = entries[key]
+    local word, translation = key, ""
+    if type(entry) == "table" then word, translation = entry.word or key, entry.translation or "" end
+    local line = lower(word .. " " .. translation) .. "\n"
+    lines[i] = line
+    starts[i] = size
+    size = size + #line
+    if i % 256 == 0 then tick() end
+  end
+  -- joined in pieces: one table.concat of 140,000 lines is a frame of its own
+  local pieces = {}
+  for from = 1, n, 4096 do
+    pieces[#pieces + 1] = table.concat(lines, "", from, math.min(n, from + 4095))
+    tick()
+  end
+  index.starts = starts
+  index.text = table.concat(pieces)
+end
+
+local function startWordIndex(entries)
+  local index = {}
+  wordIndexes[entries] = index
+  local worker = coroutine.create(buildWordIndex)
+  local function step()
+    local ok, err = coroutine.resume(worker, index, entries)
+    if not ok then
+      index.failed = err or true -- the list walks the pack from then on
+    elseif coroutine.status(worker) ~= "dead" then
+      C_Timer.After(0, step)
+    end
+  end
+  C_Timer.After(0, step)
+  return index
+end
+
+-- The keys the list shows, in order, for a status button, the hide-ignored box and a lowercased search: every
+-- effective word that passes. This is the walk over the whole pack; fastWordItems answers the same from the index.
+local function walkWordItems(locale, mode, hideIgnored, query)
   -- Keep only existing keys; resolve the handful of visible entries at paint time.
   local items = {}
   Addon.ForEachEffectiveWord(function(key, entry)
@@ -177,7 +267,128 @@ local function refreshWordListView(listFrame)
   end, locale)
   -- Keys are already casefolded by wordKey, including umlauts and eszett.
   table.sort(items)
-  listFrame.wordItems = items
+  return items
+end
+
+-- The same list from the index, or nil when the index cannot answer yet. The effective words are the pack's entries
+-- except those the player has an entry of their own for (not just a record of meeting the word), plus the player's own
+-- entries: the two share no key, so the pack's matches, already in order, only have to be merged with the player's.
+local function fastWordItems(locale, mode, hideIgnored, query)
+  local providers, order = Addon.DictionaryProviders[locale], Addon.DictionaryProviderOrder[locale]
+  if type(providers) ~= "table" or type(order) ~= "table" or #order ~= 1 then return nil end
+  local entries = providers[order[1]]
+  if type(entries) ~= "table" then return nil end
+  local index = wordIndexes[entries] or startWordIndex(entries)
+  if index.failed then return nil end
+  local searching = query ~= ""
+  if searching then
+    if not index.text or query:find("%c") then return nil end
+  elseif not index.keys then
+    return nil
+  end
+  local effectiveStatus, carries, lower = Addon.EffectiveStatus, Addon.CarriesEncounters, Addon.utf8Lower
+  local function passes(entry)
+    local status = effectiveStatus(entry)
+    if mode ~= "all" then return mode == status end
+    return not (hideIgnored and status == "ignored")
+  end
+
+  -- The player's own entries: the keys they stand in for in the pack, and those that pass.
+  local shadow, own, owned = {}, {}, 0
+  for key, entry in pairs(Addon.GetWordsTable(locale)) do
+    local record = carries(entry)
+    if not record then shadow[key] = true end
+    if (not record or not entries[key]) and passes(entry)
+        and (not searching or lower((entry.word or key) .. " " .. (entry.translation or "")):find(query, 1, true)) then
+      owned = owned + 1
+      own[owned] = key
+    end
+  end
+  table.sort(own)
+
+  -- The pack's entries that pass, in order.
+  local keys, items, n = index.keys, {}, 0
+  if not searching then
+    if mode == "all" and not hideIgnored then
+      for i = 1, index.count do
+        local key = keys[i]
+        if not shadow[key] then
+          n = n + 1
+          items[n] = key
+        end
+      end
+    else
+      for i = 1, index.count do
+        local key = keys[i]
+        if not shadow[key] and passes(entries[key]) then
+          n = n + 1
+          items[n] = key
+        end
+      end
+    end
+  else
+    local text, starts, find, count = index.text, index.starts, string.find, index.count
+    local pos, line = 1, 1
+    while true do
+      local at = find(text, query, pos, true)
+      if not at then break end
+      -- the line the match is in: the last one that starts at or before it. Looked for outwards from the last line,
+      -- since a short query matches most lines and the next match is usually in the next one.
+      local low, high, step = line, line + 1, 1
+      while high <= count and starts[high] <= at do
+        low = high
+        step = step * 2
+        high = low + step
+      end
+      if high > count then high = count end
+      while low < high do
+        local middle = math.floor((low + high + 1) / 2)
+        if starts[middle] <= at then low = middle else high = middle - 1 end
+      end
+      line = low
+      local key = keys[line]
+      if not shadow[key] and passes(entries[key]) then
+        n = n + 1
+        items[n] = key
+      end
+      pos = starts[line + 1] or (#text + 1) -- the rest of this line cannot match again
+    end
+  end
+  if owned == 0 then return items end
+
+  -- The player's entries go in among the pack's, in place and from the back: no second list of 140,000 keys.
+  for place = n + 1, n + owned do items[place] = "" end
+  local i, j, place = n, owned, n + owned
+  while j >= 1 do
+    local mine = own[j]
+    if i >= 1 and items[i] > mine then
+      items[place] = items[i]
+      i = i - 1
+    else
+      items[place] = mine
+      j = j - 1
+    end
+    place = place - 1
+  end
+  return items
+end
+
+local function refreshWordListView(listFrame)
+  if not listFrame or not listFrame:IsShown() then return end
+  if not rawget(listFrame, "prevPage") then Addon.SetupWordListView(listFrame, 0, 0) end
+  local mode = rawget(listFrame, "wordFilter") or "all"
+  local locale = rawget(listFrame, "wordLocale") or Addon.GetTargetLocale()
+  local query = Addon.utf8Lower(Addon.trim(listFrame.search:GetText()))
+  local hideIgnored = hideIgnoredSetting()
+  if rawget(listFrame, "lastWordQuery") ~= query or rawget(listFrame, "lastWordFilter") ~= mode
+      or rawget(listFrame, "lastWordLocale") ~= locale or rawget(listFrame, "lastHideIgnored") ~= hideIgnored then
+    listFrame.wordPage = 1
+  end
+  listFrame.lastWordQuery, listFrame.lastWordFilter = query, mode
+  listFrame.lastWordLocale, listFrame.lastHideIgnored = locale, hideIgnored
+  updateListFilters(listFrame)
+  listFrame.wordItems = fastWordItems(locale, mode, hideIgnored, query)
+    or walkWordItems(locale, mode, hideIgnored, query)
   layoutWordListView(listFrame)
 end
 Addon.RefreshWordListView = refreshWordListView

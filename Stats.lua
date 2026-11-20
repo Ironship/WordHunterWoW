@@ -134,9 +134,9 @@ local function nextMilestone(known)
 end
 
 -- Everything the four pages draw, from one walk over the words and one over the
--- recall rows. Nothing is kept per word: the walk goes over the whole shipped
--- dictionary too (tens of thousands of entries) and only the player's own words
--- count, so each is folded into counters as it goes by.
+-- recall rows. Nothing is kept per word: only the player's own words count (the
+-- shipped dictionary, 140,000 entries for German, is not walked at all), so each
+-- is folded into counters as it goes by.
 local function computeStats(now)
   local today = startOfDay(now)
   local readyAfter = Addon.GetReadyAfter and Addon.GetReadyAfter() or 5
@@ -159,8 +159,7 @@ local function computeStats(now)
   for index = 1, #HORIZONS + 1 do stats.horizon[index] = { met = 0, guessed = 0 } end
 
   local top = stats.top
-  Addon.ForEachEffectiveWord(function(key, entry, isDictionary)
-    if isDictionary then return end
+  Addon.ForEachOwnWord(function(key, entry)
     local status = Addon.EffectiveStatus(entry)
     stats.total = stats.total + 1
     stats.byStatus[status] = (stats.byStatus[status] or 0) + 1
