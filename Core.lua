@@ -2481,7 +2481,22 @@ function Addon.ensureHeadwordDefaults(entry, now)
   if entry.firstSeenAt == nil then entry.firstSeenAt = entry.updatedAt or now end
 end
 
+-- The export is a string for the saved-variables file and nothing in the game reads
+-- it, so it only has to be right when the client writes that file, which happens at
+-- logout and at /reload. Building it is the dearest thing this addon does (every
+-- saved word sorted, five gsub callbacks per word: about 90 ms and 3 MB of garbage
+-- for 2,800 words), and it used to run at every login and whenever reading a quest
+-- recorded a new encounter. Now rebuildExport only marks it out of date, which is
+-- free, and PLAYER_LOGOUT builds it once.
+local exportStale = false
+
 function Addon.rebuildExport()
+  exportStale = true
+end
+
+function Addon.flushExport()
+  if not exportStale then return end
+  exportStale = false
   local words = Addon.GetWordsTable()
   local keys = {}
   for key in pairs(words) do keys[#keys + 1] = key end
@@ -2508,6 +2523,14 @@ function Addon.rebuildExport()
   WordHunterWoWExport = "WHW3|" .. table.concat(rows, ";")
   local target = Addon.GetTargetLocale()
   WordHunterWoWLanguage = Addon.WH_LANGUAGE_MAP[target] or target
+end
+
+-- A frame of its own rather than a line in the handler in Init.lua, so that the
+-- export is written whatever else that handler does or fails to do at logout.
+if type(CreateFrame) == "function" then
+  local exportFlusher = CreateFrame("Frame")
+  exportFlusher:RegisterEvent("PLAYER_LOGOUT")
+  exportFlusher:SetScript("OnEvent", function() Addon.flushExport() end)
 end
 
 function Addon.initializeDatabase()
